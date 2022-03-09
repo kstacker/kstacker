@@ -1,5 +1,64 @@
-# OS generated files #
-######################
+# Compiled files
+*.py[cod]
+*.a
+*.o
+*.so
+*.pyd
+__pycache__
+
+# Other generated files
+MANIFEST
+
+# Sphinx
+_build
+_generated
+docs/api
+docs/generated
+
+# Packages/installer info
+*.egg
+*.egg-info
+dist
+build
+eggs
+.eggs
+parts
+bin
+var
+sdist
+develop-eggs
+.installed.cfg
+distribute-*.tar.gz
+
+# Other
+.cache
+.tox
+.*.swp
+.*.swo
+*~
+.project
+.pydevproject
+.settings
+.coverage
+cover
+htmlcov
+.pytest_cache
+
+# Env
+.venv
+venv
+.env
+
+# PyCharm
+.idea
+
+# VS code
+.vscode
+
+kstacker/version.py
+pip-wheel-metadata/
+
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -8,23 +67,8 @@
 ehthumbs.db
 Thumbs.db
 
-#Python files#
-##############
+# data files
 *.npy
 *.pyc
-
-#images#
-########
 *.fits
 *.png
-.idea
-
-#dir#
-#####
-venv
-
-#others#
-########
-
-parameters_betapic_c_IFS_Raffaele_bmascked_searchclose.sh
-__pycache__/
