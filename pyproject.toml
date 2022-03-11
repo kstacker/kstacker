@@ -1,7 +1,11 @@
 [build-system]
+requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=3.4"]
+build-backend = "setuptools.build_meta"
 
-requires = ["setuptools",
-            "setuptools_scm",
-            "wheel"]
+[tool.setuptools_scm]
+write_to = "kstacker/version.py"
 
-build-backend = 'setuptools.build_meta'
+[tool.black]
+line-length = 88
+target-version = ['py37']
+preview = true

@@ -14,7 +14,8 @@ except Exception:
 """.lstrip()
 
 setup(
-    use_scm_version={'write_to': os.path.join('kstacker', 'version.py'),
-                     'write_to_template': VERSION_TEMPLATE},
-
+    use_scm_version={
+        "write_to": os.path.join("kstacker", "version.py"),
+        "write_to_template": VERSION_TEMPLATE,
+    },
 )
