@@ -1,3 +1,3 @@
-from .version import __version__  # noqa
+from .version import version as __version__  # noqa
 
 __all__ = []
