@@ -27,7 +27,7 @@ def circular(n, d, m0, n0):
     # create aperture
     for k in range(0, n):
         for l in range(0, n):
-            if (k - m0) ** 2 + (l - n0) ** 2 <= (d / 2) ** 2:
+            if (k - m0) ** 2 + (l - n0) ** 2 <= (d // 2) ** 2:
                 aperture[k, l] = 1
 
     return aperture
@@ -50,7 +50,7 @@ def apodize(aperture, apod_filename, diam, center=None):
 
     # check if center argument has been given. if not, assume that the aperture is centered
     if center is None:
-        center = [n / 2, n / 2]
+        center = [n // 2, n // 2]
         [m0, n0] = center
 
     # load the apodization function. apod_axis represents the axis on which is defined the function. it should always range from 0 to 1
@@ -64,7 +64,7 @@ def apodize(aperture, apod_filename, diam, center=None):
     for k in range(0, n):
         for l in range(0, n):
             if (k - m0) ** 2 + (l - n0) ** 2 <= (
-                diam / 2
+                diam // 2
             ) ** 2:  # pixel has to be in the apodization window
                 aperture[k, l] = aperture[k, l] * np.interp(
                     abs(math.sqrt((k - m0) ** 2 + (l - n0) ** 2) / (diam / 2.0)),

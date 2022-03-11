@@ -68,8 +68,8 @@ def corono(
     @return float[n, n]: coronagraphic image (intensity in arbitrary unit)
     """
 
-    m0 = n / 2
-    n0 = n / 2  # coordinates of the center of the aperture
+    m0 = n // 2
+    n0 = n // 2  # coordinates of the center of the aperture
 
     n_im = int(t_exp / t_ao)  # number of images required to get total exposure time
     image = np.zeros([n, n]) * 1j
@@ -179,7 +179,7 @@ def corono(
         plt.figure(1)
         plt.title("aperture")
         plt.imshow(
-            abs(pupil_field), origin="lower", extent=[-n / 2, n / 2, -n / 2, n / 2]
+            abs(pupil_field), origin="lower", extent=[-n // 2, n // 2, -n // 2, n // 2]
         )
 
     if plot == "tout" or plot == "images":

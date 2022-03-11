@@ -292,14 +292,14 @@ def plot_ontop(x, m0, d, ts, res, back_image, filename):
     plt.imshow(
         back_image, origin="lower", interpolation="none", cmap=plt.get_cmap("gray")
     )
-    plt.scatter(n / 2 + scale * y_proj, n / 2 + scale * x_proj, color="b", s=0.1)
+    plt.scatter(n // 2 + scale * y_proj, n // 2 + scale * x_proj, color="b", s=0.1)
 
     for k in range(q):
         [x, y] = orbit.project_position(
             orbit.position(ts[k], a, e, t0, m0), omega, i, theta_0
         )
-        xpix = n / 2 + scale * x
-        ypix = n / 2 + scale * y
+        xpix = n // 2 + scale * x
+        ypix = n // 2 + scale * y
         plt.plot(ypix, xpix, "+", color="r")
     #       plt.plot(xpix, ypix,'o', color='r', markersize=10)
     #    [x,y]=orbit.project_position(orbit.position(t0, a, e, t0, m0), omega, i, theta_0)

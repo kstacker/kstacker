@@ -140,8 +140,8 @@ def noise(image, r_int, r_ext):
     values = []
     for k in range(n):
         for l in range(n):
-            if (k - n / 2) ** 2 + (l - n / 2) ** 2 < r_ext**2 and (k - n / 2) ** 2 + (
-                l - n / 2
+            if (k - n // 2) ** 2 + (l - n // 2) ** 2 < r_ext**2 and (k - n // 2) ** 2 + (
+                l - n // 2
             ) ** 2 > r_int**2:
                 values.append(image[k, l])
     return np.std(values)
@@ -160,7 +160,7 @@ def snr(image, center, position, fwhm):
     [x0, y0] = center
     n = image.shape[0]
 
-    signal = photometry(image, [x + n / 2, y + n / 2], 2 * fwhm) / (
+    signal = photometry(image, [x + n // 2, y + n // 2], 2 * fwhm) / (
         math.pi * (fwhm) ** 2
     )  # mean value inside the photometric box
 
@@ -200,15 +200,15 @@ def snr_boite(image, position, size, fwhm):
     """
     n = image.shape[0]
     x, y = position
-    x = x + n / 2  # convert from-center-position to real position
-    y = y + n / 2
+    x = x + n // 2  # convert from-center-position to real position
+    y = y + n // 2
 
     # mean value inside the photometric box
     signal = photometry(image, [x, y], 2 * fwhm) / (math.pi * (fwhm) ** 2)
 
     values = []  # a list that will contain all the noise pixels
-    for k in range(int(x - size / 2), int(x + size / 2 + 1)):
-        for l in range(int(y - size / 2), int(y + size / 2 + 1)):
+    for k in range(int(x - size // 2), int(x + size // 2 + 1)):
+        for l in range(int(y - size // 2), int(y + size // 2 + 1)):
             if (k - x) ** 2 + (l - y) ** 2 > (1.5 * fwhm) ** 2:
                 # for each pixel in the noise box around position, check if
                 # this pixel is inside the photometric box
@@ -239,8 +239,8 @@ def snr_tot(image, position, fwhm):
     """
     n = image.shape[0]
     [x, y] = position
-    x = x + n / 2  # convert from-center-position to real position
-    y = y + n / 2
+    x = x + n // 2  # convert from-center-position to real position
+    y = y + n // 2
 
     # mean value inside the photometric box
     signal = photometry(image, [x, y], 2 * fwhm) / (math.pi * (fwhm) ** 2)
@@ -254,12 +254,12 @@ def snr_tot(image, position, fwhm):
 def radial_profile(image, fwhm, center=None):
     n = image.shape[0]
     if center is None:
-        center = [n / 2, n / 2]
+        center = [n // 2, n // 2]
 
     [x, y] = center
 
-    profile = np.zeros(n / 2)
-    for p in range(n / 2):
+    profile = np.zeros(n // 2)
+    for p in range(n // 2):
         values = []
         r_ext = p + fwhm
         r_int = p - fwhm
@@ -291,7 +291,7 @@ def monte_carlo_noise(image, r, fwhm):
         theta = np.random.uniform(-math.pi, math.pi)
         x = r * math.cos(theta)
         y = r * math.sin(theta)
-        position = [x + n / 2, y + n / 2]
+        position = [x + n // 2, y + n // 2]
         fluxes[k] = photometry(image, position, 2 * fwhm)
     return np.mean(fluxes), np.std(fluxes)
 
@@ -313,7 +313,7 @@ def monte_carlo_noise_nan(image, r, fwhm):
         theta = np.random.uniform(-math.pi, math.pi)
         x = r * math.cos(theta)
         y = r * math.sin(theta)
-        position = [x + n / 2, y + n / 2]
+        position = [x + n // 2, y + n // 2]
         flux = photometry(image, position, 2 * fwhm)
         if not (np.isnan(flux)):
             fluxes.append(flux)
@@ -340,7 +340,7 @@ def monte_carlo_noise2(image, r, fwhm):
         theta = np.random.uniform(-10 * math.pi / 16, 19 * math.pi / 16)
         x = r * math.cos(theta)
         y = r * math.sin(theta)
-        position = [x + n / 2, y + n / 2]
+        position = [x + n // 2, y + n // 2]
         fluxes[k] = photometry(image, position, 2 * fwhm)
     return (np.mean(fluxes), np.std(fluxes))
 
@@ -371,8 +371,8 @@ def monte_carlo_noise_remove_planet(image, r, fwhm, planet, remove_box):
         x = r * math.cos(theta)
         y = r * math.sin(theta)
         xtest, ytest = (
-            x + n / 2,
-            y + n / 2,
+            x + n // 2,
+            y + n // 2,
         )  # the positions are stored in (xtest,ytest) in pixels
         if (
             (planet[0] - remove_box[0] <= xtest)
@@ -411,9 +411,9 @@ def monte_carlo_profiles_remove_planet(image, fwhm, planet_coord, remove_box):
     @param float[4] remove_box : size of removal box (default = [10,10,10,10])
     """
     n = image.shape[0]
-    noise_profile = np.zeros(n / 2)
-    background_profile = np.zeros(n / 2)
-    for k in range(n / 2):
+    noise_profile = np.zeros(n // 2)
+    background_profile = np.zeros(n // 2)
+    for k in range(n // 2):
         (bg, noise) = monte_carlo_noise_remove_planet(
             image, k, fwhm, planet_coord, remove_box
         )
@@ -455,14 +455,14 @@ def snr_annulus(image, position, fwhm):
     r_int = d - fwhm
     r_ext = d + fwhm
 
-    x = x + n / 2
-    y = y + n / 2
+    x = x + n // 2
+    y = y + n // 2
 
     values = []
     for k in range(n):
         for l in range(n):
-            if (k - n / 2) ** 2 + (l - n / 2) ** 2 < r_ext**2 and (k - n / 2) ** 2 + (
-                l - n / 2
+            if (k - n // 2) ** 2 + (l - n // 2) ** 2 < r_ext**2 and (k - n // 2) ** 2 + (
+                l - n // 2
             ) ** 2 > r_int**2:
                 if (k - x) ** 2 + (l - y) ** 2 > 2 * fwhm:
                     values.append(image[k, l])
@@ -491,9 +491,9 @@ def noise_profile(image, fwhm):
     """
 
     n = image.shape[0]
-    noise_levels = np.zeros(n / 2)
+    noise_levels = np.zeros(n // 2)
 
-    for k in range(n / 2):
+    for k in range(n // 2):
         noise_levels[k] = noise(image, k - fwhm, k + fwhm)
 
     return noise_levels

@@ -97,8 +97,8 @@ def my_static(wfe, m, wav):
     psd = np.zeros([n, n])
     for k in range(n):
         for l in range(n):
-            if (l != n / 2) or (k != n / 2):
-                psd[k, l] = 1.0 / ((k - n / 2) ** 2 + (l - n / 2) ** 2)
+            if (l != n // 2) or (k != n // 2):
+                psd[k, l] = 1.0 / ((k - n // 2) ** 2 + (l - n // 2) ** 2)
     psd = np.fft.fftshift(psd)
     # multiply by gaussian white noise, and compute fft
     phase_noise = np.fft.ifft2(
@@ -106,7 +106,7 @@ def my_static(wfe, m, wav):
     )  # sqrt because psd is energy
     phase_noise = np.fft.fftshift(phase_noise)
     phases = np.imag(
-        phase_noise[0 : n / 2, 0 : n / 2]
+        phase_noise[0 : n // 2, 0 : n // 2]
     )  # take only the first quadrant to avoid symetry
     # normalize to std=wfe
     phases = phases / np.std(phases) * wfe

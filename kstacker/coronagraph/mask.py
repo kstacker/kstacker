@@ -20,7 +20,7 @@ def lyot(n, d, center=None):
     """
     # check if center argument has been given and process it
     if center is None:
-        center = [n / 2, n / 2]
+        center = [n // 2, n // 2]
     m0, n0 = center
 
     # initialize matrix
@@ -29,7 +29,7 @@ def lyot(n, d, center=None):
     # create simple circular lyot mask
     for k in range(0, n):
         for l in range(0, n):
-            if (k - m0) ** 2 + (l - n0) ** 2 > (d / 2) ** 2:
+            if (k - m0) ** 2 + (l - n0) ** 2 > (d // 2) ** 2:
                 mask[k, l] = 1
 
     return mask

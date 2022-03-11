@@ -94,7 +94,7 @@ def image_psf_from_file(filename, center, flux):
     # create shift vector (counted from center)
     n = image.shape[0]
     [x, y] = center
-    shift_vect = [x - n / 2, y - n / 2]
+    shift_vect = [x - n // 2, y - n // 2]
 
     # shift psf
     shift_image = shift(image, shift_vect, order=3, mode="constant", cval=0.0)

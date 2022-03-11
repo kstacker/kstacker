@@ -22,5 +22,5 @@ def create_noisy_image(n, position, psf_filename, flux, background_image):
     psf = image_psf_from_file(psf_filename, position, flux)
     return (
         psf[0:n, 0:n]
-        + background_image[(m - n) / 2 : (m + n) / 2, (m - n) / 2 : (m + n) / 2]
+        + background_image[(m - n) // 2 : (m + n) // 2, (m - n) // 2 : (m + n) // 2]
     )
