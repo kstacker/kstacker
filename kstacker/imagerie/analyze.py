@@ -295,7 +295,6 @@ def monte_carlo_noise(image, radius, fwhm):
     """
     n = image.shape[0]
     p = 1000  # number of disks to generate
-    p = 100  # FIXME: tmp
     theta = np.random.uniform(-math.pi, math.pi, size=p)
     x = radius * np.cos(theta)
     y = radius * np.sin(theta)
