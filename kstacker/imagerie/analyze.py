@@ -26,11 +26,21 @@ def photometry(image, position, diameter):
     @return float: flux contained in the circular photometry box
     """
     xpix, ypix = position
-    aperture = CircularAperture([ypix - 0.5, xpix - 0.5], r=diameter / 2.0)
-    # grid for photutils is centered on pixels hence the - 0.5 ; this
-    # stupid CircularAperture works the other way around compared to numpy hence the x<->y reversal
+
+    # grid for photutils is centered on pixels hence the - 0.5
+    xpix = xpix - 0.5
+    ypix = ypix - 0.5
+
+    # CircularAperture works the other way around compared to numpy hence the x<->y reversal
+    if isinstance(xpix, np.ndarray):
+        position = list(zip(ypix, xpix))
+    else:
+        position = (ypix, xpix)
+
+    aperture = CircularAperture(position, r=diameter / 2.0)
     phot = aperture_photometry(image, aperture)
-    return phot[0]["aperture_sum"]
+    res = np.array(phot['aperture_sum'])
+    return res[0] if res.size == 1 else res
 
 
 def total_photometry(images, positions, diameter):
@@ -274,7 +284,7 @@ def radial_profile(image, fwhm, center=None):
     return profile
 
 
-def monte_carlo_noise(image, r, fwhm):
+def monte_carlo_noise(image, radius, fwhm):
     """
     Another function to estimate the noise in a given image by throwing disks
     at random positions and estimatin gthe deviation of the flux inside them.
@@ -285,18 +295,16 @@ def monte_carlo_noise(image, r, fwhm):
     """
     n = image.shape[0]
     p = 1000  # number of disks to generate
-    fluxes = np.zeros(p)
-    # FIXME: remove loop?
-    for k in range(p):
-        theta = np.random.uniform(-math.pi, math.pi)
-        x = r * math.cos(theta)
-        y = r * math.sin(theta)
-        position = [x + n // 2, y + n // 2]
-        fluxes[k] = photometry(image, position, 2 * fwhm)
+    p = 100  # FIXME: tmp
+    theta = np.random.uniform(-math.pi, math.pi, size=p)
+    x = radius * np.cos(theta)
+    y = radius * np.sin(theta)
+    position = [x + n // 2, y + n // 2]
+    fluxes = photometry(image, position, 2 * fwhm)
     return np.mean(fluxes), np.std(fluxes)
 
 
-def monte_carlo_noise_nan(image, r, fwhm):
+def monte_carlo_noise_nan(image, radius, fwhm):
     """
     Another function to estimate the noise in a given image by throwing disks
     at random positions and estimatin gthe deviation of the flux inside them.
@@ -311,8 +319,8 @@ def monte_carlo_noise_nan(image, r, fwhm):
     for k in range(p):
         # print(k)
         theta = np.random.uniform(-math.pi, math.pi)
-        x = r * math.cos(theta)
-        y = r * math.sin(theta)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
         position = [x + n // 2, y + n // 2]
         flux = photometry(image, position, 2 * fwhm)
         if not (np.isnan(flux)):
@@ -324,7 +332,7 @@ def monte_carlo_noise_nan(image, r, fwhm):
         return np.mean(fluxes), np.std(fluxes)
 
 
-def monte_carlo_noise2(image, r, fwhm):
+def monte_carlo_noise2(image, radius, fwhm):
     """
     Another function to estimate the noise in a given image by throwing disks
     at random positions and estimatin gthe deviation of the flux inside them.
@@ -338,14 +346,14 @@ def monte_carlo_noise2(image, r, fwhm):
     fluxes = np.zeros(p)
     for k in range(p):
         theta = np.random.uniform(-10 * math.pi / 16, 19 * math.pi / 16)
-        x = r * math.cos(theta)
-        y = r * math.sin(theta)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
         position = [x + n // 2, y + n // 2]
         fluxes[k] = photometry(image, position, 2 * fwhm)
     return (np.mean(fluxes), np.std(fluxes))
 
 
-def monte_carlo_noise_remove_planet(image, r, fwhm, planet, remove_box):
+def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
     """
     Author : Justin Bec-Canet
 
@@ -368,8 +376,8 @@ def monte_carlo_noise_remove_planet(image, r, fwhm, planet, remove_box):
     fluxes = np.zeros(p)
     while realcount < p:
         theta = np.random.uniform(-math.pi, math.pi)
-        x = r * math.cos(theta)
-        y = r * math.sin(theta)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
         xtest, ytest = (
             x + n // 2,
             y + n // 2,
