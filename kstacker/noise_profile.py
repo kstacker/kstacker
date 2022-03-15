@@ -3,15 +3,10 @@ Compute the noise and background profiles. Then, compute SNR_K-Stacker profiles
 and can remove the noisy images.  We remove the images: average_noise_image
 > reject_coef * total_average_noise_images Use the values in parameters.sh
 
-__author__="Herve Le Coroller"
-__mail__="herve.lecoroller@lam.fr"
-__status="initial Development"
-
 """
 
 import math
 import os
-import shutil
 import time
 
 import matplotlib.pyplot as plt
@@ -25,6 +20,11 @@ from .imagerie.analyze import (
     photometry,
 )
 from .orbit import orbit as orb
+from .utils import create_output_dir, get_path
+
+__author__ = "Herve Le Coroller"
+__mail__ = "herve.lecoroller@lam.fr"
+__status = "initial Development"
 
 
 def pre_process_image(
@@ -156,7 +156,7 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
             dict_params["num of bad images"] = k
 
     with open(f"{output_snrdir}/bad_images.txt", "w") as file:
-        for key, val in dict_params.items():
+        for key, val in list(dict_params.items()):
             file.write(f"{key}: {val}\n")
 
     return image_removed
@@ -260,16 +260,6 @@ def compute_signal_and_noise(
     return np.sum(signal), noise
 
 
-def get_path(params, key):
-    return os.path.join(os.path.expanduser(params["work_dir"]), params[key])
-
-
-def create_output_dir(path):
-    if os.path.exists(path):
-        shutil.rmtree(path)
-    os.mkdir(path)
-
-
 def compute_noise_profiles(params):
     # Main Path definitions
     images_dir = get_path(params, "images_dir")
@@ -313,7 +303,7 @@ def compute_noise_profiles(params):
 
     if total_time == 0:
         ts = [float(x) for x in params["time"].split("+")]
-        print("time_vector used: ", ts)
+        print(("time_vector used: ", ts))
     else:
         ts = np.linspace(0, total_time, nimg)
         # put nimg + p_prev, if later we use the p_prev option
@@ -442,14 +432,13 @@ def compute_noise_profiles(params):
     ###################################
 
     if snr_plot == "yes":
-        print("Coeff of rejection for noisy images: ", reject_coef)
+        print(("Coeff of rejection for noisy images: ", reject_coef))
 
         t0 = time.time()
         image_removed = plot_noise(nimg, reject_coef, profile_dir, output_snrdir)
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
-        print("Images removed because too noisy:", image_removed)
+        print(("Images removed because too noisy:", image_removed))
 
-        # initialization for the second part of this software for 'nimg' images
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
         # load the images .fits and the noise profiles
@@ -465,7 +454,7 @@ def compute_noise_profiles(params):
             noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
 
         nimg = len(images)
-        print("List of images used for the SNR computation:", used)
+        print(("List of images used for the SNR computation:", used))
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
