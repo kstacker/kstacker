@@ -303,7 +303,7 @@ def compute_noise_profiles(params):
 
     if total_time == 0:
         ts = [float(x) for x in params["time"].split("+")]
-        print(("time_vector used: ", ts))
+        print("time_vector used: ", ts)
     else:
         ts = np.linspace(0, total_time, nimg)
         # put nimg + p_prev, if later we use the p_prev option

@@ -4,9 +4,9 @@ part of the total grid (will be run on several nodes). A brute force algorithm
 is used.
 """
 
-import math
 import os
 import sys
+import time
 
 import numpy as np
 import scipy.optimize
@@ -14,7 +14,7 @@ from astropy.io import fits
 
 from .imagerie.analyze import photometry
 from .orbit import orbit as orb
-from .utils import get_path
+from .utils import get_path, create_output_dir
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
@@ -23,11 +23,11 @@ __status__ = "Development"
 
 def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r_mask):
     """define signal"""
+    # tstart = time.time()
     nimg = len(images)
     a, e, t0, omega, i, theta_0 = x
     res = np.zeros(nimg)  # res will contain signal for each image
     for k in range(nimg):
-        # compute position
         x, y = orb.project_position(
             orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
         )
@@ -43,14 +43,15 @@ def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r
             res[k] = photometry(images[k], position, 2 * fwhm) - np.interp(
                 temp_d, x_profile, bkg_profiles[k]
             )
-            if math.isnan(res[k]):
-                # if the value of signal is nan outside the image, consider it to be 0
-                res[k] = 0.0
-    return np.sum(res)  # return sn
+    # if the value of signal is nan outside the image, consider it to be 0
+    res[np.isnan(res)] = 0.0
+    # print(f"compute_signal: {time.time()-tstart:.2f} sec.")
+    return np.sum(res), 0  # return sn
 
 
 def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
     """define noise"""
+    # tstart = time.time()
     nimg = len(noise_profiles)
     a, e, t0, omega, i, theta_0 = x
     res = np.zeros(nimg)  # res will contain noise for each image
@@ -63,15 +64,16 @@ def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
         temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
         # get noise at position using pre-computed radial noise profil
         res[k] = np.interp(temp_d, x_profile, noise_profiles[k])
-        if math.isnan(res[k]):
-            # if the value of signal is nan outside the image, consider it to be 0.
-            res[k] = 0.0
+
+    # if the value of signal is nan outside the image, consider it to be 0
+    res[np.isnan(res)] = 0.0
 
     noise = np.sqrt(np.sum(res**2))
     if noise == 0:
         # if the value of total noise is 0 (i.e. all values of noise are 0,
         # i.e. the orbit is completely out of the image) then snr=0
         noise = 1
+    # print(f"compute_noise: {time.time()-tstart:.2f} sec.")
     return noise
 
 
@@ -97,13 +99,14 @@ def split_ranges(val_min, val_max, N_origin, split):
             n = float(int(n)) + 1.0
         elif n - int(n) < 0.5:
             n = float(int(n))
-    elif int(n) == n:
-        print("N_origin/split is int")
+    # elif int(n) == n:
+    #     print("N_origin/split is int")
+
     print("N_origin/split = ", n)
-    print(val_min, val_max, N_origin, n, split)
+    print("min/max/N_origin/n/split:", val_min, val_max, N_origin, n, split)
     table = np.zeros(int(split), dtype=object)
     delta = (val_max - val_min) / split
-    print(delta)
+    # print(delta)
     x = val_min
     for k in range(0, int(split)):
         # Dans version Antoine (bug):
@@ -206,7 +209,7 @@ def brute_force(params):
         float(params["theta_0_min"]),
         float(params["theta_0_max"]),
         float(params["Ntheta_0"]),
-        float(params["Stheta0"]),
+        float(params["Stheta_0"]),
     ]
 
     print([a_min, a_max, Na])
@@ -217,11 +220,11 @@ def brute_force(params):
     p_prev = params["p_prev"]
 
     if total_time == 0:
-        time = [float(x) for x in params["time"].split("+")]
-        ts = time[p_prev:]
+        ts = [float(x) for x in params["time"].split("+")]
+        ts = ts[p_prev:]
     else:
         ts = np.linspace(0, total_time, p + p_prev)
-    print(time)
+    print("time_vector used: ", ts)
 
     # instrument parameters
     dist = float(params["dist"])  # distance to the star (parsec)
@@ -242,15 +245,8 @@ def brute_force(params):
     temporary_files = params["Temporary"]
     restart = params["restart"]
 
-    # initialization
-    x_profile = np.linspace(0, n / 2 - 1, n / 2)
-
-    # Path definition
-
-    # if os.path.exists(grid_dir):
-    #    print 'brute_grid directory exist !'
-    # else:
-    #    os.mkdir(grid_dir)
+    x_profile = np.linspace(0, n // 2 - 1, n // 2)
+    create_output_dir(grid_dir)
 
     # load the images .fits or .txt and the noise profiles
     images, bkg_profiles, noise_profiles = [], [], []
@@ -284,6 +280,7 @@ def brute_force(params):
                 args=args_signal,
                 full_output=True,
                 finish=None,
+                disp=True,
             )
             grid = opt_result[2]  # get the values of the grid
             print(np.shape(grid))
@@ -295,6 +292,7 @@ def brute_force(params):
                 args=args_noise,
                 full_output=True,
                 finish=None,
+                disp=True,
             )
             n_values = opt_result[3]  # get the values of noise on the grid
 
@@ -322,6 +320,7 @@ def brute_force(params):
                 # at each line there is 3 files created signal,noise and
                 # grid-- number_of_files/3 and -1 to begin by the last compute for security
                 deb = nb_file / 3 - 1
+
             for k in range(deb, np.shape(table)[0]):
                 ranges = table[k, :]
                 print(k)
@@ -331,6 +330,7 @@ def brute_force(params):
                     args=args_signal,
                     full_output=True,
                     finish=None,
+                    disp=True,
                 )
                 grid = opt_result[2]
                 s_values = opt_result[3]
@@ -340,6 +340,7 @@ def brute_force(params):
                     args=args_noise,
                     full_output=True,
                     finish=None,
+                    disp=True,
                 )
                 n_values = opt_result[3]  # get the values of noise on the grid
                 np.save(f"{path}/s_values{id_number}_{k}.npy", s_values)
