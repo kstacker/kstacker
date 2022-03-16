@@ -5,6 +5,7 @@ import yaml
 
 from .noise_profile import compute_noise_profiles
 from .optimize import brute_force
+from .utils import Params
 
 # to plot in a file without a display screen (cluster)
 # isort: off
@@ -37,14 +38,10 @@ def main():
 def noise_profiles(args):
     if args.seed:
         np.random.seed(args.seed)
-    with open(args.parameter_file) as f:
-        params = yaml.safe_load(f)
-
+    params = Params.read(args.parameter_file)
     compute_noise_profiles(params)
 
 
 def optimize(args):
-    with open(args.parameter_file) as f:
-        params = yaml.safe_load(f)
-
+    params = Params.read(args.parameter_file)
     brute_force(params)

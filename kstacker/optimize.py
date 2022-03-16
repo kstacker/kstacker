@@ -14,7 +14,7 @@ from astropy.io import fits
 
 from .imagerie.analyze import photometry
 from .orbit import orbit as orb
-from .utils import get_path, create_output_dir
+from .utils import create_output_dir
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
@@ -132,7 +132,8 @@ def Table(a_list, e_list, t0_list, omega_list, i_list, theta0_list):
     :param omega_list: List from the split fonction of omega
     :param i_list: List from the split fonction of i
     :param theta0_list: List from the split fonction of theta0
-    :return: the corresponding table that is a matrix 2D of silce object, where each line in a range for the brut force
+    :return: the corresponding table that is a matrix 2D of silce object,
+        where each line in a range for the brut force
     """
     Sa = np.shape(a_list)[0]
     Se = np.shape(e_list)[0]
@@ -165,112 +166,59 @@ def Table(a_list, e_list, t0_list, omega_list, i_list, theta0_list):
 
 def brute_force(params):
     # name of the directory where one loads and saves the images and values
-    images_dir = get_path(params, "images_dir")
-    profile_dir = get_path(params, "profile_dir")
-    grid_dir = get_path(params, "grid_dir")
-    # values_dir = get_path(params, "values_dir")
-    id_number = int(params["id_number"])
-
-    m0 = float(params["m0"])
-
-    # parameters of the brute force search grid.
-    # Format is [min value, max value, number of points].
-    a_min, a_max, Na, Sa = [
-        float(params["a_min"]),
-        float(params["a_max"]),
-        float(params["Na"]),
-        float(params["Sa"]),
-    ]  # (A.U)
-    e_min, e_max, Ne, Se = [
-        float(params["e_min"]),
-        float(params["e_max"]),
-        float(params["Ne"]),
-        float(params["Se"]),
-    ]
-    t0_min, t0_max, Nt0, St0 = [
-        float(params["t0_min"]),
-        float(params["t0_max"]),
-        float(params["Nt0"]),
-        1,
-    ]  # (years)
-    omega_min, omega_max, Nomega, Somega = [
-        float(params["omega_min"]),
-        float(params["omega_max"]),
-        float(params["Nomega"]),
-        float(params["Somega"]),
-    ]
-    i_min, i_max, Ni, Si = [
-        float(params["i_min"]),
-        float(params["i_max"]),
-        float(params["Ni"]),
-        float(params["Si"]),
-    ]
-    theta_0_min, theta_0_max, Ntheta_0, Stheta0 = [
-        float(params["theta_0_min"]),
-        float(params["theta_0_max"]),
-        float(params["Ntheta_0"]),
-        float(params["Stheta_0"]),
-    ]
-
-    print([a_min, a_max, Na])
+    images_dir = params.get_path("images_dir")
+    profile_dir = params.get_path("profile_dir")
+    grid_dir = params.get_path("grid_dir")
+    # values_dir = params.get_path("values_dir")
+    id_number = params["id_number"]
 
     # total time of the observation (years)
     total_time = float(params["total_time"])
-    p = params["p"]  # number of timesteps
+    nimg = params["p"]  # number of timesteps
     p_prev = params["p_prev"]
 
     if total_time == 0:
         ts = [float(x) for x in params["time"].split("+")]
         ts = ts[p_prev:]
     else:
-        ts = np.linspace(0, total_time, p + p_prev)
+        ts = np.linspace(0, total_time, nimg + p_prev)
     print("time_vector used: ", ts)
 
-    # instrument parameters
-    dist = float(params["dist"])  # distance to the star (parsec)
-    wav = float(params["wav"])  # wavelength of observation (meter)
-    d = float(params["d"])  # diameter of the primary miror (meter)
-    resol = float(params["resol"])  # resolution in marsec/pixel
-    fwhm = (
-        (1.028 * wav / d) * (180.0 / np.pi) * 3600 / (resol / 1000.0)
-    )  # apodized fwhm of the PSF (in pixels)
-
-    # image parameters
-    r_mask = float(params["r_mask"])  # radius of the inner mask in pixels
-    n = int(params["n"])  # number of pixels in one direction
-    # scale factor used to convert pixel to astronomical unit (in pixel/a.u.)
-    scale = 1.0 / (dist * (resol / 1000.0))
-
+    size = int(params["n"])  # number of pixels in one direction
     adding = params["adding"]  # addition of images to a previous run
     temporary_files = params["Temporary"]
     restart = params["restart"]
 
-    x_profile = np.linspace(0, n // 2 - 1, n // 2)
-    create_output_dir(grid_dir)
+    x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
     # load the images .fits or .txt and the noise profiles
     images, bkg_profiles, noise_profiles = [], [], []
-    for k in range(p):
+    for k in range(nimg):
         i = k + p_prev
         images.append(fits.getdata(f"{images_dir}/image_{i}_preprocessed.fits"))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 
     # grid on which the brute force algorithm will be computed on one node/core
-    ranges = (
-        slice(a_min, a_max, (a_max - a_min) / Na),
-        slice(e_min, e_max, (e_max - e_min) / Ne),
-        slice(t0_min, t0_max, (t0_max - t0_min) / Nt0),
-        slice(omega_min, omega_max, (omega_max - omega_min) / Nomega),
-        slice(i_min, i_max, (i_max - i_min) / Ni),
-        slice(theta_0_min, theta_0_max, (theta_0_max - theta_0_min) / Ntheta_0),
-    )
-
-    print("[a, e, t0, omega, i, theta_0]")
+    grid_params = params.grid
+    print(repr(grid_params))
+    ranges = grid_params.ranges
+    __import__("pdb").set_trace()
 
     # brute force
-    args_signal = (ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r_mask)
-    args_noise = (ts, m0, scale, x_profile, noise_profiles)
+    args_signal = (
+        ts,
+        params.m0,
+        size,
+        params.scale,
+        images,
+        params.fwhm,
+        x_profile,
+        bkg_profiles,
+        params.r_mask,
+    )
+    args_noise = (ts, params.m0, params.scale, x_profile, noise_profiles)
+    create_output_dir(grid_dir)
 
     if adding == "no":
         if temporary_files == "no":
@@ -301,13 +249,14 @@ def brute_force(params):
             np.save(f"{grid_dir}/n_values{id_number}.npy", n_values)
         elif temporary_files == "yes":
             path = grid_dir + "/core_" + str(id_number)
+            __import__('pdb').set_trace()
             if restart == "no":  # creation of the table
-                a_list = split_ranges(a_min, a_max, Na, Sa)
-                e_list = split_ranges(e_min, e_max, Ne, Se)
-                t0_list = split_ranges(t0_min, t0_max, Nt0, St0)
-                omega_list = split_ranges(omega_min, omega_max, Nomega, Somega)
-                i_list = split_ranges(i_min, i_max, Ni, Si)
-                theta0_list = split_ranges(theta_0_min, theta_0_max, Ntheta_0, Stheta0)
+                a_list = grid_params.split_range('a')
+                e_list = grid_params.split_range('e')
+                t0_list = grid_params.split_range('t0')
+                omega_list = grid_params.split_range('omega')
+                i_list = grid_params.split_range('i')
+                theta0_list = grid_params.split_range('theta_0')
                 table = Table(a_list, e_list, t0_list, omega_list, i_list, theta0_list)
                 os.mkdir(path)
                 np.save(f"{path}/Table.npy", table)

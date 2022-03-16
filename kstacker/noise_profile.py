@@ -20,7 +20,7 @@ from .imagerie.analyze import (
     photometry,
 )
 from .orbit import orbit as orb
-from .utils import create_output_dir, get_path
+from .utils import create_output_dir
 
 __author__ = "Herve Le Coroller"
 __mail__ = "herve.lecoroller@lam.fr"
@@ -262,28 +262,18 @@ def compute_signal_and_noise(
 
 def compute_noise_profiles(params):
     # Main Path definitions
-    images_dir = get_path(params, "images_dir")
-    profile_dir = get_path(params, "profile_dir")
-
-    # Optical parameters
-    resol = params["resol"]  # mas / pixels
-    wav = float(params["wav"])
-    diam = params["d"]
+    images_dir = params.get_path("images_dir")
+    profile_dir = params.get_path("profile_dir")
 
     # images characteristic (size, masks size, number of images, etc.) for K-Stacker
     nimg = params["p"]  # number of images
     size = params["n"]  # to keep the initial size n
-    r_mask = params["r_mask"]
-    mask_diameter_int = 2 * r_mask
-    r_mask_ext = float(params["r_mask_ext"])
-    mask_diameter_ext = 2 * r_mask_ext
-
-    # Parameters used in the SNR plot part of the program:
+    mask_diameter_int = 2 * params.r_mask
+    mask_diameter_ext = 2 * params.r_mask_ext
 
     # Parameters to reject very bad images (due to bad seeing, AO problems, etc.)
     #  'no' or 'weakly' or 'strongly'; Default: weakly (=1.4)
     remove_noisy = params["remove_noisy"]
-
     if remove_noisy == "weakly":
         print("We remove the noisy images [average_noise > 1.4 * total_average_noise]")
         # Default: 1.4 for number of images large ; See demo of herve logbook
@@ -310,11 +300,7 @@ def compute_noise_profiles(params):
         print("Creation of a regular time vector")
 
     # Star parameters
-    dist = float(params["dist"])
     m0 = float(params["m0"])
-
-    # scale factor used to convert pixel to astronomical unit (in pixel/a.u.)
-    scale = 1.0 / (dist * (resol / 1000.0))
 
     # Reference orbit used to plot the SNRs (can be the orbit of a planet)
     a_init = float(params["a_init"])
@@ -342,26 +328,18 @@ def compute_noise_profiles(params):
     noise_prof = params["noise_prof"]  # yes or no
     snr_plot = params["snr_plot"]  # yes or no
 
-    # Value of the intern and extern masks
-    mask_value = float(params["mask_value"])
-
     # This section check if the program must remove the planet from noise and
     # background (Justin Bec-canet)
     remove_planet = params["remove_planet"]  # yes or no
-
     if remove_planet == "yes":
         # The coordinates of the planet are put into an array
-        planet_coord = params["planet_coord"]
-        remove_box = params["remove_box"]
-        remove_box = [float(x) for x in remove_box.split("+")]
+        remove_box = [float(x) for x in params.remove_box.split("+")]
 
-        print(planet_coord)
+        print(params.planet_coord)
         print(remove_box)
         # planet coordinates is put in a numpy python format (1 Dim array)
-
-        planet_coord_elem = planet_coord.split("+")  # splits coordinates a first time
-        # splits a second time, to replace ':' by ','
-        planet_coord_elem = [x.split(":") for x in planet_coord_elem]
+        # splits coordinates, replace ':' by ','
+        planet_coord_elem = [x.split(":") for x in params.planet_coord.split("+")]
         planet_coord = []
         for k in range(len(planet_coord_elem)):
             # for each element, we reassemble and evaluate as tuples the
@@ -370,28 +348,14 @@ def compute_noise_profiles(params):
                 eval(f"{planet_coord_elem[k][0]},{planet_coord_elem[k][1]}")
             )  # gives a list of tuples with floats inside
 
-    # Directories where the noise profiles will be stored
-    if noise_prof == "yes":
-        create_output_dir(profile_dir)
-
-    # Directories where the snr plots will be stored
-    output_snrdir = (
-        f"{profile_dir}/snr_plot_steps_remove_noise_{remove_noisy}_{reject_coef}"
-    )
-    output_snrgraph = f"{output_snrdir}/snr_graph"
-
-    if snr_plot == "yes":
-        create_output_dir(output_snrdir)
-        create_output_dir(output_snrgraph)
-
     ###################################
     # Main noise and background program
     ###################################
 
-    # initialization
-    fwhm = (1.028 * wav / diam) * (180.0 / np.pi) * 3600 / (resol / 1000.0)
-
     if noise_prof == "yes":
+        # Directories where the noise profiles will be stored
+        create_output_dir(profile_dir)
+
         # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
         t0 = time.time()
         for k in range(nimg):
@@ -401,11 +365,10 @@ def compute_noise_profiles(params):
                 size,
                 mask_diameter_int,
                 mask_diameter_ext,
-                mask_value=mask_value,
+                mask_value=params.mask_value,
                 plot=True,
             )
         print(f"preprocess: took {time.time() - t0:.2f} sec.")
-
         print("The images have been adjusted in size, masked and saved")
 
         # load the images and estimate the noise level assuming a radial profile
@@ -415,10 +378,10 @@ def compute_noise_profiles(params):
             if remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
-                    img, fwhm, planet_coord[k], remove_box
+                    img, params.fwhm, planet_coord[k], remove_box
                 )
             else:
-                bg_prof, n_prof = monte_carlo_profiles(img, fwhm)
+                bg_prof, n_prof = monte_carlo_profiles(img, params.fwhm)
 
             np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
             np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
@@ -432,7 +395,16 @@ def compute_noise_profiles(params):
     ###################################
 
     if snr_plot == "yes":
-        print(("Coeff of rejection for noisy images: ", reject_coef))
+        print("Coeff of rejection for noisy images: ", reject_coef)
+
+        # Directories where the snr plots will be stored
+        output_snrdir = (
+            f"{profile_dir}/snr_plot_steps_remove_noise_{remove_noisy}_{reject_coef}"
+        )
+        output_snrgraph = f"{output_snrdir}/snr_graph"
+
+        create_output_dir(output_snrdir)
+        create_output_dir(output_snrgraph)
 
         t0 = time.time()
         image_removed = plot_noise(nimg, reject_coef, profile_dir, output_snrdir)
@@ -512,9 +484,9 @@ def compute_noise_profiles(params):
                 ts_selected,
                 m0,
                 size,
-                scale,
+                params.scale,
                 images,
-                fwhm,
+                params.fwhm,
                 x_profile,
                 bkg_profiles,
                 noise_profiles,
