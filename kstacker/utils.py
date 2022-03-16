@@ -1,3 +1,4 @@
+import itertools
 import os
 import shutil
 
@@ -92,8 +93,26 @@ class Grid:
             x = x_max
         return table
 
+    def split_ranges(self):
+        """Compute the combination of all splitted ranges."""
+        ranges = [self.split_range(name) for name in self._grid_params]
+        table = np.array(list(itertools.product(*ranges)), dtype=object)
+        return table
+
 
 class Params:
+    """Handle parameters.
+
+    Parameters are read from the YAML file and can be accessed as attributes or
+    with a dict interface::
+
+        >>> params = Params.read("parameters/near_alphacenA_b_fast.yml")
+        >>> params.m0
+        ... 1.133
+        >>> params["m0"]
+        ... 1.133
+
+    """
     def __init__(self, params):
         self._params = params
         self.grid = Grid(params)

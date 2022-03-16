@@ -77,93 +77,6 @@ def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
     return noise
 
 
-def split_ranges(val_min, val_max, N_origin, split):
-    """
-    Split all the range in sub ranges
-    :param val_min: min of the range
-    :param val_max: max of the range
-    :param N_origin: original number of steps
-    :param split: Number of split wanted
-    :return: a list of slice objects, that are the sub_ranges for the brut force
-    """
-    n = N_origin / split
-
-    if N_origin == 1:
-        return np.array([slice(val_min, val_max, val_max - val_min)], dtype=object)
-    if n < 2.0:
-        print("Number of values in each splited list under 2 : ABORTING")
-        sys.exit()
-    elif int(n) != n:
-        print("n not int")
-        if n - int(n) >= 0.5:
-            n = float(int(n)) + 1.0
-        elif n - int(n) < 0.5:
-            n = float(int(n))
-    # elif int(n) == n:
-    #     print("N_origin/split is int")
-
-    print("N_origin/split = ", n)
-    print("min/max/N_origin/n/split:", val_min, val_max, N_origin, n, split)
-    table = np.zeros(int(split), dtype=object)
-    delta = (val_max - val_min) / split
-    # print(delta)
-    x = val_min
-    for k in range(0, int(split)):
-        # Dans version Antoine (bug):
-        # if x==0.2 or delta==0.2 and x==0.4 or delta==0.4:
-        # Pyhon decid that 0.2+0.4=6.000000001 and not 6.0
-        # --> Split version is not working with this ><'
-        #        x_max=0.6
-        # else :
-        #        x_max=x+delta
-        x_max = round(x + delta, 12)
-        print(x_max)
-        table[k] = slice(x, x_max, delta / n)
-        x = x_max
-    return table
-
-
-def Table(a_list, e_list, t0_list, omega_list, i_list, theta0_list):
-    """
-    Creat the corresponding table
-    :param a_list: List from the split fonction of a
-    :param e_list: List from the split fonction of e
-    :param t0_list: List from the split fonction of t0
-    :param omega_list: List from the split fonction of omega
-    :param i_list: List from the split fonction of i
-    :param theta0_list: List from the split fonction of theta0
-    :return: the corresponding table that is a matrix 2D of silce object,
-        where each line in a range for the brut force
-    """
-    Sa = np.shape(a_list)[0]
-    Se = np.shape(e_list)[0]
-    St0 = np.shape(t0_list)[0]
-    Somega = np.shape(omega_list)[0]
-    Si = np.shape(i_list)[0]
-    Stheta0 = np.shape(theta0_list)[0]
-    table = np.zeros((Sa * Se * Stheta0 * St0 * Somega * Si, 6), dtype=object)
-    K = 0
-    for ka in range(Sa):
-        for ke in range(Se):
-            for kt0 in range(St0):
-                for komega in range(Somega):
-                    for ki in range(Si):
-                        for ktheta0 in range(Stheta0):
-                            table[K, :] = np.array(
-                                [
-                                    a_list[ka],
-                                    e_list[ke],
-                                    t0_list[kt0],
-                                    omega_list[komega],
-                                    i_list[ki],
-                                    theta0_list[ktheta0],
-                                ],
-                                dtype=object,
-                            )
-                            K = K + 1
-    return table
-
-
 def brute_force(params):
     # name of the directory where one loads and saves the images and values
     images_dir = params.get_path("images_dir")
@@ -203,7 +116,6 @@ def brute_force(params):
     grid_params = params.grid
     print(repr(grid_params))
     ranges = grid_params.ranges
-    __import__("pdb").set_trace()
 
     # brute force
     args_signal = (
@@ -248,16 +160,10 @@ def brute_force(params):
             np.save(f"{grid_dir}/grid{id_number}.npy", grid)
             np.save(f"{grid_dir}/n_values{id_number}.npy", n_values)
         elif temporary_files == "yes":
-            path = grid_dir + "/core_" + str(id_number)
-            __import__('pdb').set_trace()
+            path = f"{grid_dir}/core_{id_number}"
+
             if restart == "no":  # creation of the table
-                a_list = grid_params.split_range('a')
-                e_list = grid_params.split_range('e')
-                t0_list = grid_params.split_range('t0')
-                omega_list = grid_params.split_range('omega')
-                i_list = grid_params.split_range('i')
-                theta0_list = grid_params.split_range('theta_0')
-                table = Table(a_list, e_list, t0_list, omega_list, i_list, theta0_list)
+                table = grid_params.split_ranges()
                 os.mkdir(path)
                 np.save(f"{path}/Table.npy", table)
                 deb = 0
