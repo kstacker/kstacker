@@ -46,12 +46,12 @@ planet_coord: "(145:105)+(146:105)+(147:104)+(148:105)+(154:106)+(157:106)+(156:
 remove_box: "20.0+20.0+20.0+20.0" #size of the exclusion box if remove_planet='yes'. In pixels.
 # Each number is a variation from the 01 Janvier 2000 : write the times spaced by a + sign
 
-Temporary: 'yes'   #Save Temporary files during the brute force computation : Default 'no'
+Temporary: 'no'   #Save Temporary files during the brute force computation : Default 'no'
 restart: 'no'      #Restart cores only after a Crash, the compute restart a step before the crash, not available if Temporary was set on 'no' : initial launch and Default 'no'
 array: ()       #If restart set on yes put in the array the core you want to restart, for restarting all put 'all'
 quick_sort: 'yes'   #During the sort programme to give the q best orbits in each core. If it put on yes, the approximation that the q best orbits are in the n*q best orbits in each of the n intermediate files. Default='no'
 
-work_dir: "~/data/kstacker/near_alphacenA_b"
+work_dir: "~/data/kstacker/near_alphacenA_b_fast"
 images_dir: "images_planet_injected_maskzeros"   # folder where to load the images
 grid_dir: "brute_grid"   # folder where to save the grid and the values of signals and noises after the brute force
 values_dir: "values"   # folder where to save the SNR and parameters of the q best orbits, the q final images and orbits
@@ -120,4 +120,4 @@ xmax: 3.     # maximum value on x axis for the plot of the orbits (in a.u.) ex: 
 ymin: -3.    # minimum value on y axis for the plot of the orbits (in a.u.) ex: ymin=-18.
 ymax: 3.     # maximum value on y axis for the plot of the orbits (in a.u.) ex: ymax=18.
 
-ncores: 8    # number of cores to parallelize the simulations (regarding the number of steps for the epoch at perihelion) On each core t0 is fixed, and we test all the others orbital parameters (a,e,omega,i,teta_0)
+ncores: 1    # number of cores to parallelize the simulations (regarding the number of steps for the epoch at perihelion) On each core t0 is fixed, and we test all the others orbital parameters (a,e,omega,i,teta_0)
