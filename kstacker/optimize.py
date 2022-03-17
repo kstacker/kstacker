@@ -46,7 +46,7 @@ def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r
     # if the value of signal is nan outside the image, consider it to be 0
     res[np.isnan(res)] = 0.0
     # print(f"compute_signal: {time.time()-tstart:.2f} sec.")
-    return np.sum(res), 0  # return sn
+    return np.sum(res)  # return sn
 
 
 def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
