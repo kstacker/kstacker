@@ -12,6 +12,60 @@ def create_output_dir(path):
     os.mkdir(path)
 
 
+def brute(func, ranges, args=()):
+    """Evaluate a function over a given range by brute force.
+
+    Adapted from `scipy.optimize.brute`.
+
+    Parameters
+    ----------
+    func : callable
+        The objective function to be minimized. Must be in the
+        form ``f(x, *args)``, where ``x`` is the argument in
+        the form of a 1-D array and ``args`` is a tuple of any
+        additional fixed parameters needed to completely specify
+        the function.
+    ranges : tuple
+        Each component of the `ranges` tuple must be a "slice object".
+        The program uses these to create the grid of points on which
+        the objective function will be computed.
+    args : tuple, optional
+        Any additional fixed parameters needed to completely specify
+        the function.
+
+    Returns
+    -------
+    x0 : ndarray
+        A 1-D array containing the coordinates of a point at which the
+        objective function had its minimum value. (See `Note 1` for
+        which point is returned.)
+    fval : float
+        Function value at the point `x0`.
+    grid : tuple
+        Representation of the evaluation grid. It has the same
+        length as `x0`.
+    Jout : ndarray
+        Function values at each point of the evaluation
+        grid, i.e., ``Jout = func(*grid)``.
+
+    """
+    N = len(ranges)
+    if N == 1:
+        raise ValueError("this case is not supported here")
+
+    lrange = list(ranges)
+    grid = np.mgrid[lrange]
+
+    # obtain an array of parameters that is iterable by a map-like callable
+    inpt_shape = grid.shape
+    grid = np.reshape(grid, (inpt_shape[0], np.prod(inpt_shape[1:]))).T
+
+    Jout = [func(x, *args) for x in grid]
+    Jout = np.reshape(np.array(Jout).T, (-1, ) + inpt_shape[1:])
+    grid = np.reshape(grid.T, inpt_shape)
+    return grid, Jout
+
+
 class Grid:
     """
     Contains the information for each parameter of the grid:
@@ -112,6 +166,7 @@ class Params:
         ... 1.133
 
     """
+
     def __init__(self, params):
         self._params = params
         self.grid = Grid(params)

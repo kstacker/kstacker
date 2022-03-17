@@ -5,29 +5,39 @@ is used.
 """
 
 import os
-import sys
-import time
 
 import numpy as np
-import scipy.optimize
 from astropy.io import fits
 
 from .imagerie.analyze import photometry
 from .orbit import orbit as orb
-from .utils import create_output_dir
+from .utils import create_output_dir, brute
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
 __status__ = "Development"
 
 
-def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r_mask):
-    """define signal"""
-    # tstart = time.time()
+def compute_signal_and_noise(
+    x,
+    ts,
+    m0,
+    n,
+    scale,
+    images,
+    fwhm,
+    x_profile,
+    bkg_profiles,
+    noise_profiles,
+    r_mask,
+):
     nimg = len(images)
     a, e, t0, omega, i, theta_0 = x
-    res = np.zeros(nimg)  # res will contain signal for each image
+    signal = np.zeros(nimg)
+    noise = np.zeros(nimg)
+
     for k in range(nimg):
+        # compute position
         x, y = orb.project_position(
             orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
         )
@@ -36,45 +46,28 @@ def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles, r
         temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
 
         if temp_d <= r_mask:
-            res[k] = 0.0
+            signal[k] = 0.0
         else:
             # compute the signal by integrating flux on a PSF, and correct it for
             # background (using pre-computed background profile)
-            res[k] = photometry(images[k], position, 2 * fwhm) - np.interp(
+            signal[k] = photometry(images[k], position, 2 * fwhm) - np.interp(
                 temp_d, x_profile, bkg_profiles[k]
             )
-    # if the value of signal is nan outside the image, consider it to be 0
-    res[np.isnan(res)] = 0.0
-    # print(f"compute_signal: {time.time()-tstart:.2f} sec.")
-    return np.sum(res)  # return sn
 
-
-def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
-    """define noise"""
-    # tstart = time.time()
-    nimg = len(noise_profiles)
-    a, e, t0, omega, i, theta_0 = x
-    res = np.zeros(nimg)  # res will contain noise for each image
-
-    for k in range(nimg):
-        # compute position
-        x, y = orb.project_position(
-            orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
-        )
-        temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
         # get noise at position using pre-computed radial noise profil
-        res[k] = np.interp(temp_d, x_profile, noise_profiles[k])
+        noise[k] = np.interp(temp_d, x_profile, noise_profiles[k])
 
     # if the value of signal is nan outside the image, consider it to be 0
-    res[np.isnan(res)] = 0.0
+    signal[np.isnan(signal)] = 0
+    noise[np.isnan(noise)] = 0
 
-    noise = np.sqrt(np.sum(res**2))
+    noise = np.sqrt(np.sum(noise**2))
     if noise == 0:
         # if the value of total noise is 0 (i.e. all values of noise are 0,
         # i.e. the orbit is completely out of the image) then snr=0
         noise = 1
-    # print(f"compute_noise: {time.time()-tstart:.2f} sec.")
-    return noise
+
+    return np.sum(signal), noise
 
 
 def brute_force(params):
@@ -112,7 +105,7 @@ def brute_force(params):
     ranges = params.grid.ranges()
 
     # brute force
-    args_signal = (
+    args = (
         ts,
         params.m0,
         size,
@@ -121,9 +114,9 @@ def brute_force(params):
         params.fwhm,
         x_profile,
         bkg_profiles,
+        noise_profiles,
         params.r_mask,
     )
-    args_noise = (ts, params.m0, params.scale, x_profile, noise_profiles)
     create_output_dir(grid_dir)
 
     adding = params["adding"]  # addition of images to a previous run
@@ -133,27 +126,8 @@ def brute_force(params):
 
     if adding == "no":
         if temporary_files == "no":
-            opt_result = scipy.optimize.brute(
-                compute_signal,
-                ranges=ranges,
-                args=args_signal,
-                full_output=True,
-                finish=None,
-                disp=True,
-            )
-            grid = opt_result[2]  # get the values of the grid
-            print(np.shape(grid))
-            s_values = opt_result[3]  # get the values of compute_signal on the grid
-            print(np.shape(s_values))
-            opt_result = scipy.optimize.brute(
-                compute_noise,
-                ranges=ranges,
-                args=args_noise,
-                full_output=True,
-                finish=None,
-                disp=True,
-            )
-            n_values = opt_result[3]  # get the values of noise on the grid
+            grid, res = brute(compute_signal_and_noise, ranges=ranges, args=args)
+            s_values, n_values = res
 
             np.save(f"{grid_dir}/s_values{id_number}.npy", s_values)
             np.save(f"{grid_dir}/grid{id_number}.npy", grid)
@@ -178,48 +152,17 @@ def brute_force(params):
             for k in range(deb, np.shape(table)[0]):
                 ranges = table[k, :]
                 print(k)
-                opt_result = scipy.optimize.brute(
-                    compute_signal,
-                    ranges=ranges,
-                    args=args_signal,
-                    full_output=True,
-                    finish=None,
-                    disp=True,
-                )
-                grid = opt_result[2]
-                s_values = opt_result[3]
-                opt_result = scipy.optimize.brute(
-                    compute_noise,
-                    ranges=ranges,
-                    args=args_noise,
-                    full_output=True,
-                    finish=None,
-                    disp=True,
-                )
-                n_values = opt_result[3]  # get the values of noise on the grid
+                grid, res = brute(compute_signal_and_noise, ranges=ranges, args=args)
+                s_values, n_values = res
+
                 np.save(f"{path}/s_values{id_number}_{k}.npy", s_values)
                 np.save(f"{path}/grid{id_number}_{k}.npy", grid)
                 np.save(f"{path}/n_values{id_number}_{k}.npy", n_values)
 
     if adding == "yes":
         if temporary_files == "no":
-            opt_result_add = scipy.optimize.brute(
-                compute_signal,
-                ranges=ranges,
-                args=args_signal,
-                full_output=True,
-                finish=None,
-            )
-            # get the values of compute_signal on the grid
-            s_values_add = opt_result_add[3]
-            opt_result_add = scipy.optimize.brute(
-                compute_noise,
-                ranges=ranges,
-                args=args_noise,
-                full_output=True,
-                finish=None,
-            )
-            n_values_add = opt_result_add[3]  # get the values of noise on the grid
+            grid, res = brute(compute_signal_and_noise, ranges=ranges, args=args)
+            s_values_add, n_values_add = res
             np.save(f"{grid_dir}/s_values_add{id_number}.npy", s_values_add)
             np.save(f"{grid_dir}/n_values_add{id_number}.npy", n_values_add)
 
