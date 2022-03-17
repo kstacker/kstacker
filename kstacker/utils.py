@@ -52,7 +52,6 @@ class Grid:
         min_, max_, nsteps, nsplits = self.limits(name)
         return slice(min_, max_, (max_ - min_) / nsteps)
 
-    @property
     def ranges(self):
         """Return the ranges for all grid params."""
         return [self.range(name) for name in self._grid_params]

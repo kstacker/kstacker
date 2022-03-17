@@ -83,7 +83,6 @@ def brute_force(params):
     profile_dir = params.get_path("profile_dir")
     grid_dir = params.get_path("grid_dir")
     # values_dir = params.get_path("values_dir")
-    id_number = params["id_number"]
 
     # total time of the observation (years)
     total_time = float(params["total_time"])
@@ -98,10 +97,6 @@ def brute_force(params):
     print("time_vector used: ", ts)
 
     size = int(params["n"])  # number of pixels in one direction
-    adding = params["adding"]  # addition of images to a previous run
-    temporary_files = params["Temporary"]
-    restart = params["restart"]
-
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
     # load the images .fits or .txt and the noise profiles
@@ -113,9 +108,8 @@ def brute_force(params):
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 
     # grid on which the brute force algorithm will be computed on one node/core
-    grid_params = params.grid
-    print(repr(grid_params))
-    ranges = grid_params.ranges
+    print(repr(params.grid))
+    ranges = params.grid.ranges()
 
     # brute force
     args_signal = (
@@ -131,6 +125,11 @@ def brute_force(params):
     )
     args_noise = (ts, params.m0, params.scale, x_profile, noise_profiles)
     create_output_dir(grid_dir)
+
+    adding = params["adding"]  # addition of images to a previous run
+    id_number = params["id_number"]
+    temporary_files = params["Temporary"]
+    restart = params["restart"]
 
     if adding == "no":
         if temporary_files == "no":
@@ -163,7 +162,7 @@ def brute_force(params):
             path = f"{grid_dir}/core_{id_number}"
 
             if restart == "no":  # creation of the table
-                table = grid_params.split_ranges()
+                table = params.grid.split_ranges()
                 os.mkdir(path)
                 np.save(f"{path}/Table.npy", table)
                 deb = 0
