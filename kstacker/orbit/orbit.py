@@ -9,6 +9,7 @@ import math
 
 import numpy as np
 from scipy.optimize import newton_krylov
+from scipy.spatial.transform import Rotation
 
 
 def position(t, a, e, t0, m):
@@ -48,18 +49,14 @@ def rotation_3d(vector, axis, theta):
     @param float theta: rotation angle (rad)
     @return float[3]: rotated vector
     """
-    [x, y, z] = vector
-    res = np.array([x, y, z])
     if axis == 1:
-        res[1] = math.cos(theta) * y + math.sin(theta) * z
-        res[2] = -math.sin(theta) * y + math.cos(theta) * z
+        rot = Rotation.from_euler("x", -theta)
     if axis == 2:
-        res[0] = math.cos(theta) * x + math.sin(theta) * z
-        res[2] = -math.sin(theta) * x + math.cos(theta) * z
+        rot = Rotation.from_euler("y", -theta)
     if axis == 3:
-        res[0] = math.cos(theta) * x + math.sin(theta) * y
-        res[1] = -math.sin(theta) * x + math.cos(theta) * y
-    return res
+        rot = Rotation.from_euler("z", -theta)
+
+    return rot.apply(vector)
 
 
 def euler_rotation(vector, alpha, beta, gamma):
@@ -94,11 +91,9 @@ def project_position(position, omega, i, theta_0):
     @param float theta_0: argument of the periapsis (counted from line of nodes, in rad)
     @return float[2]: XY position in the observer frame projected along Z vector
     """
-    [x, y] = position
     # going to real 3d orbital reference fram
-    vector = [x, y, 0]
+    vector = np.pad(position, [(0, 0), (0, 1)], constant_values=0)
     # transforming to observer frame
     vector = euler_rotation(vector, omega, i, theta_0)
     # getting coordinates and return projection
-    [x_res, y_res, z_res] = vector
-    return [x_res, y_res]
+    return vector[:, :2]
