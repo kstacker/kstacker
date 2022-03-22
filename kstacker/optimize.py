@@ -18,59 +18,6 @@ __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
 __status__ = "Development"
 
 
-def compute_signal_and_noise(
-    x,
-    ts,
-    m0,
-    size,
-    scale,
-    images,
-    fwhm,
-    x_profile,
-    bkg_profiles,
-    noise_profiles,
-    r_mask,
-):
-    nimg = len(images)
-    a, e, t0, omega, i, theta_0 = x
-    signal = np.zeros(nimg)
-    noise = np.zeros(nimg)
-
-    # compute position
-    positions = np.array([orb.position(t, a, e, t0, m0) for t in ts])
-    position = orb.project_position(positions, omega, i, theta_0)
-    x, y = position.T
-
-    # convert position into pixel in the image
-    position = scale * position + size // 2
-    temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
-
-    for k in range(nimg):
-        if temp_d[k] <= r_mask:
-            signal[k] = 0.0
-        else:
-            # compute the signal by integrating flux on a PSF, and correct it for
-            # background (using pre-computed background profile)
-            signal[k] = photometry(images[k], position[k], 2 * fwhm) - np.interp(
-                temp_d[k], x_profile, bkg_profiles[k]
-            )
-
-        # get noise at position using pre-computed radial noise profil
-        noise[k] = np.interp(temp_d[k], x_profile, noise_profiles[k])
-
-    # if the value of signal is nan outside the image, consider it to be 0
-    signal[np.isnan(signal)] = 0
-    noise[np.isnan(noise)] = 0
-
-    noise = np.sqrt(np.sum(noise**2))
-    if noise == 0:
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbit is completely out of the image) then snr=0
-        noise = 1
-
-    return np.sum(signal), noise
-
-
 def compute_signal_and_noise_grid(
     x,
     ts,
