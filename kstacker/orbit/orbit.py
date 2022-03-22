@@ -5,10 +5,8 @@ __author__ = "Mathias Nowak"
 __email__ = "mathias.nowak@ens-cachan.fr"
 __status__ = "Working"
 
-import math
-
+import kepler
 import numpy as np
-from scipy.optimize import newton_krylov
 from scipy.spatial.transform import Rotation
 
 
@@ -25,20 +23,16 @@ def position(t, a, e, t0, m):
     """
     # compute other useful orbital parameters
     # p = a * (1 - e**2)  # ellipse parameter
-    n = 2 * math.pi * math.sqrt(m / a**3)  # orbital pulsation (in rad/year)
+    n = 2 * np.pi * np.sqrt(m / a**3)  # orbital pulsation (in rad/year)
 
-    # define keplerian equation to be solved for getting the anomaly E
-    def kepler(E):
-        return E - e * math.sin(E) - n * (t - t0)
-
-    # get the anomaly at time t
-    E_t = newton_krylov(kepler, math.pi)
+    M = n * (t - t0)
+    E_t = kepler.solve(M, e)
 
     # convert anomaly to position in reference frame and return vector
-    x = a * (math.cos(E_t) - e)
-    y = a * math.sqrt(1 - e**2) * math.sin(E_t)
+    x = a * (np.cos(E_t) - e)
+    y = a * np.sqrt(1 - e**2) * np.sin(E_t)
 
-    return [x, y]
+    return np.stack([x, y], axis=1)
 
 
 def rotation_3d(vector, axis, theta):

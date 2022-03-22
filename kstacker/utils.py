@@ -12,7 +12,7 @@ def create_output_dir(path):
     os.mkdir(path)
 
 
-def brute(func, ranges, args=()):
+def brute(func, ranges, args=(), nchunks=1):
     """Evaluate a function over a given range by brute force.
 
     Adapted from `scipy.optimize.brute`.
@@ -59,9 +59,16 @@ def brute(func, ranges, args=()):
     # obtain an array of parameters that is iterable by a map-like callable
     inpt_shape = grid.shape
     grid = np.reshape(grid, (inpt_shape[0], np.prod(inpt_shape[1:]))).T
+    print('Grid shape:', grid.shape)
 
-    Jout = [func(x, *args) for x in grid]
-    Jout = np.reshape(np.array(Jout).T, (-1, ) + inpt_shape[1:])
+    Jout = []
+    for i, chunk in enumerate(np.array_split(grid, nchunks)):
+        # Jout += [func(x, *args) for x in chunk]
+        print('- chunk', i)
+        Jout.append(func(chunk, *args))
+
+    Jout = np.concatenate(Jout, axis=1)
+    Jout = np.reshape(Jout, (-1, ) + inpt_shape[1:])
     grid = np.reshape(grid.T, inpt_shape)
     return grid, Jout
 
