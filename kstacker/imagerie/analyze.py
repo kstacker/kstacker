@@ -39,7 +39,7 @@ def photometry(image, position, diameter):
 
     aperture = CircularAperture(position, r=diameter / 2.0)
     phot = aperture_photometry(image, aperture)
-    res = np.array(phot['aperture_sum'])
+    res = np.array(phot["aperture_sum"])
     return res[0] if res.size == 1 else res
 
 
@@ -150,9 +150,8 @@ def noise(image, r_int, r_ext):
     values = []
     for k in range(n):
         for l in range(n):
-            if (k - n // 2) ** 2 + (l - n // 2) ** 2 < r_ext**2 and (k - n // 2) ** 2 + (
-                l - n // 2
-            ) ** 2 > r_int**2:
+            idx = (k - n // 2) ** 2 + (l - n // 2) ** 2
+            if idx < r_ext**2 and idx > r_int**2:
                 values.append(image[k, l])
     return np.std(values)
 
@@ -166,15 +165,16 @@ def snr(image, center, position, fwhm):
     @param float[n] position: x, y position of the 'signal' pixel (given in pixel from the center)
     @return float: snr
     """
-    [x, y] = position
-    [x0, y0] = center
+    x, y = position
+    x0, y0 = center
     n = image.shape[0]
 
     signal = photometry(image, [x + n // 2, y + n // 2], 2 * fwhm) / (
-        math.pi * (fwhm) ** 2
+        math.pi * fwhm**2
     )  # mean value inside the photometric box
 
-    # start by computing noise level in an annulus of width fwhm, excluding the area where psf is
+    # start by computing noise level in an annulus of width fwhm, excluding the
+    # area where psf is
     r = math.sqrt(x**2 + y**2)
     r_int = r - fwhm
     r_ext = r + fwhm
@@ -182,12 +182,10 @@ def snr(image, center, position, fwhm):
 
     for k in range(n):
         for l in range(n):
-            if (k - x0) ** 2 + (l - y0) ** 2 < r_ext**2 and (k - x0) ** 2 + (
-                l - y0
-            ) ** 2 > r_int**2:
-                if (k - x - x0) ** 2 + (l - y - y0) ** 2 > (
-                    2 * fwhm
-                ) ** 2:  # exclude area of 2*fwhm around psf central position
+            idx = (k - x0) ** 2 + (l - y0) ** 2
+            if idx < r_ext**2 and idx > r_int**2:
+                if (k - x - x0) ** 2 + (l - y - y0) ** 2 > (2 * fwhm) ** 2:
+                    # exclude area of 2*fwhm around psf central position
                     values.append(image[k, l])
 
     #    return image[n/2+x, n/2+y]/np.std(values)
@@ -275,9 +273,8 @@ def radial_profile(image, fwhm, center=None):
         r_int = p - fwhm
         for k in range(n):
             for l in range(n):
-                if (k - x) ** 2 + (l - y) ** 2 < r_ext**2 and (k - x) ** 2 + (
-                    l - y
-                ) ** 2 > r_int**2:
+                idx = (k - x) ** 2 + (l - y) ** 2
+                if idx < r_ext**2 and idx > r_int**2:
                     values.append(image[k, l])
         profile[p] = np.mean(values)
 
@@ -377,10 +374,8 @@ def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
         theta = np.random.uniform(-math.pi, math.pi)
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
-        xtest, ytest = (
-            x + n // 2,
-            y + n // 2,
-        )  # the positions are stored in (xtest,ytest) in pixels
+        # the positions are stored in (xtest,ytest) in pixels
+        xtest, ytest = (x + n // 2, y + n // 2)
         if (
             (planet[0] - remove_box[0] <= xtest)
             and (xtest <= planet[0] + remove_box[1])
@@ -468,9 +463,8 @@ def snr_annulus(image, position, fwhm):
     values = []
     for k in range(n):
         for l in range(n):
-            if (k - n // 2) ** 2 + (l - n // 2) ** 2 < r_ext**2 and (k - n // 2) ** 2 + (
-                l - n // 2
-            ) ** 2 > r_int**2:
+            ind = (k - n // 2) ** 2 + (l - n // 2) ** 2
+            if ind < r_ext**2 and ind > r_int**2:
                 if (k - x) ** 2 + (l - y) ** 2 > 2 * fwhm:
                     values.append(image[k, l])
 

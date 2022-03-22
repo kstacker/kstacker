@@ -1,5 +1,6 @@
 """
-Function wich is automatically loaded with the module, and which can be used to create a noisy image containing only one PSF (the planet)
+Function wich is automatically loaded with the module, and which can be used to
+create a noisy image containing only one PSF (the planet)
 """
 
 __author__ = "Mathias Nowak"

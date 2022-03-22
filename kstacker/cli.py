@@ -1,7 +1,6 @@
 import argparse
 
 import numpy as np
-import yaml
 
 from .noise_profile import compute_noise_profiles
 from .optimize import brute_force

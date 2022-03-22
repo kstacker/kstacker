@@ -173,8 +173,8 @@ def brute_force(params):
 
     if adding == "no":
         if temporary_files == "no":
-            grid, res = brute(
-                compute_signal_and_noise_grid, ranges=ranges, args=args, nchunks=2
+            grid, res = params.grid.evaluate(
+                compute_signal_and_noise_grid, args=args, nchunks=2
             )
             s_values, n_values = res
 
