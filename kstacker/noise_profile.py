@@ -211,13 +211,9 @@ def compute_noise_profiles(params):
         # planet coordinates is put in a numpy python format (1 Dim array)
         # splits coordinates, replace ':' by ','
         planet_coord_elem = [x.split(":") for x in params.planet_coord.split("+")]
-        planet_coord = []
-        for k in range(len(planet_coord_elem)):
-            # for each element, we reassemble and evaluate as tuples the
-            # different coordinates
-            planet_coord.append(
-                eval(f"{planet_coord_elem[k][0]},{planet_coord_elem[k][1]}")
-            )  # gives a list of tuples with floats inside
+        # for each element, we reassemble and evaluate as tuples the
+        # different coordinates
+        planet_coord = [eval(f"{elem[0]},{elem[1]}") for elem in planet_coord_elem]
 
     ###################################
     # Main noise and background program
@@ -302,52 +298,37 @@ def compute_noise_profiles(params):
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
 
-        # range of parameters where the SNR function will be plotted
-        a_min = float(params["a_min"])
-        a_max = float(params["a_max"])
-        e_min = float(params["e_min"])
-        e_max = float(params["e_max"])
-        t0_min = float(params["t0_min"])
-        t0_max = float(params["t0_max"])
-        omega_min = float(params["omega_min"])
-        omega_max = float(params["omega_max"])
-        i_min = float(params["i_min"])
-        i_max = float(params["i_max"])
-        theta_0_min = float(params["theta_0_min"])
-        theta_0_max = float(params["theta_0_max"])
-
         for param in parameters:
             print(f"Computing SNR for param {param}")
             tstart = time.time()
 
             # parameters of the brute force search grid.
-            # Format is [min value, max value, number of points].
             if param == "a_j":
-                param_vect = np.linspace(a_min, a_max, 3000)  # (A.U)
+                param_vect = np.linspace(params.a_min, params.a_max, 3000)  # (A.U)
                 name_Xaxis = "semi major a in au"
 
             if param == "e_j":
-                param_vect = np.linspace(e_min, e_max, 2000)  # default (0,0.8,500)
+                # default (0,0.8,500)
+                param_vect = np.linspace(params.e_min, params.e_max, 2000)
                 name_Xaxis = "eccentricity"
 
             if param == "t0_j":
-                param_vect = np.linspace(t0_min, t0_max, 2000)
+                param_vect = np.linspace(params.t0_min, params.t0_max, 2000)
                 name_Xaxis = "t0"
 
             if param == "omega_j":
                 # (rad) default (-3.14,3.14,1000)
-                param_vect = np.linspace(omega_min, omega_max, 3000)
+                param_vect = np.linspace(params.omega_min, params.omega_max, 3000)
                 name_Xaxis = "omega"
 
             if param == "i_j":
-                param_vect = np.linspace(
-                    i_min, i_max, 3000
-                )  # (rad) default (0, PI,3000)
+                # (rad) default (0, PI,3000)
+                param_vect = np.linspace(params.i_min, params.i_max, 3000)
                 name_Xaxis = "i"
 
             if param == "theta_0_j":
                 # (rad) default (-3.14,3.14,1000)
-                param_vect = np.linspace(theta_0_min, theta_0_max, 3000)
+                param_vect = np.linspace(params.theta_0_min, params.theta_0_max, 3000)
                 name_Xaxis = "theta_0"
 
             # Orbital parameters initialisation
