@@ -32,7 +32,10 @@ def position(t, a, e, t0, m):
     x = a * (np.cos(E_t) - e)
     y = a * np.sqrt(1 - e**2) * np.sin(E_t)
 
-    return np.stack([x, y], axis=1)
+    if isinstance(t, np.ndarray):
+        return np.stack([x, y], axis=1)
+    else:
+        return x, y
 
 
 def rotation_3d(vector, axis, theta):
@@ -86,8 +89,15 @@ def project_position(position, omega, i, theta_0):
     @return float[2]: XY position in the observer frame projected along Z vector
     """
     # going to real 3d orbital reference fram
+    position = np.atleast_2d(position)
     vector = np.pad(position, [(0, 0), (0, 1)], constant_values=0)
     # transforming to observer frame
     vector = euler_rotation(vector, omega, i, theta_0)
-    # getting coordinates and return projection
-    return vector[:, :2]
+    # remove the z column
+    vector = vector[:, :2]
+
+    if vector.shape[0] == 1:
+        # return (x, y) when the input contains only one position
+        return vector[0]
+    else:
+        return vector
