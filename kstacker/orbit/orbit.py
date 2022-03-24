@@ -32,10 +32,10 @@ def position(t, a, e, t0, m):
     x = a * (np.cos(E_t) - e)
     y = a * np.sqrt(1 - e**2) * np.sin(E_t)
 
-    if isinstance(t, np.ndarray):
-        return np.stack([x, y], axis=1)
-    else:
+    if np.isscalar(E_t):
         return x, y
+    else:
+        return np.stack([x, y], axis=1)
 
 
 def rotation_3d(vector, axis, theta):

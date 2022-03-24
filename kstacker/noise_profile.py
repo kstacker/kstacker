@@ -5,7 +5,6 @@ and can remove the noisy images.  We remove the images: average_noise_image
 
 """
 
-import math
 import os
 import time
 
@@ -14,13 +13,8 @@ import numpy as np
 from astropy.io import fits
 
 from . import coronagraph
-from .imagerie.analyze import (
-    monte_carlo_profiles,
-    monte_carlo_profiles_remove_planet,
-    photometry,
-)
-from .orbit import orbit as orb
-from .utils import create_output_dir
+from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
+from .utils import compute_signal_and_noise_grid, create_output_dir
 
 __author__ = "Herve Le Coroller"
 __mail__ = "herve.lecoroller@lam.fr"
@@ -162,104 +156,6 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
     return image_removed
 
 
-def compute_signal(x, ts, m0, n, scale, images, fwhm, x_profile, bkg_profiles):
-    """define signal"""
-    nimg = len(images)
-    a, e, t0, omega, i, theta_0 = x
-    res = np.zeros(nimg)  # res will contain signal for each image
-    for k in range(nimg):
-        # compute position
-        x, y = orb.project_position(
-            orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
-        )
-        # convert position into pixel in the image
-        position = [scale * x + n // 2, scale * y + n // 2]
-        temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
-        # compute the signal by integrating flux on a PSF, and correct it for
-        # background (using pre-computed background profile)
-        res[k] = photometry(images[k], position, 2 * fwhm) - np.interp(
-            temp_d, x_profile, bkg_profiles[k]
-        )
-        if math.isnan(res[k]):
-            # if the value of signal is nan outside the image, consider it to be 0
-            res[k] = 0.0
-    return np.sum(res)  # return sn
-
-
-def compute_noise(x, ts, m0, scale, x_profile, noise_profiles):
-    """define noise"""
-    nimg = len(noise_profiles)
-    a, e, t0, omega, i, theta_0 = x
-    res = np.zeros(nimg)  # res will contain noise for each image
-
-    for k in range(nimg):
-        # compute position
-        x, y = orb.project_position(
-            orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
-        )
-        temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
-        # get noise at position using pre-computed radial noise profil
-        res[k] = np.interp(temp_d, x_profile, noise_profiles[k])
-        if math.isnan(res[k]):
-            # if the value of signal is nan outside the image, consider it to be 0.
-            res[k] = 0.0
-
-    noise = np.sqrt(np.sum(res**2))
-    if noise == 0:
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbit is completely out of the image) then snr=0
-        noise = 1
-    return noise
-
-
-def compute_signal_and_noise(
-    x,
-    ts,
-    m0,
-    n,
-    scale,
-    images,
-    fwhm,
-    x_profile,
-    bkg_profiles,
-    noise_profiles,
-):
-    nimg = len(images)
-    a, e, t0, omega, i, theta_0 = x
-    signal = np.zeros(nimg)
-    noise = np.zeros(nimg)
-
-    for k in range(nimg):
-        # compute position
-        x, y = orb.project_position(
-            orb.position(ts[k], a, e, t0, m0), omega, i, theta_0
-        )
-        # convert position into pixel in the image
-        position = [scale * x + n // 2, scale * y + n // 2]
-        temp_d = np.sqrt(x**2 + y**2) * scale  # get the distance to the center
-
-        # compute the signal by integrating flux on a PSF, and correct it for
-        # background (using pre-computed background profile)
-        signal[k] = photometry(images[k], position, 2 * fwhm) - np.interp(
-            temp_d, x_profile, bkg_profiles[k]
-        )
-
-        # get noise at position using pre-computed radial noise profil
-        noise[k] = np.interp(temp_d, x_profile, noise_profiles[k])
-
-    # if the value of signal is nan outside the image, consider it to be 0
-    signal[np.isnan(signal)] = 0
-    noise[np.isnan(noise)] = 0
-
-    noise = np.sqrt(np.sum(noise**2))
-    if noise == 0:
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbit is completely out of the image) then snr=0
-        noise = 1
-
-    return np.sum(signal), noise
-
-
 def compute_noise_profiles(params):
     # Main Path definitions
     images_dir = params.get_path("images_dir")
@@ -298,31 +194,6 @@ def compute_noise_profiles(params):
         ts = np.linspace(0, total_time, nimg)
         # put nimg + p_prev, if later we use the p_prev option
         print("Creation of a regular time vector")
-
-    # Star parameters
-    m0 = float(params["m0"])
-
-    # Reference orbit used to plot the SNRs (can be the orbit of a planet)
-    a_init = float(params["a_init"])
-    e_init = float(params["e_init"])
-    t0_init = float(params["t0_init"])
-    omega_init = float(params["omega_init"])
-    i_init = float(params["i_init"])
-    theta_0_init = float(params["theta_0_init"])
-
-    # range of parameters where the SNR function will be plotted
-    a_min = float(params["a_min"])
-    a_max = float(params["a_max"])
-    e_min = float(params["e_min"])
-    e_max = float(params["e_max"])
-    t0_min = float(params["t0_min"])
-    t0_max = float(params["t0_max"])
-    omega_min = float(params["omega_min"])
-    omega_max = float(params["omega_max"])
-    i_min = float(params["i_min"])
-    i_max = float(params["i_max"])
-    theta_0_min = float(params["theta_0_min"])
-    theta_0_max = float(params["theta_0_max"])
 
     # This variables are used to determine the part of the software that will be run
     noise_prof = params["noise_prof"]  # yes or no
@@ -409,7 +280,7 @@ def compute_noise_profiles(params):
         t0 = time.time()
         image_removed = plot_noise(nimg, reject_coef, profile_dir, output_snrdir)
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
-        print(("Images removed because too noisy:", image_removed))
+        print("Images removed because too noisy:", image_removed)
 
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
@@ -426,63 +297,75 @@ def compute_noise_profiles(params):
             noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
 
         nimg = len(images)
-        print(("List of images used for the SNR computation:", used))
+        print("List of images used for the SNR computation:", used)
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
+
+        # range of parameters where the SNR function will be plotted
+        a_min = float(params["a_min"])
+        a_max = float(params["a_max"])
+        e_min = float(params["e_min"])
+        e_max = float(params["e_max"])
+        t0_min = float(params["t0_min"])
+        t0_max = float(params["t0_max"])
+        omega_min = float(params["omega_min"])
+        omega_max = float(params["omega_max"])
+        i_min = float(params["i_min"])
+        i_max = float(params["i_max"])
+        theta_0_min = float(params["theta_0_min"])
+        theta_0_max = float(params["theta_0_max"])
 
         for param in parameters:
             print(f"Computing SNR for param {param}")
             tstart = time.time()
 
-            # Orbital parameters initialisation
-            a = a_init
-            e = e_init
-            t0 = t0_init
-            omega = omega_init
-            i = i_init
-            theta_0 = theta_0_init
-
             # parameters of the brute force search grid.
             # Format is [min value, max value, number of points].
             if param == "a_j":
-                a = np.linspace(a_min, a_max, 3000)  # (A.U)
-                param_vect = a
+                param_vect = np.linspace(a_min, a_max, 3000)  # (A.U)
                 name_Xaxis = "semi major a in au"
 
             if param == "e_j":
-                e = np.linspace(e_min, e_max, 2000)  # default (0,0.8,500)
-                param_vect = e
-                name_Xaxis = "excenticity"
+                param_vect = np.linspace(e_min, e_max, 2000)  # default (0,0.8,500)
+                name_Xaxis = "eccentricity"
 
             if param == "t0_j":
-                t0 = np.linspace(t0_min, t0_max, 2000)
-                param_vect = t0
+                param_vect = np.linspace(t0_min, t0_max, 2000)
                 name_Xaxis = "t0"
 
             if param == "omega_j":
                 # (rad) default (-3.14,3.14,1000)
-                omega = np.linspace(omega_min, omega_max, 3000)
-                param_vect = omega
+                param_vect = np.linspace(omega_min, omega_max, 3000)
                 name_Xaxis = "omega"
 
             if param == "i_j":
-                i = np.linspace(i_min, i_max, 3000)  # (rad) default (0, PI,3000)
-                param_vect = i
+                param_vect = np.linspace(
+                    i_min, i_max, 3000
+                )  # (rad) default (0, PI,3000)
                 name_Xaxis = "i"
 
             if param == "theta_0_j":
                 # (rad) default (-3.14,3.14,1000)
-                theta_0 = np.linspace(theta_0_min, theta_0_max, 3000)
-                param_vect = theta_0
+                param_vect = np.linspace(theta_0_min, theta_0_max, 3000)
                 name_Xaxis = "theta_0"
 
-            signal = np.zeros(len(param_vect))
-            noise = np.zeros(len(param_vect))
+            # Orbital parameters initialisation
+            x = [
+                params.a_init,
+                params.e_init,
+                params.t0_init,
+                params.omega_init,
+                params.i_init,
+                params.theta_0_init,
+            ]
+            x = np.tile(x, (param_vect.size, 1))
+            param_idx = parameters.index(param)
+            x[:, param_idx] = param_vect
 
             args = (
                 ts_selected,
-                m0,
+                params.m0,
                 size,
                 params.scale,
                 images,
@@ -490,39 +373,10 @@ def compute_noise_profiles(params):
                 x_profile,
                 bkg_profiles,
                 noise_profiles,
+                None,
             )
 
-            # Run the loop on the orbital parameter param to compute the snr:
-            if param == "a_j":
-                for k in range(len(param_vect)):
-                    x = [a[k], e, t0, omega, i, theta_0]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
-            if param == "e_j":
-                for k in range(len(param_vect)):
-                    x = [a, e[k], t0, omega, i, theta_0]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
-            if param == "t0_j":
-                for k in range(len(param_vect)):
-                    x = [a, e, t0[k], omega, i, theta_0]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
-            if param == "omega_j":
-                for k in range(len(param_vect)):
-                    x = [a, e, t0, omega[k], i, theta_0]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
-            if param == "i_j":
-                for k in range(len(param_vect)):
-                    x = [a, e, t0, omega, i[k], theta_0]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
-            if param == "theta_0_j":
-                for k in range(len(param_vect)):
-                    x = [a, e, t0, omega, i, theta_0[k]]
-                    signal[k], noise[k] = compute_signal_and_noise(x, *args)
-
+            signal, noise = compute_signal_and_noise_grid(x, *args)
             snr = signal / noise
 
             plt.plot(param_vect, snr)

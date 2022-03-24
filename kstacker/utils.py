@@ -5,11 +5,61 @@ import shutil
 import numpy as np
 import yaml
 
+from .imagerie import photometry
+from .orbit import orbit as orb
+
 
 def create_output_dir(path):
     if os.path.exists(path):
         shutil.rmtree(path)
     os.mkdir(path)
+
+
+def compute_signal_and_noise_grid(
+    x,
+    ts,
+    m0,
+    size,
+    scale,
+    images,
+    fwhm,
+    x_profile,
+    bkg_profiles,
+    noise_profiles,
+    r_mask=None,
+):
+    nimg = len(images)
+    a, e, t0, omega, i, theta_0 = x.T
+    signal, noise = [], []
+
+    # compute position
+    for k in range(nimg):
+        position = orb.position(ts[k], a, e, t0, m0)
+        position = orb.project_position(position, omega, i, theta_0).T
+        xx, yy = position
+
+        # convert position into pixel in the image
+        position = scale * position + size // 2
+        temp_d = np.sqrt(xx**2 + yy**2) * scale  # get the distance to the center
+
+        # compute the signal by integrating flux on a PSF, and correct it for
+        # background (using pre-computed background profile)
+        sig = photometry(images[k], position, 2 * fwhm)
+        sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
+        if r_mask is not None:
+            sig[temp_d <= r_mask] = 0.0
+        signal.append(sig)
+
+        # get noise at position using pre-computed radial noise profil
+        noise.append(np.interp(temp_d, x_profile, noise_profiles[k]))
+
+    signal = np.nansum(signal, axis=0)
+    noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
+    # if the value of total noise is 0 (i.e. all values of noise are 0,
+    # i.e. the orbit is completely out of the image) then snr=0
+    noise[np.isnan(noise) | (noise == 0)] = 1
+
+    return signal, noise
 
 
 class Grid:
