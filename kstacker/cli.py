@@ -5,6 +5,7 @@ import numpy as np
 from .noise_profile import compute_noise_profiles
 from .optimize import brute_force
 from .utils import Params
+from .version import version
 
 # to plot in a file without a display screen (cluster)
 # isort: off
@@ -17,6 +18,7 @@ matplotlib.use("Agg")  # noqa
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
     parser.add_argument("--verbose", action="store_true", help="verbose flag")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {version}')
     subparsers = parser.add_subparsers(title="subcommands", help="")
 
     sub1 = subparsers.add_parser("noise_profiles", help="compute noise profiles")
@@ -30,8 +32,11 @@ def main():
     sub2.add_argument("parameter_file", help="Parameter file (yml)")
     sub2.set_defaults(func=optimize)
 
-    args = parser.parse_args()
-    args.func(args)
+    try:
+        args = parser.parse_args()
+        args.func(args)
+    except AttributeError:
+        parser.print_usage()
 
 
 def noise_profiles(args):
