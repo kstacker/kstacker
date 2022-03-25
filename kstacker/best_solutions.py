@@ -24,16 +24,16 @@ def find_best_solutions(params):
     q = params.q  # number of maxima that will be re-optimized
 
     if params.adding == "yes":
-        signal = np.load(f"{grid_dir}/s_values_new.npy", allow_pickle=True)
-        noise = np.load(f"{grid_dir}/n_values_new.npy", allow_pickle=True)
+        signal = np.load(f"{grid_dir}/s_values_new.npy")
+        noise = np.load(f"{grid_dir}/n_values_new.npy")
     elif params.adding == "no":
-        signal = np.load(f"{grid_dir}/s_values.npy", allow_pickle=True)
-        noise = np.load(f"{grid_dir}/n_values.npy", allow_pickle=True)
+        signal = np.load(f"{grid_dir}/s_values.npy")
+        noise = np.load(f"{grid_dir}/n_values.npy")
 
     sub_fun_values = -(signal / noise)
     np.save(f"{values_dir}/fun_values.npy", sub_fun_values)
 
-    sub_grid = np.load(f"{grid_dir}/grid.npy", allow_pickle=True)
+    sub_grid = np.load(f"{grid_dir}/grid.npy")
     np.save(f"{values_dir}/grid.npy", sub_grid)
 
     flat_values = np.ndarray.flatten(sub_fun_values)

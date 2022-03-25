@@ -63,48 +63,35 @@ def plot_orbites3(ts, x, m0, filename):
 
 def plot_orbites2(ts, x, m0, ax, filename):
     """
-    Function used to plot the true orbit (in red) and the best orbit (in blue) found in the projected plane of sky (au-au).
+    Function used to plot the true orbit (in red) and the best orbit (in blue)
+    found in the projected plane of sky (au-au).
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
     @param float m0: mass of the central star (in solar mass)
     @param string filename: name of the file where to save the plot (extension will be .png)
     @param float[4] ax: scale of axes, xmin, xmax, ymin, ymax in astronomical units
     """
 
-    [a, e, t0, omega, i, theta_0] = x
+    a, e, t0, omega, i, theta_0 = x
     p = a * (1 - e**2)
     thetas = np.linspace(0, 2 * math.pi, 1000)
     r = p / (1 + e * np.cos(thetas))
-    xvalues = r * np.cos(thetas)
-    yvalues = r * np.sin(thetas)
-
-    x_proj = np.zeros(1000)
-    y_proj = np.zeros(1000)
-
-    for k in range(1000):
-        [xp, yp] = orbit.project_position([xvalues[k], yvalues[k]], omega, i, theta_0)
-        x_proj[k] = xp
-        y_proj[k] = yp
+    positions = r * np.array([np.cos(thetas), np.sin(thetas)])
+    x_proj, y_proj = orbit.project_position(positions.T, omega, i, theta_0).T
 
     plt.figure(0, figsize=(6, 6))
     plt.plot(y_proj, x_proj, color="blue")
     plt.plot([0], [0], "+", color="red")
     plt.axis(ax)
-    for t in ts:
-        [xp, yp] = orbit.project_position(
-            orbit.position(t, a, e, t0, m0), omega, i, theta_0
-        )
-        plt.scatter(yp, xp, marker="+")
-    #    for t in ts:
-    #        [xp, yp]=orbit.project_position(orbit.position(t, 5., 0., -1.0, 1.),0.,0.,0.)
-    #        plt.scatter(xp,yp,marker='+', color='red')
 
+    xp, yp = orbit.project_position(
+        orbit.position(ts, a, e, t0, m0), omega, i, theta_0
+    ).T
+    plt.scatter(yp, xp, marker="+")
     plt.xlabel("Astronomical Units")
     plt.ylabel("Astronomical Units")
-    #    plt.legend(["Orbite reelle", "Orbite trouvee"])
-
+    # plt.legend(["Orbite reelle", "Orbite trouvee"])
     plt.savefig(filename + ".png")
     plt.close()
-    return None
 
 
 def plot_orbites(x, m, x0, m0, ts, filename):
@@ -266,54 +253,35 @@ def plot_ontop(x, m0, d, ts, res, back_image, filename):
     @param float[n, n]: background image
     @param string filename: name of the file where the image shall be saved (extension .png will be added)
     """
-    n = np.size(back_image[0])
-    q = np.size(ts)
+    npix = np.size(back_image[0])
 
     scale = 1.0 / (d * (res / 1000.0))
 
-    [a, e, t0, omega, i, theta_0] = x
-
+    a, e, t0, omega, i, theta_0 = x
     p = a * (1 - e**2)
     thetas = np.linspace(-2 * math.pi, 0, 1000)
     r = p / (1 + e * np.cos(thetas))
-    xvalues = r * np.cos(thetas)
-    yvalues = r * np.sin(thetas)
 
-    x_proj = np.zeros(1000)
-    y_proj = np.zeros(1000)
-
-    for k in range(1000):
-        [xp, yp] = orbit.project_position([xvalues[k], yvalues[k]], omega, i, theta_0)
-        x_proj[k] = xp
-        y_proj[k] = yp
+    positions = r * np.array([np.cos(thetas), np.sin(thetas)])
+    x_proj, y_proj = orbit.project_position(positions.T, omega, i, theta_0).T
 
     plt.figure(1)
     plt.axis("off")
-    plt.imshow(
-        back_image, origin="lower", interpolation="none", cmap=plt.get_cmap("gray")
+    plt.imshow(back_image, origin="lower", interpolation="none", cmap="gray")
+    plt.scatter(
+        npix // 2 + scale * y_proj, npix // 2 + scale * x_proj, color="b", s=0.1
     )
-    plt.scatter(n // 2 + scale * y_proj, n // 2 + scale * x_proj, color="b", s=0.1)
 
-    for k in range(q):
-        [x, y] = orbit.project_position(
-            orbit.position(ts[k], a, e, t0, m0), omega, i, theta_0
-        )
-        xpix = n // 2 + scale * x
-        ypix = n // 2 + scale * y
-        plt.plot(ypix, xpix, "+", color="r")
-    #       plt.plot(xpix, ypix,'o', color='r', markersize=10)
-    #    [x,y]=orbit.project_position(orbit.position(t0, a, e, t0, m0), omega, i, theta_0)
-    #    xpix=n/2+scale*x
-    #    ypix=n/2+scale*y
-    #    plt.scatter(xpix-2, ypix, color='b', marker='>')
+    xp, yp = orbit.project_position(
+        orbit.position(ts, a, e, t0, m0), omega, i, theta_0
+    ).T
+    xpix = npix // 2 + scale * xp
+    ypix = npix // 2 + scale * yp
+    plt.plot(ypix, xpix, "+", color="r")
 
     length = 1000.0 / res
-    plt.plot([n - length, n], [-10, -10], "y")
-    plt.text(n - 2 * length / 3, -20, "1 arcsec", color="y")
+    plt.plot([npix - length, npix], [-10, -10], "y")
+    plt.text(npix - 2 * length / 3, -20, "1 arcsec", color="y")
 
     plt.savefig(filename + ".png")
     plt.close()
-    # hdu = pyfits.PrimaryHDU(back_image.T)
-    # hdulist = pyfits.HDUList([hdu])
-    # hdulist.writeto("/home/destevez/Kstacker/k-stacker_code/branches/kstacker_real_arg/"+filename+".fits")
-    return None

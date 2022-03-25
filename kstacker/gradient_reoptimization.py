@@ -12,7 +12,7 @@ from astropy.io import fits
 
 from .imagerie import photometry, recombine_images
 from .orbit import orbit as orb
-from .orbit import plot as orbplot
+from .orbit import plot_ontop, plot_orbites2
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
@@ -267,13 +267,13 @@ def reoptimize_gradient(params):
         # plot the orbits
         # orbit.plot.plot_orbites(x_best, x0, m0, sim_name + "/orbites{k}")
         # orbit.plot.plot_orbites2(ts, x_best, m0, ax, f"{values_dir}/orbites{k}")
-        orbplot.plot_orbites2(ts, x_best, m0, ax, f"{values_dir}/orbites/orbites{k}")
+        plot_orbites2(ts, x_best, m0, ax, f"{values_dir}/orbites/orbites{k}")
 
         # If single_plot=='yes' a cross is ploted on each image where the
         # planet is found (by default no);
         if params.single_plot == "yes":
             for l in range(len(ts)):
-                orbplot.plot_ontop(
+                plot_ontop(
                     x_best,
                     m0,
                     params.dist,

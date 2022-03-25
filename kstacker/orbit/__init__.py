@@ -5,3 +5,4 @@ also contains functions to project this position on the plane of sky.
 """
 
 from .orbit import *  # noqa
+from .plot import *  # noqa
