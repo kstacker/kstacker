@@ -162,8 +162,8 @@ def compute_noise_profiles(params):
     profile_dir = params.get_path("profile_dir")
 
     # images characteristic (size, masks size, number of images, etc.) for K-Stacker
-    nimg = params["p"]  # number of images
-    size = params["n"]  # to keep the initial size n
+    nimg = params.p  # number of images
+    size = params.n  # to keep the initial size n
     mask_diameter_int = 2 * params.r_mask
     mask_diameter_ext = 2 * params.r_mask_ext
 

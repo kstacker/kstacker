@@ -95,6 +95,10 @@ class Grid:
         nsplits = 1 if name == "t0" else self._params[f"S{name}"]
         return min_, max_, nsteps, nsplits
 
+    def bounds(self):
+        """Return (min, max, nsteps, nsplits) for a given grid parameter."""
+        return [self.limits(name)[:2] for name in self._grid_params]
+
     def range(self, name):
         """Return a slice object for a given grid parameter."""
         if name not in self._grid_params:

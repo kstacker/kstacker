@@ -10,8 +10,7 @@ __status__ = "Testing"
 import math
 
 import numpy as np
-import scipy.ndimage
-import scipy.optimize
+import scipy.ndimage as ndi
 from photutils import CircularAperture, aperture_photometry
 
 from ..orbit import orbit as orb
@@ -87,7 +86,7 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     alpha = alpha / (2 * math.pi) * 360  # conversion to degrees
 
     # Rotate the image to align planet with the perihelion vector
-    rot_image = scipy.ndimage.interpolation.rotate(
+    rot_image = ndi.rotate(
         image, -alpha, reshape=False, order=3, mode="constant", cval=0.0
     )
 
@@ -101,9 +100,7 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     shift_vect = dist * unit_vect
 
     # shift the image
-    shift_image = scipy.ndimage.interpolation.shift(
-        rot_image, shift_vect, order=3, mode="constant", cval=0.0
-    )
+    shift_image = ndi.shift(rot_image, shift_vect, order=3, mode="constant", cval=0.0)
 
     return shift_image
 
@@ -124,16 +121,12 @@ def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
     @param float theta_0: argument of perihelion (rad)
     @return float[n, n]: coadded result image
     """
-    p = images.shape[2]
-    n = images.shape[0]
-    rot_images = np.zeros([n, n, p])
+    rot_images = []
+    for k in range(len(images)):
+        im = derotate(images[k], ts[k], scale, a, e, t0, m, omega, i, theta_0)
+        rot_images.append(im)
 
-    for k in range(p):
-        rot_images[:, :, k] = derotate(
-            images[:, :, k], ts[k], scale, a, e, t0, m, omega, i, theta_0
-        )
-
-    return np.mean(rot_images, axis=2)
+    return np.mean(rot_images, axis=0)
 
 
 def noise(image, r_int, r_ext):
