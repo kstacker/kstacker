@@ -2,6 +2,7 @@ import argparse
 
 import numpy as np
 
+from .best_solutions import find_best_solutions
 from .noise_profile import compute_noise_profiles
 from .optimize import brute_force
 from .utils import Params
@@ -18,19 +19,23 @@ matplotlib.use("Agg")  # noqa
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
     parser.add_argument("--verbose", action="store_true", help="verbose flag")
-    parser.add_argument('--version', action='version', version=f'%(prog)s {version}')
+    parser.add_argument("--version", action="version", version=f"%(prog)s {version}")
     subparsers = parser.add_subparsers(title="subcommands", help="")
 
-    sub1 = subparsers.add_parser("noise_profiles", help="compute noise profiles")
-    sub1.add_argument("parameter_file", help="Parameter file (yml)")
-    sub1.add_argument("--seed", type=int, help="seed for random numbers")
-    sub1.set_defaults(func=noise_profiles)
+    sub_prof = subparsers.add_parser("noise_profiles", help="compute noise profiles")
+    sub_prof.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_prof.add_argument("--seed", type=int, help="seed for random numbers")
+    sub_prof.set_defaults(func=noise_profiles)
 
-    sub2 = subparsers.add_parser(
+    sub_opt = subparsers.add_parser(
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
-    sub2.add_argument("parameter_file", help="Parameter file (yml)")
-    sub2.set_defaults(func=optimize)
+    sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_opt.set_defaults(func=optimize)
+
+    sub_best = subparsers.add_parser("find_best", help="find the N best solutions")
+    sub_best.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_best.set_defaults(func=find_best)
 
     try:
         args = parser.parse_args()
@@ -49,3 +54,8 @@ def noise_profiles(args):
 def optimize(args):
     params = Params.read(args.parameter_file)
     brute_force(params)
+
+
+def find_best(args):
+    params = Params.read(args.parameter_file)
+    find_best_solutions(params)
