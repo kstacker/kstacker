@@ -1,5 +1,6 @@
-from kstacker.orbit import position, project_position
 import numpy as np
+
+from kstacker.orbit import position, project_position
 
 A = 0.9
 E = 0.55

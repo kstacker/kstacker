@@ -61,7 +61,7 @@ def get_res(
 
 def compute_snr(x, *args):
     signal, noise = get_res(x, *args)
-    noise = np.sqrt(np.sum(noise ** 2))
+    noise = np.sqrt(np.sum(noise**2))
     if noise == 0:
         # if the value of total noise is 0 (i.e. all values of noise are 0,
         # i.e. the orbi is completely out of the image) then snr=0
@@ -261,7 +261,6 @@ def reoptimize_gradient(params):
         hdulist.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", overwrite=True)
 
         # save full signal and noise values
-        __import__("pdb").set_trace()
         res = get_res(x, *args)
         np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
 

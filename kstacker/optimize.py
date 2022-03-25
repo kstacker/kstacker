@@ -7,7 +7,7 @@ is used.
 import numpy as np
 from astropy.io import fits
 
-from .utils import create_output_dir, compute_signal_and_noise_grid
+from .utils import compute_signal_and_noise_grid, create_output_dir
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
