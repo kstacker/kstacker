@@ -241,7 +241,7 @@ def reoptimize_gradient(params):
         plt.scatter(xpix - 2 * params.fwhm, ypix, color="b", marker=">")
         # '.png' old format  #New save format: tiff who have deeeper dynamics
         # to manipulate with imageJ Antoine Schneeberger
-        plt.savefig(f"{values_dir}/fin_fits/fin_{k}.tiff")
+        plt.savefig(f"{values_dir}/fin_tiff/fin_{k}.tiff")
         plt.close()
 
         # extract small part for future ML algorithm
