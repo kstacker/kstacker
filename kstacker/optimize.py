@@ -62,7 +62,7 @@ def brute_force(params):
     create_output_dir(grid_dir)
 
     grid, (s_values, n_values) = params.grid.evaluate(
-        compute_signal_and_noise_grid, args=args, nchunks=2
+        compute_signal_and_noise_grid, args=args, nchunks=params.nchunks
     )
 
     if params.adding == "no":
