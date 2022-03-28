@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import numpy as np
 
@@ -40,14 +41,16 @@ def main():
 
     sub_reopt = subparsers.add_parser(
         "reopt",
-        help="re-optimize the best values of SNR with a gradient descent method",
+        help="re-optimize the best SNR values with a gradient descent method",
     )
     sub_reopt.add_argument("parameter_file", help="Parameter file (yml)")
     sub_reopt.set_defaults(func=reoptimize)
 
     try:
         args = parser.parse_args()
+        t0 = time.time()
         args.func(args)
+        print(f"Done: took {time.time() - t0:.2f} sec.")
     except AttributeError:
         parser.print_usage()
 

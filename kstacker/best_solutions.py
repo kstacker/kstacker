@@ -8,15 +8,12 @@ __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
 __status__ = "Development"
 
 
-import time
-
 import numpy as np
 
 from .utils import create_output_dir
 
 
 def find_best_solutions(params):
-    tstart = time.time()
     grid_dir = params.get_path("grid_dir")
     values_dir = params.get_path("values_dir")
     create_output_dir(values_dir)
@@ -59,4 +56,3 @@ def find_best_solutions(params):
             l = l + 1
 
     np.save(f"{values_dir}/res_grid.npy", res_grid)
-    print(f"Done: took {time.time() - tstart:.2f} sec.")
