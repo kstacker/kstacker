@@ -14,7 +14,6 @@ __status__ = "Testing"
 import math
 
 import numpy as np
-import pexpect  # to open an IDL session and run the OA code
 
 
 def create_ao_mask(n, d, dpix, wav, wind, t_ao, seeing, mag_gs, name):
@@ -58,6 +57,7 @@ def create_ao_mask(n, d, dpix, wav, wind, t_ao, seeing, mag_gs, name):
         + "'"
     )
     #    command="gdl -args "+str(n)+" "+str(d)+" "+str(dpix)+" "+str(seeing)+" "+str(mag_gs)+" "+"'"+filename+"'"
+    import pexpect  # to open an IDL session and run the OA code
     child = pexpect.spawn(command)  # this lauches IDL with some arguments for later use
     child.expect("IDL>")  # wait for IDL prompt
     child.sendline(
@@ -146,6 +146,7 @@ def create_static_mask(wfe, n, d, wav, name):
         + "'"
     )
     #    command="gdl -args "+str(wfe)+" "+str(n)+" "+str(d)+" "+str(wav)+" "+"'"+filename+"'"
+    import pexpect  # to open an IDL session and run the OA code
     child = pexpect.spawn(command)  # this lauches IDL with some arguments for later use
     child.expect("IDL>")  # wait for IDL prompt
     child.sendline(
