@@ -422,17 +422,6 @@ def gauss_function(x_model, a, x0, sigma):
     return a * np.exp(-((x_model - x0) ** 2) / (2 * sigma**2))
 
 
-# fit_res, fit_cov=scipy.optimize.curve_fit(gauss_function, x, y, p0=[np.max(y), 0., np.std(x)])
-
-#    plt.plot(x, y, '+')
-#    x_model=np.linspace(np.min(x), np.max(x), 100)
-#    y_model=gauss_function(x_model, *fit_res)
-#    plt.plot(x_model, y_model)
-#    plt.show()
-
-#    return fit_res[2]
-
-
 def snr_annulus(image, position, fwhm):
     """
     A function that computes signal, noise level, and snr in a given image.

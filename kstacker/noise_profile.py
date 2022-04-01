@@ -24,7 +24,6 @@ __status = "initial Development"
 def pre_process_image(
     image_filename,
     output_filename=None,
-    size=None,
     mask_diameter_int=None,
     mask_diameter_ext=None,
     mask_value=None,
@@ -62,18 +61,13 @@ def pre_process_image(
     size = image.shape[0]
     mask = 0 * image + 1
 
-    # We put Zero values at the mask position
     if mask_diameter_int is not None:
         if mask_diameter_int < 0 or mask_diameter_int > size:
             raise Exception("Internal mask diameter must be > 0 and smaller than image")
-        # mask = mask * np.abs(coronagraph.mask.lyot(size, mask_diameter_int))
 
     if mask_diameter_ext is not None:
         if mask_diameter_ext < 0 or mask_diameter_ext > size:
             raise Exception("External mask diameter must be > 0 and smaller than image")
-        # mask = mask * np.abs(coronagraph.stop.circular_stop(size, mask_diameter_ext))
-
-    # image = image * mask
 
     if mask_value is None:
         # If mask_value is None, we put the pixel values at zero in the masks
@@ -83,17 +77,12 @@ def pre_process_image(
         image = image * mask
     else:
         # In the mask (internal, external), we put the pixel values at 'mask_value'
-        # FIXME: optimize this ?
-        for k in range(0, size):
-            for l in range(0, size):
-                if (
-                    (k - size / 2.0) ** 2.0 + (l - size / 2.0) ** 2.0
-                    < (mask_diameter_int / 2.0) ** 2.0
-                ) or (
-                    (k - size / 2.0) ** 2.0 + (l - size / 2.0) ** 2.0
-                    > (mask_diameter_ext / 2.0) ** 2.0
-                ):
-                    image[k, l] = mask_value
+        r_int2 = (mask_diameter_int / 2.0) ** 2.0
+        r_ext2 = (mask_diameter_ext / 2.0) ** 2.0
+        x, y = np.mgrid[:size, :size] - size / 2.0
+        dist2 = x**2 + y**2
+        mask = (dist2 < r_int2) | (dist2 > r_ext2)
+        image[mask] = 0
 
     image[np.isnan(image)] = 0
 
@@ -228,10 +217,8 @@ def compute_noise_profiles(params):
         for k in range(nimg):
             pre_process_image(
                 f"{images_dir}/image_{k}.fits",
-                None,
-                size,
-                mask_diameter_int,
-                mask_diameter_ext,
+                mask_diameter_int=mask_diameter_int,
+                mask_diameter_ext=mask_diameter_ext,
                 mask_value=params.mask_value,
                 plot=True,
             )
