@@ -24,8 +24,9 @@ __status = "initial Development"
 def pre_process_image(
     image_filename,
     output_filename=None,
-    mask_diameter_int=None,
-    mask_diameter_ext=None,
+    size=None,
+    r_mask=None,
+    r_mask_ext=None,
     mask_value=None,
     plot=False,
 ):
@@ -34,13 +35,26 @@ def pre_process_image(
 
     The image will be loaded, masked, and cut to a given size.
 
-    @param str image_filename: full path to the image. must be a .fits file
-    @param (optional) str output_filename: the full path to the output file, without extension. If not given, 'preprocessed' is append to input file.
-    @param (optional) int n: the final size (in pixels) of the pre-process image. If not given, initial size is kept
-    @param (optional) int mask_diameter_int: diameter (in pixels) of the central internal mask to be applied. If not given, no internal mask is applied
-    @param (optional) int mask_diameter_ext: diameter (in pixels) of the external mask to be applied. If not given, no external mask is applied
-    @param (optional) float mask_value: the value to put in pixel masked. Default is 0.0.
-    @param (optional) bool plot: true to also get a png as output of the program
+    Parameters
+    ----------
+    image_filename : str
+        full path to the image. must be a .fits file
+    output_filename : str
+        the full path to the output file, without extension.
+        If not given, 'preprocessed' is append to input file.
+    size : int
+        the final size (in pixels) of the pre-process image.
+        If not given, initial size is kept.
+    r_mask : int
+        radius (in pixels) of the central internal mask to be applied.
+        If not given, no internal mask is applied.
+    r_mask_ext : int
+        radius (in pixels) of the external mask to be applied.
+        If not given, no external mask is applied.
+    mask_value : float
+        the value to put in pixel masked. Default is 0.0.
+    plot : bool
+        true to also get a png as output of the program
 
     """
     filename, extension = os.path.splitext(image_filename)
@@ -58,43 +72,40 @@ def pre_process_image(
         cx, cy = nx // 2, ny // 2
         image = image[cx - m : cx + m, cy - m : cy + m]
 
-    size = image.shape[0]
-    mask = 0 * image + 1
+    npix = image.shape[0]
 
-    if mask_diameter_int is not None:
-        if mask_diameter_int < 0 or mask_diameter_int > size:
+    if r_mask is not None:
+        if r_mask < 0 or r_mask > npix / 2:
             raise Exception("Internal mask diameter must be > 0 and smaller than image")
 
-    if mask_diameter_ext is not None:
-        if mask_diameter_ext < 0 or mask_diameter_ext > size:
+    if r_mask_ext is not None:
+        if r_mask_ext < 0 or r_mask_ext > npix / 2:
             raise Exception("External mask diameter must be > 0 and smaller than image")
 
     if mask_value is None:
         # If mask_value is None, we put the pixel values at zero in the masks
         # (internal, external)
-        mask = mask * np.abs(coronagraph.mask.lyot(size, mask_diameter_int))
-        mask = mask * np.abs(coronagraph.stop.circular_stop(size, mask_diameter_ext))
+        mask = 0 * image + 1
+        mask = mask * np.abs(coronagraph.mask.lyot(npix, r_mask * 2))
+        mask = mask * np.abs(coronagraph.stop.circular_stop(npix, r_mask_ext * 2))
         image = image * mask
     else:
         # In the mask (internal, external), we put the pixel values at 'mask_value'
-        r_int2 = (mask_diameter_int / 2.0) ** 2.0
-        r_ext2 = (mask_diameter_ext / 2.0) ** 2.0
-        x, y = np.mgrid[:size, :size] - size / 2.0
+        x, y = np.mgrid[:npix, :npix] - npix / 2
         dist2 = x**2 + y**2
-        mask = (dist2 < r_int2) | (dist2 > r_ext2)
+        mask = (dist2 < r_mask**2) | (dist2 > r_mask_ext**2)
         image[mask] = 0
 
     image[np.isnan(image)] = 0
 
-    # FIXME: already done above ?
-    center, radius = size // 2, size // 2
-    image_cut = image[
-        center - radius : center + radius, center - radius : center + radius
-    ]
-    fits.writeto(f"{output_filename}.fits", image_cut, overwrite=True)
+    if size is not None and size != npix:
+        center, rad = size // 2, size // 2
+        image = image[center - rad : center + rad, center - rad : center + rad]
+
+    fits.writeto(f"{output_filename}.fits", image, overwrite=True)
 
     if plot:
-        plt.imshow(image_cut.T, origin="lower", interpolation="none", cmap="gray")
+        plt.imshow(image.T, origin="lower", interpolation="none", cmap="gray")
         plt.savefig(f"{output_filename}.png")
         plt.close()
 
@@ -153,8 +164,6 @@ def compute_noise_profiles(params):
     # images characteristic (size, masks size, number of images, etc.) for K-Stacker
     nimg = params.p  # number of images
     size = params.n  # to keep the initial size n
-    mask_diameter_int = 2 * params.r_mask
-    mask_diameter_ext = 2 * params.r_mask_ext
 
     # Parameters to reject very bad images (due to bad seeing, AO problems, etc.)
     #  'no' or 'weakly' or 'strongly'; Default: weakly (=1.4)
@@ -217,8 +226,9 @@ def compute_noise_profiles(params):
         for k in range(nimg):
             pre_process_image(
                 f"{images_dir}/image_{k}.fits",
-                mask_diameter_int=mask_diameter_int,
-                mask_diameter_ext=mask_diameter_ext,
+                size=size,
+                r_mask=params.r_mask,
+                r_mask_ext=params.r_mask_ext,
                 mask_value=params.mask_value,
                 plot=True,
             )
