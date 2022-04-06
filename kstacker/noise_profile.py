@@ -11,6 +11,8 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+from astropy.nddata import block_replicate
+from scipy.signal import convolve2d
 
 from . import coronagraph
 from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
@@ -23,11 +25,13 @@ __status = "initial Development"
 
 def pre_process_image(
     image_filename,
+    aperture_radius,
     output_filename=None,
     size=None,
     r_mask=None,
     r_mask_ext=None,
     mask_value=None,
+    upsampling_factor=1,
     plot=False,
 ):
     """
@@ -53,6 +57,8 @@ def pre_process_image(
         If not given, no external mask is applied.
     mask_value : float
         the value to put in pixel masked. Default is 0.0.
+    upsampling_factor : int
+        upsampling factor to precompute the aperture fluxes.
     plot : bool
         true to also get a png as output of the program
 
@@ -102,7 +108,18 @@ def pre_process_image(
         center, rad = size // 2, size // 2
         image = image[center - rad : center + rad, center - rad : center + rad]
 
-    fits.writeto(f"{output_filename}.fits", image, overwrite=True)
+    # Replicate the image for the upsampling
+    imrepl = block_replicate(image, upsampling_factor, conserve_sum=True)
+
+    # Compute the aperture mask
+    masksize = (int(aperture_radius + 0.5) * 2 + 1) * upsampling_factor
+    xx, yy = np.mgrid[:masksize, :masksize] - masksize // 2
+    mask = (np.hypot(xx, yy) < aperture_radius * upsampling_factor).astype(int)
+
+    # Convolve by the mask to compute the signal value
+    imconv = convolve2d(imrepl, mask, mode="same")
+
+    fits.writeto(f"{output_filename}.fits", imconv, overwrite=True)
 
     if plot:
         plt.imshow(image.T, origin="lower", interpolation="none", cmap="gray")
@@ -164,6 +181,7 @@ def compute_noise_profiles(params):
     # images characteristic (size, masks size, number of images, etc.) for K-Stacker
     nimg = params.p  # number of images
     size = params.n  # to keep the initial size n
+    upsampling_factor = params.upsampling_factor
 
     # Parameters to reject very bad images (due to bad seeing, AO problems, etc.)
     #  'no' or 'weakly' or 'strongly'; Default: weakly (=1.4)
@@ -226,10 +244,12 @@ def compute_noise_profiles(params):
         for k in range(nimg):
             pre_process_image(
                 f"{images_dir}/image_{k}.fits",
+                params.fwhm,
                 size=size,
                 r_mask=params.r_mask,
                 r_mask_ext=params.r_mask_ext,
                 mask_value=params.mask_value,
+                upsampling_factor=upsampling_factor,
                 plot=True,
             )
         print(f"preprocess: took {time.time() - t0:.2f} sec.")
@@ -242,10 +262,14 @@ def compute_noise_profiles(params):
             if remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
-                    img, params.fwhm, planet_coord[k], remove_box
+                    img,
+                    size,
+                    planet_coord[k],
+                    remove_box,
+                    upsampling_factor,
                 )
             else:
-                bg_prof, n_prof = monte_carlo_profiles(img, params.fwhm)
+                bg_prof, n_prof = monte_carlo_profiles(img, size, upsampling_factor)
 
             np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
             np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
@@ -347,10 +371,10 @@ def compute_noise_profiles(params):
                 size,
                 params.scale,
                 images,
-                params.fwhm,
                 x_profile,
                 bkg_profiles,
                 noise_profiles,
+                upsampling_factor,
                 None,
             )
 

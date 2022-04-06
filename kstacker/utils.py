@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import yaml
 
-from .imagerie import photometry
+from .imagerie import photometry_preprocessed
 from .orbit import orbit as orb
 
 
@@ -22,10 +22,10 @@ def compute_signal_and_noise_grid(
     size,
     scale,
     images,
-    fwhm,
     x_profile,
     bkg_profiles,
     noise_profiles,
+    upsampling_factor,
     r_mask=None,
 ):
     nimg = len(images)
@@ -44,7 +44,7 @@ def compute_signal_and_noise_grid(
 
         # compute the signal by integrating flux on a PSF, and correct it for
         # background (using pre-computed background profile)
-        sig = photometry(images[k], position, 2 * fwhm)
+        sig = photometry_preprocessed(images[k], position, upsampling_factor)
         sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
         if r_mask is not None:
             sig[temp_d <= r_mask] = 0.0

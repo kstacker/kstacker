@@ -42,6 +42,20 @@ def photometry(image, position, diameter):
     return res[0] if res.size == 1 else res
 
 
+def photometry_preprocessed(image, position, upsampling_factor):
+    """
+    This function is used to compute the flux within a circular aperture in a given image.
+    @param float[n, n] image: image within wich the flux shall be computed
+    @param float[2] position: xy position (in pixels) of the center of the photometry box
+    @return float: flux contained in the circular photometry box
+    """
+    # grid for photutils is centered on pixels hence the - 0.5
+    position = np.array(position) - 0.5
+    xpix, ypix = ((position + 0.5) * upsampling_factor - 0.5).astype(int)
+    res = image[xpix, ypix]
+    return res[0] if res.size == 1 else res
+
+
 def total_photometry(images, positions, diameter):
     """
     For each image images[k], a photometric box is placed at position[k], and the total flux in these box is returned. This function is used to compute the "signal" in
@@ -274,75 +288,26 @@ def radial_profile(image, fwhm, center=None):
     return profile
 
 
-def monte_carlo_noise(image, radius, fwhm):
+def monte_carlo_noise(image, npix, radius, upsampling_factor):
     """
     Another function to estimate the noise in a given image by throwing disks
     at random positions and estimatin gthe deviation of the flux inside them.
 
-    @param float[n, n] image: the image in which the noise shall be computed
-    @param float fwhm: disks used are of raidus=fwhm (in pixles)
+    @param float[npix, npix] image: the image in which the noise shall be computed
     @return float noise_level: noise level (stddev of the distribution of flux in the airy disks)
     """
-    n = image.shape[0]
     p = 1000  # number of disks to generate
     theta = np.random.uniform(-math.pi, math.pi, size=p)
     x = radius * np.cos(theta)
     y = radius * np.sin(theta)
-    position = [x + n // 2, y + n // 2]
-    fluxes = photometry(image, position, 2 * fwhm)
+    position = [x + npix // 2, y + npix // 2]
+    fluxes = photometry_preprocessed(image, position, upsampling_factor)
     return np.mean(fluxes), np.std(fluxes)
 
 
-def monte_carlo_noise_nan(image, radius, fwhm):
-    """
-    Another function to estimate the noise in a given image by throwing disks
-    at random positions and estimatin gthe deviation of the flux inside them.
-
-    @param float[n, n] image: the image in which the noise shall be computed
-    @param float fwhm: disks used are of raidus=fwhm (in pixles)
-    @return float noise_level: noise level (stddev of the distribution of flux in the airy disks)
-    """
-    n = image.shape[0]
-    p = 1000  # number of disks to generate
-    fluxes = []
-    for k in range(p):
-        # print(k)
-        theta = np.random.uniform(-math.pi, math.pi)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        position = [x + n // 2, y + n // 2]
-        flux = photometry(image, position, 2 * fwhm)
-        if not (np.isnan(flux)):
-            fluxes.append(flux)
-    if len(fluxes) < 10:
-        return float("nan"), float("nan")
-    else:
-        fluxes = np.array(fluxes)
-        return np.mean(fluxes), np.std(fluxes)
-
-
-def monte_carlo_noise2(image, radius, fwhm):
-    """
-    Another function to estimate the noise in a given image by throwing disks
-    at random positions and estimatin gthe deviation of the flux inside them.
-
-    @param float[n, n] image: the image in which the noise shall be computed
-    @param float fwhm: disks used are of raidus=fwhm (in pixles)
-    @return float noise_level: noise level (stddev of the distribution of flux in the airy disks)
-    """
-    n = image.shape[0]
-    p = 1000  # number of disks to generate
-    fluxes = np.zeros(p)
-    for k in range(p):
-        theta = np.random.uniform(-10 * math.pi / 16, 19 * math.pi / 16)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        position = [x + n // 2, y + n // 2]
-        fluxes[k] = photometry(image, position, 2 * fwhm)
-    return (np.mean(fluxes), np.std(fluxes))
-
-
-def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
+def monte_carlo_noise_remove_planet(
+    image, npix, radius, planet, remove_box, upsampling_factor
+):
     """
     Author : Justin Bec-Canet
 
@@ -351,14 +316,12 @@ def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
 
     It is excluding from the calculation the position of the planet.
 
-    @param float[n, n] image: the image in which the noise shall be computed
-    @param float fwhm: disks used are of raidus=fwhm (in pixles)
+    @param float[npix, npix] image: the image in which the noise shall be computed
     @param float planet : couple of coordinates for the planet (x_planet,y_planet)
     @param float[4] remove_box : size of removal box (default = [10,10,10,10])
     @return float noise_level: noise level (stddev of the distribution of flux in the airy disks)
     """
 
-    n = image.shape[0]
     p = 1000  # number of disks to generate
     realcount = 0
     count = 0
@@ -368,7 +331,7 @@ def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
         # the positions are stored in (xtest,ytest) in pixels
-        xtest, ytest = (x + n // 2, y + n // 2)
+        xtest, ytest = (x + npix // 2, y + npix // 2)
         if (
             (planet[0] - remove_box[0] <= xtest)
             and (xtest <= planet[0] + remove_box[1])
@@ -379,38 +342,39 @@ def monte_carlo_noise_remove_planet(image, radius, fwhm, planet, remove_box):
             count += 1  # counter
         else:
             position = [xtest, ytest]
-            fluxes[realcount] = photometry(image, position, 2 * fwhm)
+            fluxes[realcount] = photometry_preprocessed(
+                image, position, upsampling_factor
+            )
             realcount += 1
         if count > 1e5:
             print("Exclusion box must be too large, convergence error")
     return (np.mean(fluxes), np.std(fluxes))
 
 
-def monte_carlo_profiles(image, fwhm):
-    n = image.shape[0]
-    noise_profile = np.zeros(n // 2)
-    background_profile = np.zeros(n // 2)
-    for k in range(n // 2):
-        bg, noise = monte_carlo_noise(image, k, fwhm)
+def monte_carlo_profiles(image, npix, upsampling_factor):
+    noise_profile = np.zeros(npix // 2)
+    background_profile = np.zeros(npix // 2)
+    for k in range(npix // 2):
+        bg, noise = monte_carlo_noise(image, npix, k, upsampling_factor)
         noise_profile[k] = noise
         background_profile[k] = bg
 
     return background_profile, noise_profile
 
 
-def monte_carlo_profiles_remove_planet(image, fwhm, planet_coord, remove_box):
+def monte_carlo_profiles_remove_planet(image, npix, planet_coord, remove_box,
+                                       upsampling_factor):
     """Author : Justin Bec-Canet
     using almost the same function as above. I just implemented the parameter
     "planet_coord" to be able to exclude the planet
     (via its position in pixels) in the calculation of the noise and background profiles.
     @param float[4] remove_box : size of removal box (default = [10,10,10,10])
     """
-    n = image.shape[0]
-    noise_profile = np.zeros(n // 2)
-    background_profile = np.zeros(n // 2)
-    for k in range(n // 2):
-        (bg, noise) = monte_carlo_noise_remove_planet(
-            image, k, fwhm, planet_coord, remove_box
+    noise_profile = np.zeros(npix // 2)
+    background_profile = np.zeros(npix // 2)
+    for k in range(npix // 2):
+        bg, noise = monte_carlo_noise_remove_planet(
+            image, npix, k, planet_coord, remove_box, upsampling_factor
         )
         noise_profile[k] = noise
         background_profile[k] = bg

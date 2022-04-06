@@ -53,10 +53,10 @@ def brute_force(params):
         size,
         params.scale,
         images,
-        params.fwhm,
         x_profile,
         bkg_profiles,
         noise_profiles,
+        params.upsampling_factor,
         params.r_mask,
     )
     create_output_dir(grid_dir)

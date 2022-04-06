@@ -22,6 +22,7 @@ p: 16   # number of images for a run, or number of images added to a previous ru
 p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
 total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
 n: 100   # size of the images nxn
+upsampling_factor: 5  # upsampling factor for the aperture integration
 
 #time: "0.0+0.0054757015742642025+0.010951403148528405+0.01642710472279261+0.019164955509924708+0.02190280629705681+0.024640657084188913+0.02737850787132101+0.030116358658453114+0.03285420944558522+0.03559206023271732+0.04106776180698152+0.04380561259411362+0.04654346338124572+0.049281314168377825+0.09308692676249145" # time (years) of each observation for p+p_prev images; Origin of dates : JD:  2458627.5 = 2019-05-24
 
