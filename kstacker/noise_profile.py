@@ -100,7 +100,7 @@ def pre_process_image(
         x, y = np.mgrid[:npix, :npix] - npix / 2
         dist2 = x**2 + y**2
         mask = (dist2 < r_mask**2) | (dist2 > r_mask_ext**2)
-        image[mask] = 0
+        image[mask] = mask_value
 
     image[np.isnan(image)] = 0
 
