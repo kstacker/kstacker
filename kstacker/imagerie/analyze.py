@@ -52,7 +52,13 @@ def photometry_preprocessed(image, position, upsampling_factor):
     # grid for photutils is centered on pixels hence the - 0.5
     position = np.array(position) - 0.5
     xpix, ypix = ((position + 0.5) * upsampling_factor - 0.5).astype(int)
-    res = image[xpix, ypix]
+
+    inside = (xpix >= 0) & (xpix < image.shape[0]) & (ypix >= 0) & (ypix < image.shape[1])
+    res = np.zeros(xpix.shape[0])
+    res[inside] = image[xpix[inside], ypix[inside]]
+    noutside = xpix.shape[0] - np.count_nonzero(inside)
+    if noutside > 0:
+        print(f"{noutside} values outside of the image")
     return res[0] if res.size == 1 else res
 
 

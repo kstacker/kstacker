@@ -208,8 +208,8 @@ class Grid:
         print("Grid shape:", grid.shape)
 
         Jout = []
-        for i, chunk in enumerate(np.array_split(grid, nchunks)):
-            print("- chunk", i)
+        for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
+            print(f"- chunk {i}/{nchunks}")
             Jout.append(func(chunk, *args))
 
         Jout = np.concatenate(Jout, axis=1)
