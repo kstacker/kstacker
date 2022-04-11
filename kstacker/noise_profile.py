@@ -103,6 +103,7 @@ def pre_process_image(
         image[mask] = mask_value
 
     image[np.isnan(image)] = 0
+    fits.writeto(f"{filename}_masked.fits", image, overwrite=True)
 
     if size is not None and size != npix:
         center, rad = size // 2, size // 2
