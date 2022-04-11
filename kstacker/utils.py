@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import yaml
 
-from .imagerie import photometry_preprocessed
+from .imagerie import photometry, photometry_preprocessed
 from .orbit import orbit as orb
 
 
@@ -15,18 +15,31 @@ def create_output_dir(path):
     os.mkdir(path)
 
 
+def get_image_suffix(method):
+    if method == "convolve":
+        print("Using pre-convolved images")
+        return "_resampled"
+    elif method == "aperture":
+        print("Using photutils apertures")
+        return "_preprocessed"
+    else:
+        raise ValueError(f"invalid method {method}")
+
+
 def compute_signal_and_noise_grid(
     x,
     ts,
     m0,
     size,
     scale,
+    fwhm,
     images,
     x_profile,
     bkg_profiles,
     noise_profiles,
     upsampling_factor,
     r_mask=None,
+    method="convolve",
 ):
     nimg = len(images)
     a, e, t0, omega, i, theta_0 = x.T
@@ -44,10 +57,18 @@ def compute_signal_and_noise_grid(
 
         # compute the signal by integrating flux on a PSF, and correct it for
         # background (using pre-computed background profile)
-        sig = photometry_preprocessed(images[k], position, upsampling_factor)
+        if method == "convolve":
+            sig = photometry_preprocessed(images[k], position, upsampling_factor)
+        elif method == "aperture":
+            sig = photometry(images[k], position, 2 * fwhm)
+        else:
+            raise ValueError(f"invalid method {method}")
+
         sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
+
         if r_mask is not None:
             sig[temp_d <= r_mask] = 0.0
+
         signal.append(sig)
 
         # get noise at position using pre-computed radial noise profil

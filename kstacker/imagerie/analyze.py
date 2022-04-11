@@ -288,7 +288,7 @@ def radial_profile(image, fwhm, center=None):
     return profile
 
 
-def monte_carlo_noise(image, npix, radius, upsampling_factor):
+def monte_carlo_noise(image, npix, radius, fwhm, upsampling_factor, method="convolve"):
     """
     Another function to estimate the noise in a given image by throwing disks
     at random positions and estimatin gthe deviation of the flux inside them.
@@ -301,12 +301,19 @@ def monte_carlo_noise(image, npix, radius, upsampling_factor):
     x = radius * np.cos(theta)
     y = radius * np.sin(theta)
     position = [x + npix // 2, y + npix // 2]
-    fluxes = photometry_preprocessed(image, position, upsampling_factor)
+
+    if method == "convolve":
+        fluxes = photometry_preprocessed(image, position, upsampling_factor)
+    elif method == "aperture":
+        fluxes = photometry(image, position, 2 * fwhm)
+    else:
+        raise ValueError(f"invalid method {method}")
+
     return np.mean(fluxes), np.std(fluxes)
 
 
 def monte_carlo_noise_remove_planet(
-    image, npix, radius, planet, remove_box, upsampling_factor
+    image, npix, radius, planet, remove_box, fwhm, upsampling_factor, method="convolve"
 ):
     """
     Author : Justin Bec-Canet
@@ -342,28 +349,38 @@ def monte_carlo_noise_remove_planet(
             count += 1  # counter
         else:
             position = [xtest, ytest]
-            fluxes[realcount] = photometry_preprocessed(
-                image, position, upsampling_factor
-            )
+
+            if method == "convolve":
+                fluxes[realcount] = photometry_preprocessed(
+                    image, position, upsampling_factor
+                )
+            elif method == "aperture":
+                fluxes[realcount] = photometry(image, position, 2 * fwhm)
+            else:
+                raise ValueError(f"invalid method {method}")
+
             realcount += 1
         if count > 1e5:
             print("Exclusion box must be too large, convergence error")
-    return (np.mean(fluxes), np.std(fluxes))
+    return np.mean(fluxes), np.std(fluxes)
 
 
-def monte_carlo_profiles(image, npix, upsampling_factor):
+def monte_carlo_profiles(image, npix, fwhm, upsampling_factor, method="convolve"):
     noise_profile = np.zeros(npix // 2)
     background_profile = np.zeros(npix // 2)
     for k in range(npix // 2):
-        bg, noise = monte_carlo_noise(image, npix, k, upsampling_factor)
+        bg, noise = monte_carlo_noise(
+            image, npix, k, fwhm, upsampling_factor, method=method
+        )
         noise_profile[k] = noise
         background_profile[k] = bg
 
     return background_profile, noise_profile
 
 
-def monte_carlo_profiles_remove_planet(image, npix, planet_coord, remove_box,
-                                       upsampling_factor):
+def monte_carlo_profiles_remove_planet(
+    image, npix, planet_coord, remove_box, fwhm, upsampling_factor, method="convolve"
+):
     """Author : Justin Bec-Canet
     using almost the same function as above. I just implemented the parameter
     "planet_coord" to be able to exclude the planet
@@ -374,7 +391,14 @@ def monte_carlo_profiles_remove_planet(image, npix, planet_coord, remove_box,
     background_profile = np.zeros(npix // 2)
     for k in range(npix // 2):
         bg, noise = monte_carlo_noise_remove_planet(
-            image, npix, k, planet_coord, remove_box, upsampling_factor
+            image,
+            npix,
+            k,
+            planet_coord,
+            remove_box,
+            fwhm,
+            upsampling_factor,
+            method=method,
         )
         noise_profile[k] = noise
         background_profile[k] = bg

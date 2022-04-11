@@ -7,7 +7,7 @@ is used.
 import numpy as np
 from astropy.io import fits
 
-from .utils import compute_signal_and_noise_grid, create_output_dir
+from .utils import compute_signal_and_noise_grid, create_output_dir, get_image_suffix
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
@@ -37,9 +37,10 @@ def brute_force(params):
 
     # load the images .fits or .txt and the noise profiles
     images, bkg_profiles, noise_profiles = [], [], []
+    img_suffix = get_image_suffix(params.method)
     for k in range(nimg):
         i = k + p_prev
-        images.append(fits.getdata(f"{images_dir}/image_{i}_preprocessed.fits"))
+        images.append(fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits"))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 
@@ -52,12 +53,14 @@ def brute_force(params):
         params.m0,
         size,
         params.scale,
+        params.fwhm,
         images,
         x_profile,
         bkg_profiles,
         noise_profiles,
         params.upsampling_factor,
         params.r_mask,
+        params.method,
     )
     create_output_dir(grid_dir)
 

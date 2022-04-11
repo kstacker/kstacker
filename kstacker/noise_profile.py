@@ -16,7 +16,7 @@ from scipy.signal import convolve2d
 
 from . import coronagraph
 from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
-from .utils import compute_signal_and_noise_grid, create_output_dir
+from .utils import compute_signal_and_noise_grid, create_output_dir, get_image_suffix
 
 __author__ = "Herve Le Coroller"
 __mail__ = "herve.lecoroller@lam.fr"
@@ -26,7 +26,6 @@ __status = "initial Development"
 def pre_process_image(
     image_filename,
     aperture_radius,
-    output_filename=None,
     size=None,
     r_mask=None,
     r_mask_ext=None,
@@ -43,9 +42,6 @@ def pre_process_image(
     ----------
     image_filename : str
         full path to the image. must be a .fits file
-    output_filename : str
-        the full path to the output file, without extension.
-        If not given, 'preprocessed' is append to input file.
     size : int
         the final size (in pixels) of the pre-process image.
         If not given, initial size is kept.
@@ -67,9 +63,6 @@ def pre_process_image(
     if extension not in (".fits", ".FITS", ".Fits"):
         raise Exception("Image must be a .fits file!")
 
-    if output_filename is None:
-        output_filename = f"{filename}_preprocessed"
-
     image = fits.getdata(image_filename)
     nx, ny = np.shape(image)
     if nx != ny:
@@ -80,13 +73,11 @@ def pre_process_image(
 
     npix = image.shape[0]
 
-    if r_mask is not None:
-        if r_mask < 0 or r_mask > npix / 2:
-            raise Exception("Internal mask diameter must be > 0 and smaller than image")
+    if r_mask < 0 or r_mask > npix / 2:
+        raise Exception("Internal mask diameter must be > 0 and smaller than image")
 
-    if r_mask_ext is not None:
-        if r_mask_ext < 0 or r_mask_ext > npix / 2:
-            raise Exception("External mask diameter must be > 0 and smaller than image")
+    if r_mask_ext < 0 or r_mask_ext > npix / 2:
+        raise Exception("External mask diameter must be > 0 and smaller than image")
 
     if mask_value is None:
         # If mask_value is None, we put the pixel values at zero in the masks
@@ -103,7 +94,8 @@ def pre_process_image(
         image[mask] = mask_value
 
     image[np.isnan(image)] = 0
-    fits.writeto(f"{filename}_masked.fits", image, overwrite=True)
+    hdr = fits.Header({"RMASK": r_mask, "RMASKEXT": r_mask_ext})
+    fits.writeto(f"{filename}_preprocessed.fits", image, header=hdr, overwrite=True)
 
     if size is not None and size != npix:
         center, rad = size // 2, size // 2
@@ -120,11 +112,17 @@ def pre_process_image(
     # Convolve by the mask to compute the signal value
     imconv = convolve2d(imrepl, mask, mode="same")
 
-    fits.writeto(f"{output_filename}.fits", imconv, overwrite=True)
+    hdr.update(
+        {"KERNEL": "circle", "RADIUS": aperture_radius, "FACTOR": upsampling_factor}
+    )
+    fits.writeto(f"{filename}_resampled.fits", imconv, overwrite=True)
 
     if plot:
         plt.imshow(image.T, origin="lower", interpolation="none", cmap="gray")
-        plt.savefig(f"{output_filename}.png")
+        plt.savefig(f"{filename}_preprocessed.png")
+        plt.close()
+        plt.imshow(imconv.T, origin="lower", interpolation="none", cmap="gray")
+        plt.savefig(f"{filename}_resampled.png")
         plt.close()
 
 
@@ -137,38 +135,37 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
     :param output_snrdir: directory where snr plots are stored
     """
 
-    dict_params = dict()
     total_average_noise_images = 0
 
     for k in range(q):
-        noise = np.load(f"{profile_dir}/noise_prof{str(k)}.npy")
+        noise = np.load(f"{profile_dir}/noise_prof{k}.npy")
 
         # Computation of the sum of average noise
         average_noise_image = np.average(noise)
         total_average_noise_images += average_noise_image
 
-        plt.figure(f"Noise Plot {str(k)}")
-        plt.title(f"Noise Plot {str(k)}")
+        plt.figure(f"Noise Plot {k}")
+        plt.title(f"Noise Plot {k}")
         plt.plot(noise)
         plt.xlabel("radius in pixel")
         plt.ylabel("standart deviation of the noise")
-        plt.savefig(f"{output_snrdir}/Plot_noise{str(k)}.pdf")
+        plt.savefig(f"{output_snrdir}/Plot_noise{k}.pdf")
         plt.close()
 
     total_average_noise_images = total_average_noise_images / q
 
+    dict_params = {}
     image_removed = []
 
     for k in range(q):
-        noise = np.load(f"{profile_dir}/noise_prof{str(k)}.npy")
+        noise = np.load(f"{profile_dir}/noise_prof{k}.npy")
         average_noise_image = np.average(noise)
         if average_noise_image > reject_coef * total_average_noise_images:
-            # print 'Retirer image_' + str(k)
             image_removed.append(k)
             dict_params["num of bad images"] = k
 
     with open(f"{output_snrdir}/bad_images.txt", "w") as file:
-        for key, val in list(dict_params.items()):
+        for key, val in dict_params.items():
             file.write(f"{key}: {val}\n")
 
     return image_removed
@@ -258,8 +255,9 @@ def compute_noise_profiles(params):
 
         # load the images and estimate the noise level assuming a radial profile
         t0 = time.time()
+        img_suffix = get_image_suffix(params.method)
         for k in range(nimg):
-            img = fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits")
+            img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
             if remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
@@ -267,10 +265,14 @@ def compute_noise_profiles(params):
                     size,
                     planet_coord[k],
                     remove_box,
+                    params.fwhm,
                     upsampling_factor,
+                    method=params.method,
                 )
             else:
-                bg_prof, n_prof = monte_carlo_profiles(img, size, upsampling_factor)
+                bg_prof, n_prof = monte_carlo_profiles(
+                    img, size, params.fwhm, upsampling_factor, method=params.method
+                )
 
             np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
             np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
@@ -303,6 +305,7 @@ def compute_noise_profiles(params):
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
         # load the images .fits and the noise profiles
+        img_suffix = get_image_suffix(params.method)
         used, images, bkg_profiles, noise_profiles, ts_selected = [], [], [], [], []
         for k in range(nimg):
             if k in image_removed:
@@ -310,7 +313,7 @@ def compute_noise_profiles(params):
                 continue
             used.append(k)
             ts_selected.append(ts[k])
-            images.append(fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits"))
+            images.append(fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits"))
             bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
             noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
 
@@ -371,12 +374,14 @@ def compute_noise_profiles(params):
                 params.m0,
                 size,
                 params.scale,
+                params.fwhm,
                 images,
                 x_profile,
                 bkg_profiles,
                 noise_profiles,
                 upsampling_factor,
                 None,
+                params.method,
             )
 
             signal, noise = compute_signal_and_noise_grid(x, *args)
