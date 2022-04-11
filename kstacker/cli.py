@@ -12,9 +12,9 @@ from .version import version
 
 # to plot in a file without a display screen (cluster)
 # isort: off
-import matplotlib
+# import matplotlib
 
-matplotlib.use("Agg")  # noqa
+# matplotlib.use("Agg")  # noqa
 # isort: on
 
 

@@ -152,7 +152,7 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
         plt.plot(noise)
         plt.xlabel("radius in pixel")
         plt.ylabel("standart deviation of the noise")
-        plt.savefig(f"{output_snrdir}/Plot_noise{str(k)}.png")
+        plt.savefig(f"{output_snrdir}/Plot_noise{str(k)}.pdf")
         plt.close()
 
     total_average_noise_images = total_average_noise_images / q
@@ -382,11 +382,11 @@ def compute_noise_profiles(params):
             signal, noise = compute_signal_and_noise_grid(x, *args)
             snr = signal / noise
 
-            plt.plot(param_vect, snr)
+            plt.plot(param_vect, snr, linewidth=1)
             plt.xlabel(name_Xaxis)
             plt.ylabel("SNR")
             suffix = f"{param}_{np.min(param_vect)}-{np.max(param_vect)}"
-            plt.savefig(f"{output_snrgraph}/steps_{suffix}.png")
+            plt.savefig(f"{output_snrgraph}/steps_{suffix}.pdf")
             plt.close()
 
             print(f"compute snr: took {time.time() - tstart:.2f} sec.")
