@@ -3,7 +3,6 @@ import time
 
 import numpy as np
 
-from .best_solutions import find_best_solutions
 from .gradient_reoptimization import reoptimize_gradient
 from .noise_profile import compute_noise_profiles
 from .optimize import brute_force
@@ -35,13 +34,8 @@ def main():
     sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
     sub_opt.set_defaults(func=optimize)
 
-    sub_best = subparsers.add_parser("find_best", help="find the best solutions")
-    sub_best.add_argument("parameter_file", help="Parameter file (yml)")
-    sub_best.set_defaults(func=find_best)
-
     sub_reopt = subparsers.add_parser(
-        "reopt",
-        help="re-optimize the best SNR values with a gradient descent method",
+        "reopt", help="re-optimize the best SNR values with a gradient descent"
     )
     sub_reopt.add_argument("parameter_file", help="Parameter file (yml)")
     sub_reopt.set_defaults(func=reoptimize)
@@ -65,11 +59,6 @@ def noise_profiles(args):
 def optimize(args):
     params = Params.read(args.parameter_file)
     brute_force(params)
-
-
-def find_best(args):
-    params = Params.read(args.parameter_file)
-    find_best_solutions(params)
 
 
 def reoptimize(args):

@@ -19,6 +19,8 @@ def brute_force(params):
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
     grid_dir = params.get_path("grid_dir")
+    values_dir = params.get_path("values_dir")
+    create_output_dir(grid_dir)
 
     # total time of the observation (years)
     total_time = float(params["total_time"])
@@ -62,23 +64,24 @@ def brute_force(params):
         params.r_mask,
         params.method,
     )
-    create_output_dir(grid_dir)
 
-    grid, (s_values, n_values) = params.grid.evaluate(
+    res = params.grid.evaluate(
         compute_signal_and_noise_grid, args=args, nchunks=params.nchunks
     )
 
     if params.adding == "no":
-        np.save(f"{grid_dir}/s_values.npy", s_values)
-        np.save(f"{grid_dir}/grid.npy", grid)
-        np.save(f"{grid_dir}/n_values.npy", n_values)
+        np.save(f"{grid_dir}/res.npy", res)
     elif params.adding == "yes":
-        np.save(f"{grid_dir}/s_values_add.npy", s_values)
-        np.save(f"{grid_dir}/n_values_add.npy", n_values)
+        np.save(f"{grid_dir}/res_add.npy", res)
+        prev = np.load(f"{grid_dir}/res.npy")
+        res[:, 6] += prev[:, 6]  # signal
+        res[:, 7] = np.sqrt(res[:, 6]**2 + prev[:, 6]**2)  # noise
+        res[:, 8] = - res[:, 6] / res[:, 7]  # recompute SNR
+        np.save(f"{grid_dir}/res_new.npy", res)
 
-        s_values_prev = np.load(f"{grid_dir}/s_values.npy")
-        n_values_prev = np.load(f"{grid_dir}/n_values.npy")
-        s_values_new = s_values_prev + s_values
-        n_values_new = np.sqrt(n_values_prev**2 + n_values**2)
-        np.save(f"{grid_dir}/s_values_new.npy", s_values_new)
-        np.save(f"{grid_dir}/n_values_new.npy", n_values_new)
+    # Sort on the SNR column and store the q best results
+    ind = np.argsort(res[:, 8])
+    best = res[ind[: params.q]]
+    # put SNR as the first column and remove signal & noise
+    best = np.concatenate([best[:, 8:], best[:, :6]], axis=1)
+    np.save(f"{values_dir}/res_grid.npy", best)

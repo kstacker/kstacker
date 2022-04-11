@@ -26,6 +26,51 @@ def get_image_suffix(method):
         raise ValueError(f"invalid method {method}")
 
 
+def reject_invalid_orbits(grid, m0):
+    a, e, t0, omega, i, theta_0 = grid.T
+
+    # precompute some comparisons
+    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
+    e_null = np.isclose(e, 0)
+    theta_non_null = ~np.isclose(theta_0, 0)
+    omega_non_null = ~np.isclose(omega, 0)
+
+    print("Rejecting invalid orbits:")
+    rej = t0 <= -np.sqrt((a**3.0) / m0)
+    nrej = np.count_nonzero(rej)
+    if nrej:
+        print(f"- {nrej:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
+
+    rej2 = i_0_pi & theta_non_null
+    nrej2 = np.count_nonzero(rej2)
+    rej |= rej2
+    if nrej2:
+        print(f"- {nrej2:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
+
+    # if e == 0. and (theta0 != 0. or omega !=0.):
+    #    # JE NE COMPREND PAS CETTE SOLUTION DE LOUIS-XAVIER !!
+    #    print('One orbit rejected because e == 0. and (theta0 != 0. or omega !=0.)')
+    #    return True
+
+    rej2 = e_null & theta_non_null
+    nrej2 = np.count_nonzero(rej2)
+    rej |= rej2
+    if nrej2:
+        print(f"- {nrej2:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
+
+    rej2 = (e_null & i_0_pi) & (theta_non_null | omega_non_null)
+    nrej2 = np.count_nonzero(rej2)
+    rej |= rej2
+    if nrej2:
+        print(
+            f"- {nrej2:,} rejected because "
+            "(e = 0 and (i = 0 or i = 3.14)) and (theta0 != 0 or omega != 0)"
+        )
+
+    print(f"Rejecting {np.count_nonzero(rej):,} orbits out of {grid.shape[0]:,}")
+    return rej
+
+
 def compute_signal_and_noise_grid(
     x,
     ts,
@@ -202,10 +247,14 @@ class Grid:
         lrange = self.ranges()
         grid = np.mgrid[lrange]
 
-        # obtain an array of parameters that is iterable by a map-like callable
-        inpt_shape = grid.shape
-        grid = np.reshape(grid, (inpt_shape[0], np.prod(inpt_shape[1:]))).T
-        print("Grid shape:", grid.shape)
+        # reshape grid to a 2D array: Norbits x ('a', 'e', 't0', 'omega', 'i', 'theta_0')
+        grid = grid.reshape(grid.shape[0], -1).T
+        print(f"Grid shape: {grid.shape[0]:,} x {grid.shape[1]}")
+
+        # skip invalid/redundant orbits
+        m0 = self._params["m0"]
+        rej = reject_invalid_orbits(grid, m0)
+        grid = grid[~rej]
 
         Jout = []
         for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
@@ -213,9 +262,8 @@ class Grid:
             Jout.append(func(chunk, *args))
 
         Jout = np.concatenate(Jout, axis=1)
-        Jout = np.reshape(Jout, (-1,) + inpt_shape[1:])
-        grid = np.reshape(grid.T, inpt_shape)
-        return grid, Jout
+        snr = - Jout[0] / Jout[1]
+        return np.concatenate([grid, Jout.T, snr[:, None]], axis=1)
 
 
 class Params:
