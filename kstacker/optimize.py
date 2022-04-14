@@ -145,7 +145,7 @@ def evaluate(
             # background (using pre-computed background profile)
             if params.method == "convolve":
                 sig = photometry_preprocessed(
-                    images[k], position[k], params.upsampling_factor
+                    images[k], position[k, 0], position[k, 1], params.upsampling_factor
                 )
             elif params.method == "aperture":
                 sig = photometry(images[k], position[k], 2 * params.fwhm)
@@ -216,7 +216,8 @@ def brute_force(params):
     img_suffix = get_image_suffix(params.method)
     for k in range(nimg):
         i = k + p_prev
-        images.append(fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits"))
+        im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
+        images.append(im.astype('float', order='C', copy=False))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 
