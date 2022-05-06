@@ -9,7 +9,7 @@ from .imagerie import photometry, photometry_preprocessed
 from .orbit import orbit as orb
 
 
-def create_output_dir(path, remove_if_exists=True):
+def create_output_dir(path):
     if os.path.exists(path):
         shutil.rmtree(path)
     os.mkdir(path)

@@ -169,8 +169,8 @@ def brute_force(params):
     profile_dir = params.get_path("profile_dir")
     grid_dir = params.get_path("grid_dir")
     values_dir = params.get_path("values_dir")
-    create_output_dir(grid_dir, remove_if_exists=False)
-    create_output_dir(values_dir, remove_if_exists=False)
+    create_output_dir(grid_dir)
+    create_output_dir(values_dir)
 
     # total time of the observation (years)
     total_time = float(params["total_time"])
