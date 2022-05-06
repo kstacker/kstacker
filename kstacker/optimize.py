@@ -7,7 +7,7 @@ is used.
 import h5py
 import numpy as np
 from astropy.io import fits
-from astropy.table import Table, vstack
+from astropy.table import Table
 
 from .imagerie import photometry, photometry_preprocessed
 from .orbit import orbit
@@ -21,22 +21,23 @@ __status__ = "Development"
 def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     a, e, t0 = orbital_grid.T
     omega, i, theta_0 = projection_grid.T
-    norbits = orbital_grid.shape[0] * projection_grid.shape[0]
+    proj_shape = projection_grid.shape[0]
+    norbits = orbital_grid.shape[0] * proj_shape
 
     print("Rejecting invalid orbits:")
     print(f"- {norbits:,} orbits before rejection")
     rej = t0 <= -np.sqrt((a**3.0) / m0)
-    nrej = np.count_nonzero(rej)
+    nrej = np.count_nonzero(rej) * proj_shape
     if nrej:
-        print(f"- {nrej * projection_grid.shape[0]:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
+        print(f"- {nrej:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
         orbital_grid = orbital_grid[~rej]
 
     i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
     theta_non_null = ~np.isclose(theta_0, 0)
     rej = i_0_pi & theta_non_null
-    nrej = np.count_nonzero(rej)
+    nrej = np.count_nonzero(rej) * proj_shape
     if nrej:
-        print(f"- {nrej * projection_grid.shape[0]:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
+        print(f"- {nrej:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
         projection_grid = projection_grid[~rej]
 
     # if e == 0. and (theta0 != 0. or omega !=0.):
@@ -53,16 +54,17 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     theta_non_null = ~np.isclose(theta_0, 0)
     omega_non_null = ~np.isclose(omega, 0)
 
+    count_e_null = np.count_nonzero(np.isclose(e, 0))
     # e_null = np.isclose(e, 0)
     # rej2 = e_null & theta_non_null
     rej_proj = theta_non_null
-    nrej = np.count_nonzero(rej_proj)
+    nrej = np.count_nonzero(rej_proj) * count_e_null
     if nrej:
         print(f"- {nrej:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
 
     # rej2 = (e_null & i_0_pi) & (theta_non_null | omega_non_null)
     rej2 = i_0_pi & (theta_non_null | omega_non_null)
-    nrej = np.count_nonzero(rej2)
+    nrej = np.count_nonzero(rej2) * count_e_null
     rej_proj |= rej2
     if nrej:
         print(
@@ -121,7 +123,6 @@ def evaluate(
     omega = i = theta_0 = None
 
     res = []
-    res_names = ("orbit index", "projection index", "signal", "noise")
 
     for j in orbital_grid_index:
         signal, noise = [], []
@@ -167,17 +168,14 @@ def evaluate(
         # i.e. the orbit is completely out of the image) then snr=0
         noise[np.isnan(noise) | (noise == 0)] = 1
 
-        columns = [
-            np.full(signal.shape[0], j, dtype=dtype_index),
-            projection_grid_index[valid],
-            signal,
-            noise,
-        ]
-        res.append(Table(columns, names=res_names))
+        orbit_idx = np.full(signal.shape[0], j, dtype=dtype_index)
+        res.append([orbit_idx, projection_grid_index[valid], signal, noise])
 
-    res = vstack(res)
-    res["snr"] = -res["signal"] / res["noise"]
-    return res
+    orbit_idx, proj_idx, signal, noise = (np.concatenate(arr) for arr in zip(*res))
+    names = ("orbit index", "projection index", "signal", "noise")
+    t = Table([orbit_idx, proj_idx, signal, noise], names=names)
+    t["snr"] = -t["signal"] / t["noise"]
+    return t
 
     # Jout = []
     # for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
