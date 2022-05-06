@@ -235,9 +235,15 @@ def brute_force(params):
         res.write(f"{grid_dir}/res_new.npy", path="Full SNR", append=True)
 
     # Sort on the SNR column and store the q best results
+    res.remove_columns(("signal", "noise"))
     ind = np.argsort(res["snr"])
     res = res[ind[: params.q]]
-    # TODO: add a,e,t0 etc.
-    # remove signal & noise
-    res.remove_columns(("signal", "noise"))
-    res.write(f"{values_dir}/res_grid.h5", path="Best solutions")
+
+    # Add back a,e,t0,omega,i,theta0 for the best solutions
+    with h5py.File(outfile, "r") as f:
+        orbital_grid = f["Orbital grid"][:][res["orbit index"]]
+        projection_grid = f["Projection grid"][:][res["projection index"]]
+
+    res = np.concatenate([orbital_grid, projection_grid, res["snr"][:, None]], axis=1)
+    with h5py.File(f"{values_dir}/res_grid.h5", "w") as f:
+        f["Best solutions"] = res
