@@ -24,11 +24,11 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     norbits = orbital_grid.shape[0] * projection_grid.shape[0]
 
     print("Rejecting invalid orbits:")
-    print(f"- {norbits} orbits before rejection")
+    print(f"- {norbits:,} orbits before rejection")
     rej = t0 <= -np.sqrt((a**3.0) / m0)
     nrej = np.count_nonzero(rej)
     if nrej:
-        print(f"- {nrej:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
+        print(f"- {nrej * projection_grid.shape[0]:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
         orbital_grid = orbital_grid[~rej]
 
     i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
@@ -36,37 +36,44 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     rej = i_0_pi & theta_non_null
     nrej = np.count_nonzero(rej)
     if nrej:
-        print(f"- {nrej:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
+        print(f"- {nrej * projection_grid.shape[0]:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
         projection_grid = projection_grid[~rej]
-
-    norbits = orbital_grid.shape[0] * projection_grid.shape[0]
-    print(f"- {norbits} orbits after rejection")
-    return orbital_grid, projection_grid
 
     # if e == 0. and (theta0 != 0. or omega !=0.):
     #    # JE NE COMPREND PAS CETTE SOLUTION DE LOUIS-XAVIER !!
     #    print('One orbit rejected because e == 0. and (theta0 != 0. or omega !=0.)')
     #    return True
 
+    # The two next conditions apply to e=0, but since the two orbital and
+    # projection grids are separate we keep the boolean condition array to
+    # apply it later.
+
+    omega, i, theta_0 = projection_grid.T
+    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
+    theta_non_null = ~np.isclose(theta_0, 0)
+    omega_non_null = ~np.isclose(omega, 0)
+
     # e_null = np.isclose(e, 0)
     # rej2 = e_null & theta_non_null
-    # nrej2 = np.count_nonzero(rej2)
-    # rej |= rej2
-    # if nrej2:
-    #     print(f"- {nrej2:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
+    rej_proj = theta_non_null
+    nrej = np.count_nonzero(rej_proj)
+    if nrej:
+        print(f"- {nrej:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
 
-    # omega_non_null = ~np.isclose(omega, 0)
     # rej2 = (e_null & i_0_pi) & (theta_non_null | omega_non_null)
-    # nrej2 = np.count_nonzero(rej2)
-    # rej |= rej2
-    # if nrej2:
-    #     print(
-    #         f"- {nrej2:,} rejected because "
-    #         "(e = 0 and (i = 0 or i = 3.14)) and (theta0 != 0 or omega != 0)"
-    #     )
+    rej2 = i_0_pi & (theta_non_null | omega_non_null)
+    nrej = np.count_nonzero(rej2)
+    rej_proj |= rej2
+    if nrej:
+        print(
+            f"- {nrej:,} rejected because "
+            "(e = 0 and (i = 0 or i = 3.14)) and (theta0 != 0 or omega != 0)"
+        )
 
-    # print(f"Rejecting {np.count_nonzero(rej):,} orbits out of {grid.shape[0]:,}")
-    # return rej
+    nrej = np.count_nonzero(rej_proj)
+    norbits = orbital_grid.shape[0] * projection_grid.shape[0] - nrej
+    print(f"- {norbits:,} orbits after rejection")
+    return orbital_grid, projection_grid, ~rej_proj
 
 
 def evaluate(
@@ -89,7 +96,7 @@ def evaluate(
     print(f"Projection grid: {projection_grid.shape[0]:,} x {projection_grid.shape[1]}")
 
     # skip invalid/redundant orbits
-    orbital_grid, projection_grid = reject_invalid_orbits(
+    orbital_grid, projection_grid, valid_proj = reject_invalid_orbits(
         orbital_grid, projection_grid, params.m0
     )
 
@@ -108,10 +115,6 @@ def evaluate(
     orbital_grid = None
 
     omega, i, theta_0 = projection_grid.T
-    theta_non_null = ~np.isclose(theta_0, 0)
-    omega_non_null = ~np.isclose(omega, 0)
-    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
-    rej = theta_non_null | (i_0_pi & (theta_non_null | omega_non_null))
     projection_grid_index = np.arange(projection_grid.shape[0], dtype=dtype_index)
     projection_grid = None
 
@@ -121,15 +124,12 @@ def evaluate(
     for j in orbital_grid_index:
         signal, noise = [], []
 
-        # reject more invalid orbits
-        if e_null[j]:
-            keep = ~rej
-        else:
-            keep = slice(None)
+        # reject more invalid orbits for the e=0 case
+        valid = valid_proj if e_null[j] else slice(None)
 
         for k in range(len(images)):
             position = orbit.project_position(
-                positions[j, k], omega[keep], i[keep], theta_0[keep]
+                positions[j, k], omega[valid], i[valid], theta_0[valid]
             ).T
             position *= params.scale
 
@@ -168,7 +168,7 @@ def evaluate(
 
         columns = [
             np.full(signal.shape[0], j, dtype=dtype_index),
-            projection_grid_index[keep],
+            projection_grid_index[valid],
             signal,
             noise,
         ]

@@ -104,7 +104,7 @@ class Grid:
             out.append(f"    {name}: {min_} → {max_}, {nsteps} steps")
         out.append(")")
         steps = [self.limits(name)[2] for name in self._grid_params]
-        out.append(f"{np.prod(steps)} orbits")
+        out.append(f"{np.prod(steps):,} orbits")
         return "\n".join(out)
 
     def limits(self, name):
@@ -134,6 +134,8 @@ class Grid:
 
     def make_2d_grid(self, params):
         lrange = [self.range(name) for name in params]
+        # TODO: use np.meshgrid(np.linspace(min, max, step), ...,
+        # indexing='ij') instead
         grid = np.mgrid[lrange].astype(np.float32)
         # reshape grid to a 2D array: Norbits x Nparams
         grid = grid.reshape(grid.shape[0], -1).T
