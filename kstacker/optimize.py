@@ -131,11 +131,13 @@ def evaluate(
             position = orbit.project_position(
                 positions[j, k], omega[keep], i[keep], theta_0[keep]
             ).T
-            xx, yy = position
+            position *= params.scale
+
+            # distance to the center
+            temp_d = np.hypot(position[0], position[1])
 
             # convert position into pixel in the image
-            position = params.scale * position + size // 2
-            temp_d = np.sqrt(xx**2 + yy**2) * params.scale  # distance to the center
+            position += size // 2
 
             # compute the signal by integrating flux on a PSF, and correct it for
             # background (using pre-computed background profile)
