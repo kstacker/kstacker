@@ -21,8 +21,10 @@ __status__ = "Development"
 def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     a, e, t0 = orbital_grid.T
     omega, i, theta_0 = projection_grid.T
+    norbits = orbital_grid.shape[0] * projection_grid.shape[0]
 
     print("Rejecting invalid orbits:")
+    print(f"- {norbits} orbits before rejection")
     rej = t0 <= -np.sqrt((a**3.0) / m0)
     nrej = np.count_nonzero(rej)
     if nrej:
@@ -36,6 +38,10 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     if nrej:
         print(f"- {nrej:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
         projection_grid = projection_grid[~rej]
+
+    norbits = orbital_grid.shape[0] * projection_grid.shape[0]
+    print(f"- {norbits} orbits after rejection")
+    return orbital_grid, projection_grid
 
     # if e == 0. and (theta0 != 0. or omega !=0.):
     #    # JE NE COMPREND PAS CETTE SOLUTION DE LOUIS-XAVIER !!
@@ -83,7 +89,9 @@ def evaluate(
     print(f"Projection grid: {projection_grid.shape[0]:,} x {projection_grid.shape[1]}")
 
     # skip invalid/redundant orbits
-    reject_invalid_orbits(orbital_grid, projection_grid, params.m0)
+    orbital_grid, projection_grid = reject_invalid_orbits(
+        orbital_grid, projection_grid, params.m0
+    )
 
     with h5py.File(outfile, "w") as f:
         f["Orbital grid"] = orbital_grid

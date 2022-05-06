@@ -103,6 +103,8 @@ class Grid:
             min_, max_, nsteps = self.limits(name)
             out.append(f"    {name}: {min_} → {max_}, {nsteps} steps")
         out.append(")")
+        steps = [self.limits(name)[2] for name in self._grid_params]
+        out.append(f"{np.prod(steps)} orbits")
         return "\n".join(out)
 
     def limits(self, name):
