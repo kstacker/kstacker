@@ -26,51 +26,6 @@ def get_image_suffix(method):
         raise ValueError(f"invalid method {method}")
 
 
-def reject_invalid_orbits(grid, m0):
-    a, e, t0, omega, i, theta_0 = grid.T
-
-    # precompute some comparisons
-    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
-    e_null = np.isclose(e, 0)
-    theta_non_null = ~np.isclose(theta_0, 0)
-    omega_non_null = ~np.isclose(omega, 0)
-
-    print("Rejecting invalid orbits:")
-    rej = t0 <= -np.sqrt((a**3.0) / m0)
-    nrej = np.count_nonzero(rej)
-    if nrej:
-        print(f"- {nrej:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
-
-    rej2 = i_0_pi & theta_non_null
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(f"- {nrej2:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
-
-    # if e == 0. and (theta0 != 0. or omega !=0.):
-    #    # JE NE COMPREND PAS CETTE SOLUTION DE LOUIS-XAVIER !!
-    #    print('One orbit rejected because e == 0. and (theta0 != 0. or omega !=0.)')
-    #    return True
-
-    rej2 = e_null & theta_non_null
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(f"- {nrej2:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
-
-    rej2 = (e_null & i_0_pi) & (theta_non_null | omega_non_null)
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(
-            f"- {nrej2:,} rejected because "
-            "(e = 0 and (i = 0 or i = 3.14)) and (theta0 != 0 or omega != 0)"
-        )
-
-    print(f"Rejecting {np.count_nonzero(rej):,} orbits out of {grid.shape[0]:,}")
-    return rej
-
-
 def compute_signal_and_noise_grid(
     x,
     ts,
@@ -218,52 +173,12 @@ class Grid:
         table = np.array(list(itertools.product(*ranges)), dtype=object)
         return table
 
-    def evaluate(self, func, args=(), nchunks=1):
-        """Evaluate a function on the grid.
-
-        Adapted from `scipy.optimize.brute`.
-
-        Parameters
-        ----------
-        func : callable
-            The objective function to be minimized. Must be in the
-            form ``f(x, *args)``, where ``x`` is the argument in
-            the form of a 1-D array and ``args`` is a tuple of any
-            additional fixed parameters.
-        args : tuple, optional
-            Any additional fixed parameters needed to completely specify
-            the function.
-
-        Returns
-        -------
-        grid : tuple
-            Representation of the evaluation grid. It has the same
-            length as `x0`.
-        Jout : ndarray
-            Function values at each point of the evaluation
-            grid, i.e., ``Jout = func(*grid)``.
-
-        """
-        lrange = self.ranges()
-        grid = np.mgrid[lrange]
-
-        # reshape grid to a 2D array: Norbits x ('a', 'e', 't0', 'omega', 'i', 'theta_0')
+    def make_2d_grid(self, params):
+        lrange = [self.range(name) for name in params]
+        grid = np.mgrid[lrange].astype(np.float32)
+        # reshape grid to a 2D array: Norbits x Nparams
         grid = grid.reshape(grid.shape[0], -1).T
-        print(f"Grid shape: {grid.shape[0]:,} x {grid.shape[1]}")
-
-        # skip invalid/redundant orbits
-        m0 = self._params["m0"]
-        rej = reject_invalid_orbits(grid, m0)
-        grid = grid[~rej]
-
-        Jout = []
-        for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
-            print(f"- chunk {i}/{nchunks}")
-            Jout.append(func(chunk, *args))
-
-        Jout = np.concatenate(Jout, axis=1)
-        snr = - Jout[0] / Jout[1]
-        return np.concatenate([grid, Jout.T, snr[:, None]], axis=1)
+        return grid
 
 
 class Params:
