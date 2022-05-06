@@ -192,8 +192,8 @@ def brute_force(params):
     profile_dir = params.get_path("profile_dir")
     grid_dir = params.get_path("grid_dir")
     values_dir = params.get_path("values_dir")
-    create_output_dir(grid_dir)
-    create_output_dir(values_dir)
+    create_output_dir(grid_dir, remove_if_exists=False)
+    create_output_dir(values_dir, remove_if_exists=False)
 
     # total time of the observation (years)
     total_time = float(params["total_time"])
@@ -205,7 +205,7 @@ def brute_force(params):
         ts = np.array(ts[p_prev:])
     else:
         ts = np.linspace(0, total_time, nimg + p_prev)
-    print("time_vector used: ", ts)
+    print("time_vector:", ts)
 
     size = int(params["n"])  # number of pixels in one direction
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
