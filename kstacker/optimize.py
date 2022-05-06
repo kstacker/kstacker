@@ -106,7 +106,6 @@ def evaluate(
 
     # solve kepler equation on the a/e/t0 grid
     positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
-
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.transpose(positions)
 
@@ -118,6 +117,9 @@ def evaluate(
     projection_grid_index = np.arange(projection_grid.shape[0], dtype=dtype_index)
     projection_grid = None
 
+    proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
+    omega = i = theta_0 = None
+
     res = []
     res_names = ("orbit index", "projection index", "signal", "noise")
 
@@ -128,9 +130,7 @@ def evaluate(
         valid = valid_proj if e_null[j] else slice(None)
 
         for k in range(len(images)):
-            position = orbit.project_position2(
-                positions[j, k], omega[valid], i[valid], theta_0[valid]
-            ).T
+            position = np.dot(proj_matrices[valid], positions[j, k]).T
             position *= params.scale
 
             # distance to the center

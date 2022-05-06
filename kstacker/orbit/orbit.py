@@ -140,18 +140,27 @@ def project_position(position, omega, i, theta_0):
         return vector
 
 
-def project_position2(position, omega, i, theta_0):
+def compute_projection_matrices(omega, i, theta_0):
     """
-    A function that projects the position of the planet initially given as a 2d
-    vector in the orbital reference frame in the CCD frame
+    Compute the matrices to project the position of the planet initially
+    given as a 2d vector in the orbital reference frame in the CCD frame.
 
-    @param float[2]: XY position in the orbital reference frame
-    @param float omega: longitude of the ascending node, counted from North axis, in (North, West, Earth) coordinate system (in rad)
-    @param float i: inclination of the orbital plane, counted from sky plane (in rad)
-    @param float theta_0: argument of the periapsis (counted from line of nodes, in rad)
-    @return float[2]: XY position in the observer frame projected along Z vector
+    Parameters
+    ----------
+    omega : array
+        Longitude of the ascending node, counted from North axis, in
+        (North, West, Earth) coordinate system (in rad).
+    i : array
+        Inclination of the orbital plane, counted from sky plane (in rad).
+    theta_0 : array
+        Argument of the periapsis (counted from line of nodes, in rad).
+
+    Returns
+    -------
+    array:
+        (N, 2, 2) array with the matrix for each value of (omega, i, theta_0).
+
     """
-
     cos_omega = np.cos(omega)
     sin_omega = np.sin(omega)
     cos_theta0 = np.cos(theta_0)
@@ -167,10 +176,5 @@ def project_position2(position, omega, i, theta_0):
     ])
     # fmt: on
 
-    vector = np.dot(np.rollaxis(rot, 2), position)
-
-    if vector.shape[0] == 1:
-        # return (x, y) when the input contains only one position
-        return vector[0]
-    else:
-        return vector
+    rot = np.rollaxis(rot, 2)
+    return rot
