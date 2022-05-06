@@ -129,36 +129,37 @@ def evaluate(
         # reject more invalid orbits for the e=0 case
         valid = valid_proj if e_null[j] else slice(None)
 
+        # project positions -> (Nimages, 2, Nvalid)
+        position = np.dot(proj_matrices[valid], positions[j].T).T
+        position *= params.scale
+
+        # distance to the center
+        temp_d = np.hypot(position[:, 0, :], position[:, 1, :])
+
+        # convert position into pixel in the image
+        position += size // 2
+
         for k in range(len(images)):
-            position = np.dot(proj_matrices[valid], positions[j, k]).T
-            position *= params.scale
-
-            # distance to the center
-            temp_d = np.hypot(position[0], position[1])
-
-            # convert position into pixel in the image
-            position += size // 2
-
             # compute the signal by integrating flux on a PSF, and correct it for
             # background (using pre-computed background profile)
             if params.method == "convolve":
                 sig = photometry_preprocessed(
-                    images[k], position, params.upsampling_factor
+                    images[k], position[k], params.upsampling_factor
                 )
             elif params.method == "aperture":
-                sig = photometry(images[k], position, 2 * params.fwhm)
+                sig = photometry(images[k], position[k], 2 * params.fwhm)
             else:
                 raise ValueError(f"invalid method {params.method}")
 
-            sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
+            sig -= np.interp(temp_d[k], x_profile, bkg_profiles[k])
 
             if params.r_mask is not None:
-                sig[temp_d <= params.r_mask] = 0.0
+                sig[temp_d[k] <= params.r_mask] = 0.0
 
             signal.append(sig)
 
             # get noise at position using pre-computed radial noise profil
-            noise.append(np.interp(temp_d, x_profile, noise_profiles[k]))
+            noise.append(np.interp(temp_d[k], x_profile, noise_profiles[k]))
 
         signal = np.nansum(signal, axis=0)
         noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
