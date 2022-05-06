@@ -128,7 +128,7 @@ def evaluate(
         valid = valid_proj if e_null[j] else slice(None)
 
         for k in range(len(images)):
-            position = orbit.project_position(
+            position = orbit.project_position2(
                 positions[j, k], omega[valid], i[valid], theta_0[valid]
             ).T
             position *= params.scale

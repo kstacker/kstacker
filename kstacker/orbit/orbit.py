@@ -138,3 +138,39 @@ def project_position(position, omega, i, theta_0):
         return vector[0]
     else:
         return vector
+
+
+def project_position2(position, omega, i, theta_0):
+    """
+    A function that projects the position of the planet initially given as a 2d
+    vector in the orbital reference frame in the CCD frame
+
+    @param float[2]: XY position in the orbital reference frame
+    @param float omega: longitude of the ascending node, counted from North axis, in (North, West, Earth) coordinate system (in rad)
+    @param float i: inclination of the orbital plane, counted from sky plane (in rad)
+    @param float theta_0: argument of the periapsis (counted from line of nodes, in rad)
+    @return float[2]: XY position in the observer frame projected along Z vector
+    """
+
+    cos_omega = np.cos(omega)
+    sin_omega = np.sin(omega)
+    cos_theta0 = np.cos(theta_0)
+    sin_theta0 = np.sin(theta_0)
+    cos_i = np.cos(i)
+
+    # fmt: off
+    rot = np.array([
+        [cos_omega * cos_theta0 - sin_omega * sin_theta0 * cos_i,
+         -cos_omega * sin_theta0 - sin_omega * cos_theta0 * cos_i],
+        [sin_omega * cos_theta0 + cos_omega * sin_theta0 * cos_i,
+         -sin_omega * sin_theta0 + cos_omega * cos_theta0 * cos_i],
+    ])
+    # fmt: on
+
+    vector = np.dot(np.rollaxis(rot, 2), position)
+
+    if vector.shape[0] == 1:
+        # return (x, y) when the input contains only one position
+        return vector[0]
+    else:
+        return vector
