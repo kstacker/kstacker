@@ -104,8 +104,14 @@ def evaluate(
     positions = np.transpose(positions)
 
     orbital_grid_index = np.arange(orbital_grid.shape[0], dtype=dtype_index)
+    e_null = np.isclose(orbital_grid[:, 1], 0)
     orbital_grid = None
+
     omega, i, theta_0 = projection_grid.T
+    theta_non_null = ~np.isclose(theta_0, 0)
+    omega_non_null = ~np.isclose(omega, 0)
+    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
+    rej = theta_non_null | (i_0_pi & (theta_non_null | omega_non_null))
     projection_grid_index = np.arange(projection_grid.shape[0], dtype=dtype_index)
     projection_grid = None
 
@@ -114,8 +120,17 @@ def evaluate(
 
     for j in orbital_grid_index:
         signal, noise = [], []
+
+        # reject more invalid orbits
+        if e_null[j]:
+            keep = ~rej
+        else:
+            keep = slice(None)
+
         for k in range(len(images)):
-            position = orbit.project_position(positions[j, k], omega, i, theta_0).T
+            position = orbit.project_position(
+                positions[j, k], omega[keep], i[keep], theta_0[keep]
+            ).T
             xx, yy = position
 
             # convert position into pixel in the image
@@ -151,7 +166,7 @@ def evaluate(
 
         columns = [
             np.full(signal.shape[0], j, dtype=dtype_index),
-            projection_grid_index,
+            projection_grid_index[keep],
             signal,
             noise,
         ]
