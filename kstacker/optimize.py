@@ -64,58 +64,33 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
 
 
 def evaluate(
-    grid,
+    params,
     ts,
-    m0,
     size,
-    scale,
-    fwhm,
     images,
     x_profile,
     bkg_profiles,
     noise_profiles,
-    upsampling_factor,
-    r_mask,
-    method,
     outfile,
     nchunks=1,
     dtype_index=np.int32,
 ):
-    """Evaluate a function on the grid.
+    """Compute SNR for all the orbits."""
 
-    Adapted from `scipy.optimize.brute`.
-
-    Parameters
-    ----------
-    args : tuple, optional
-        Any additional fixed parameters needed to completely specify
-        the function.
-
-    Returns
-    -------
-    grid : tuple
-        Representation of the evaluation grid. It has the same
-        length as `x0`.
-    Jout : ndarray
-        Function values at each point of the evaluation
-        grid, i.e., ``Jout = func(*grid)``.
-
-    """
-
-    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
-    projection_grid = grid.make_2d_grid(("omega", "i", "theta_0"))
+    orbital_grid = params.grid.make_2d_grid(("a", "e", "t0"))
+    projection_grid = params.grid.make_2d_grid(("omega", "i", "theta_0"))
     print(f"Orbital grid: {orbital_grid.shape[0]:,} x {orbital_grid.shape[1]}")
     print(f"Projection grid: {projection_grid.shape[0]:,} x {projection_grid.shape[1]}")
 
     # skip invalid/redundant orbits
-    reject_invalid_orbits(orbital_grid, projection_grid, m0)
+    reject_invalid_orbits(orbital_grid, projection_grid, params.m0)
 
     with h5py.File(outfile, "w") as f:
         f["Orbital grid"] = orbital_grid
         f["Projection grid"] = projection_grid
 
     # solve kepler equation on the a/e/t0 grid
-    positions = orbit.positions_at_multiple_times(ts, orbital_grid, m0)
+    positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
 
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.transpose(positions)
@@ -136,22 +111,24 @@ def evaluate(
             xx, yy = position
 
             # convert position into pixel in the image
-            position = scale * position + size // 2
-            temp_d = np.sqrt(xx**2 + yy**2) * scale  # distance to the center
+            position = params.scale * position + size // 2
+            temp_d = np.sqrt(xx**2 + yy**2) * params.scale  # distance to the center
 
             # compute the signal by integrating flux on a PSF, and correct it for
             # background (using pre-computed background profile)
-            if method == "convolve":
-                sig = photometry_preprocessed(images[k], position, upsampling_factor)
-            elif method == "aperture":
-                sig = photometry(images[k], position, 2 * fwhm)
+            if params.method == "convolve":
+                sig = photometry_preprocessed(
+                    images[k], position, params.upsampling_factor
+                )
+            elif params.method == "aperture":
+                sig = photometry(images[k], position, 2 * params.fwhm)
             else:
-                raise ValueError(f"invalid method {method}")
+                raise ValueError(f"invalid method {params.method}")
 
             sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
 
-            if r_mask is not None:
-                sig[temp_d <= r_mask] = 0.0
+            if params.r_mask is not None:
+                sig[temp_d <= params.r_mask] = 0.0
 
             signal.append(sig)
 
@@ -229,19 +206,13 @@ def brute_force(params):
 
     # brute force
     res = evaluate(
-        params.grid,
+        params,
         ts,
-        params.m0,
         size,
-        params.scale,
-        params.fwhm,
         images,
         x_profile,
         bkg_profiles,
         noise_profiles,
-        params.upsampling_factor,
-        params.r_mask,
-        params.method,
         outfile,
         nchunks=params.nchunks,
     )
