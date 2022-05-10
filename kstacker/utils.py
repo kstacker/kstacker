@@ -4,7 +4,8 @@ import shutil
 import numpy as np
 import yaml
 
-from .imagerie import photometry, photometry_preprocessed
+from ._utils import photometry_preprocessed
+from .imagerie import photometry
 from .orbit import orbit as orb
 
 

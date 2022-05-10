@@ -9,7 +9,8 @@ import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 
-from .imagerie import photometry, photometry_preprocessed
+from ._utils import photometry_preprocessed
+from .imagerie import photometry
 from .orbit import orbit
 from .utils import create_output_dir, get_image_suffix
 
