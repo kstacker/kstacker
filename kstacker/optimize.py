@@ -217,7 +217,7 @@ def brute_force(params):
     for k in range(nimg):
         i = k + p_prev
         im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
-        images.append(im.astype('float', order='C', copy=False))
+        images.append(im.astype("float", order="C", copy=False))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 

@@ -13,8 +13,8 @@ import numpy as np
 import scipy.ndimage as ndi
 from photutils import CircularAperture, aperture_photometry
 
-from ._photometry import photometry_preprocessed
 from ..orbit import orbit as orb
+from ._photometry import photometry_preprocessed
 
 
 def photometry(image, position, diameter):
