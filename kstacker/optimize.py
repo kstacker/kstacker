@@ -9,8 +9,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 
-from ._utils import photometry_preprocessed
-from .imagerie import photometry
+from ._utils import compute_snr
 from .orbit import orbit
 from .utils import create_output_dir, get_image_suffix
 
@@ -107,67 +106,50 @@ def evaluate(
         f["Orbital grid"] = orbital_grid
         f["Projection grid"] = projection_grid
 
-    # solve kepler equation on the a/e/t0 grid
+    # solve kepler equation on the a/e/t0 grid for all images
     positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.transpose(positions)
 
+    # keep an index instead of the full grid (for memory purpose)
     orbital_grid_index = np.arange(orbital_grid.shape[0], dtype=dtype_index)
     e_null = np.isclose(orbital_grid[:, 1], 0)
     orbital_grid = None
 
+    # same for the projection grid
     omega, i, theta_0 = projection_grid.T
     projection_grid_index = np.arange(projection_grid.shape[0], dtype=dtype_index)
     projection_grid = None
 
+    # pre-compute the projection matrices
     proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
     omega = i = theta_0 = None
 
     res = []
 
     for j in orbital_grid_index:
-        signal, noise = [], []
-
         # reject more invalid orbits for the e=0 case
         valid = valid_proj if e_null[j] else slice(None)
+        proj_mat = proj_matrices[valid]
 
-        # project positions -> (Nimages, 2, Nvalid)
-        position = np.dot(proj_matrices[valid], positions[j].T).T
-        position *= params.scale
-
-        # distance to the center
-        temp_d = np.hypot(position[:, 0, :], position[:, 1, :])
-
-        # convert position into pixel in the image
-        position += size // 2
-
-        for k in range(len(images)):
-            # compute the signal by integrating flux on a PSF, and correct it for
-            # background (using pre-computed background profile)
-            if params.method == "convolve":
-                sig = photometry_preprocessed(
-                    images[k], position[k, 0], position[k, 1], params.upsampling_factor
-                )
-            elif params.method == "aperture":
-                sig = photometry(images[k], position[k], 2 * params.fwhm)
-            else:
-                raise ValueError(f"invalid method {params.method}")
-
-            sig -= np.interp(temp_d[k], x_profile, bkg_profiles[k])
-
-            if params.r_mask is not None:
-                sig[temp_d[k] <= params.r_mask] = 0.0
-
-            signal.append(sig)
-
-            # get noise at position using pre-computed radial noise profil
-            noise.append(np.interp(temp_d[k], x_profile, noise_profiles[k]))
-
-        signal = np.nansum(signal, axis=0)
-        noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbit is completely out of the image) then snr=0
-        noise[np.isnan(noise) | (noise == 0)] = 1
+        nvalid = proj_mat.shape[0]
+        if nvalid == 0:
+            continue
+        signal = np.zeros(nvalid)
+        noise = np.zeros(nvalid)
+        compute_snr(
+            images,
+            positions[j],
+            bkg_profiles,
+            noise_profiles,
+            proj_mat,
+            params.r_mask,
+            params.scale,
+            size,
+            params.upsampling_factor,
+            signal,
+            noise,
+        )
 
         orbit_idx = np.full(signal.shape[0], j, dtype=dtype_index)
         res.append([orbit_idx, projection_grid_index[valid], signal, noise])
@@ -221,6 +203,10 @@ def brute_force(params):
         images.append(im.astype("float", order="C", copy=False))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
+
+    images = np.array(images)
+    bkg_profiles = np.array(bkg_profiles)
+    noise_profiles = np.array(noise_profiles)
 
     # grid on which the brute force algorithm will be computed on one node/core
     print(repr(params.grid))

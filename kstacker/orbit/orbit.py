@@ -173,7 +173,7 @@ def compute_projection_matrices(omega, i, theta_0):
          -cos_omega * sin_theta0 - sin_omega * cos_theta0 * cos_i],
         [sin_omega * cos_theta0 + cos_omega * sin_theta0 * cos_i,
          -sin_omega * sin_theta0 + cos_omega * cos_theta0 * cos_i],
-    ])
+    ], dtype=np.float32)
     # fmt: on
 
     rot = np.rollaxis(rot, 2)
