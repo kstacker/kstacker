@@ -143,8 +143,7 @@ def evaluate(
         nvalid = proj_mat.shape[0]
         if nvalid == 0:
             continue
-        signal = np.zeros(nvalid)
-        noise = np.zeros(nvalid)
+        out = np.zeros((nvalid, 3))
         compute_snr(
             images,
             positions[j],
@@ -155,27 +154,16 @@ def evaluate(
             params.scale,
             size,
             params.upsampling_factor,
-            signal,
-            noise,
+            out,
         )
 
-        orbit_idx = np.full(signal.shape[0], j, dtype=dtype_index)
-        res.append([orbit_idx, projection_grid_index[valid], signal, noise])
+        orbit_idx = np.full(nvalid, j, dtype=dtype_index)
+        res.append([orbit_idx, projection_grid_index[valid], out])
 
-    orbit_idx, proj_idx, signal, noise = (np.concatenate(arr) for arr in zip(*res))
-    names = ("orbit index", "projection index", "signal", "noise")
-    t = Table([orbit_idx, proj_idx, signal, noise], names=names)
-    t["snr"] = -t["signal"] / t["noise"]
+    orbit_idx, proj_idx, out = (np.concatenate(arr) for arr in zip(*res))
+    names = ("orbit index", "projection index", "signal", "noise", "snr")
+    t = Table([orbit_idx, proj_idx, out[:, 0], out[:, 1], out[:, 2]], names=names)
     return t
-
-    # Jout = []
-    # for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
-    #     print(f"- chunk {i}/{nchunks}")
-    #     Jout.append(compute_signal_and_noise_grid())
-
-    # Jout = np.concatenate(Jout, axis=1)
-    # snr = -Jout[0] / Jout[1]
-    # return np.concatenate([grid, Jout.T, snr[:, None]], axis=1)
 
 
 def brute_force(params, dry_run=False):

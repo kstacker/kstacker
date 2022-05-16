@@ -73,8 +73,7 @@ def compute_snr(double[:,:,:] images,
                 double scale,
                 int size,
                 int upsampling_factor,
-                double[:] out_signal,
-                double[:] out_noise):
+                double[:,:] out):
 
     cdef:
         float[:,:] proj_mat
@@ -120,12 +119,15 @@ def compute_snr(double[:,:,:] images,
                 # background profile)
                 signal += images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d)
 
-                # add noise using pre-computed radial noise profil
+                # add noise using pre-computed radial noise profile
                 noise += interp(&noise_profiles[k, 0], temp_d)**2
 
-        out_signal[i] = signal
-        out_noise[i] = sqrt(noise)
-
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbit is completely out of the image) then snr=0
-        # noise[np.isnan(noise) | (noise == 0)] = 1
+        noise = sqrt(noise)
+        out[i, 0] = signal
+        out[i, 1] = noise
+        if noise == 0:
+            # if the value of total noise is 0 (i.e. all values of noise are 0,
+            # i.e. the orbit is completely out of the image) then snr=0
+            out[i, 2] = 0
+        else:
+            out[i, 2] = - signal / noise
