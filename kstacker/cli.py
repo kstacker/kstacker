@@ -32,6 +32,9 @@ def main():
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
     sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_opt.add_argument(
+        "--dry-run", action="store_true", help="do not run computation"
+    )
     sub_opt.set_defaults(func=optimize)
 
     sub_reopt = subparsers.add_parser(
@@ -58,7 +61,7 @@ def noise_profiles(args):
 
 def optimize(args):
     params = Params.read(args.parameter_file)
-    brute_force(params)
+    brute_force(params, dry_run=args.dry_run)
 
 
 def reoptimize(args):
