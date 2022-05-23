@@ -113,7 +113,7 @@ def evaluate(
     # solve kepler equation on the a/e/t0 grid for all images
     positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
-    positions = np.transpose(positions)
+    positions = np.ascontiguousarray(np.transpose(positions))
 
     norbits = orbital_grid.shape[0]
     e_null = np.isclose(orbital_grid[:, 1], 0)
@@ -121,6 +121,7 @@ def evaluate(
     # pre-compute the projection matrices
     omega, i, theta_0 = projection_grid.T
     proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
+    proj_matrices = np.ascontiguousarray(proj_matrices)
     omega = i = theta_0 = None
 
     with h5py.File(outfile, "w") as f:
@@ -153,14 +154,13 @@ def evaluate(
             )
 
             # Sort by SNR
-            # FIXME np.argpartition instead?
-            ind = np.argsort(out[:, 2])[:nbest]
+            ind = np.argpartition(out[:, 2], nbest)[:nbest]
             out = out[ind]
-            projection_grid[valid][ind]
-            data[j * nbest : (j + 1) * nbest] = np.concatenate(
+            out_full = np.concatenate(
                 [np.tile(orbital_grid[j], (100, 1)), projection_grid[valid][ind], out],
                 axis=1,
             )
+            data[j * nbest : (j + 1) * nbest] = out_full
 
 
 def brute_force(params, dry_run=False):

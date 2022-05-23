@@ -64,16 +64,16 @@ cdef inline double interp(double arr[], double x) nogil:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def compute_snr(double[:,:,:] images,
-                double[:,:] positions,
-                double[:,:] bkg_profiles,
-                double[:,:] noise_profiles,
-                float[:,:,:] proj_matrices,
+def compute_snr(double[:,:,::1] images,
+                double[:,::1] positions,
+                double[:,::1] bkg_profiles,
+                double[:,::1] noise_profiles,
+                float[:,:,::1] proj_matrices,
                 double r_mask,
                 double scale,
                 int size,
                 int upsampling_factor,
-                double[:,:] out):
+                double[:,::1] out):
 
     cdef:
         float[:,:] proj_mat
