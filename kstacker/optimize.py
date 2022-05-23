@@ -124,12 +124,27 @@ def evaluate(
     proj_matrices = np.ascontiguousarray(proj_matrices)
     omega = i = theta_0 = None
 
+    # Save results every nsave iterations
+    nsave = min(norbits, 10_000)
+    isave = 0
+    idata = 0
+    out_full = np.empty((nbest * nsave, 9), dtype=np.float32)
+
     with h5py.File(outfile, "w") as f:
         f["Orbital grid"] = orbital_grid
         f["Projection grid"] = projection_grid
         data = f.create_dataset(
             "DATA", dtype=np.float32, shape=(norbits * nbest, 9), chunks=(nbest, 9)
         )
+
+        # For each iteration:
+        # - compute the SNR for 'nvalid' projections
+        # - keep the 'nbest' best results
+        # Then:
+        # - concatenate the results (a, e, t0, omega, i, theta0, signal, noise,
+        #   snr) in memory for 'nsave' iterations (in 'out_full') to avoid to
+        #   many small writes
+        # - every 'nsave' iterations, save 'out_full' to the HDF5 file
 
         for j in range(norbits):
             # reject more invalid orbits for the e=0 case
@@ -155,12 +170,25 @@ def evaluate(
 
             # Sort by SNR
             ind = np.argpartition(out[:, 2], nbest)[:nbest]
-            out = out[ind]
-            out_full = np.concatenate(
-                [np.tile(orbital_grid[j], (100, 1)), projection_grid[valid][ind], out],
-                axis=1,
-            )
-            data[j * nbest : (j + 1) * nbest] = out_full
+
+            # Save best results in out_full
+            sl = slice(isave * nbest, (isave + 1) * nbest)
+            out_full[sl, :3] = orbital_grid[j]  # a, e, t0
+            out_full[sl, 3:6] = projection_grid[valid][ind]  # omega, i, theta0
+            out_full[sl, 6:] = out[ind]  # signal, noise, snr
+            isave += 1
+
+            if isave == nsave:
+                # write to disk
+                data[idata * nbest * nsave : (idata + 1) * nbest * nsave] = out_full
+                idata += 1
+                isave = 0
+
+        if isave > 0:
+            # write the remaining orbits (isave < nsave) to disk
+            istart = idata * nbest * nsave
+            size = isave * nbest
+            data[istart : istart + size] = out_full[:size]
 
 
 def brute_force(params, dry_run=False):
