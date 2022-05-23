@@ -7,7 +7,6 @@ is used.
 import h5py
 import numpy as np
 from astropy.io import fits
-from astropy.table import Table
 
 from ._utils import compute_snr
 from .orbit import orbit
@@ -91,6 +90,7 @@ def evaluate(
     bkg_profiles,
     noise_profiles,
     outfile,
+    nbest,
     nchunks=1,
     dtype_index=np.int32,
     dry_run=False,
@@ -110,60 +110,57 @@ def evaluate(
     if dry_run:
         return
 
-    with h5py.File(outfile, "w") as f:
-        f["Orbital grid"] = orbital_grid
-        f["Projection grid"] = projection_grid
-
     # solve kepler equation on the a/e/t0 grid for all images
     positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.transpose(positions)
 
-    # keep an index instead of the full grid (for memory purpose)
-    orbital_grid_index = np.arange(orbital_grid.shape[0], dtype=dtype_index)
+    norbits = orbital_grid.shape[0]
     e_null = np.isclose(orbital_grid[:, 1], 0)
-    orbital_grid = None
-
-    # same for the projection grid
-    omega, i, theta_0 = projection_grid.T
-    projection_grid_index = np.arange(projection_grid.shape[0], dtype=dtype_index)
-    projection_grid = None
 
     # pre-compute the projection matrices
+    omega, i, theta_0 = projection_grid.T
     proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
     omega = i = theta_0 = None
 
-    res = []
-
-    for j in orbital_grid_index:
-        # reject more invalid orbits for the e=0 case
-        valid = valid_proj if e_null[j] else slice(None)
-        proj_mat = proj_matrices[valid]
-
-        nvalid = proj_mat.shape[0]
-        if nvalid == 0:
-            continue
-        out = np.zeros((nvalid, 3))
-        compute_snr(
-            images,
-            positions[j],
-            bkg_profiles,
-            noise_profiles,
-            proj_mat,
-            params.r_mask,
-            params.scale,
-            size,
-            params.upsampling_factor,
-            out,
+    with h5py.File(outfile, "w") as f:
+        f["Orbital grid"] = orbital_grid
+        f["Projection grid"] = projection_grid
+        data = f.create_dataset(
+            "DATA", dtype=np.float32, shape=(norbits * nbest, 9), chunks=(nbest, 9)
         )
 
-        orbit_idx = np.full(nvalid, j, dtype=dtype_index)
-        res.append([orbit_idx, projection_grid_index[valid], out])
+        for j in range(norbits):
+            # reject more invalid orbits for the e=0 case
+            valid = valid_proj if e_null[j] else slice(None)
+            proj_mat = proj_matrices[valid]
 
-    orbit_idx, proj_idx, out = (np.concatenate(arr) for arr in zip(*res))
-    names = ("orbit index", "projection index", "signal", "noise", "snr")
-    t = Table([orbit_idx, proj_idx, out[:, 0], out[:, 1], out[:, 2]], names=names)
-    return t
+            nvalid = proj_mat.shape[0]
+            if nvalid == 0:
+                continue
+            out = np.zeros((nvalid, 3))
+            compute_snr(
+                images,
+                positions[j],
+                bkg_profiles,
+                noise_profiles,
+                proj_mat,
+                params.r_mask,
+                params.scale,
+                size,
+                params.upsampling_factor,
+                out,
+            )
+
+            # Sort by SNR
+            # FIXME np.argpartition instead?
+            ind = np.argsort(out[:, 2])[:nbest]
+            out = out[ind]
+            projection_grid[valid][ind]
+            data[j * nbest : (j + 1) * nbest] = np.concatenate(
+                [np.tile(orbital_grid[j], (100, 1)), projection_grid[valid][ind], out],
+                axis=1,
+            )
 
 
 def brute_force(params, dry_run=False):
@@ -213,7 +210,7 @@ def brute_force(params, dry_run=False):
         outfile = f"{grid_dir}/res_add.h5"
 
     # brute force
-    res = evaluate(
+    evaluate(
         params,
         ts,
         size,
@@ -222,6 +219,7 @@ def brute_force(params, dry_run=False):
         bkg_profiles,
         noise_profiles,
         outfile,
+        params.q,
         nchunks=params.nchunks,
         dry_run=dry_run,
     )
@@ -229,25 +227,19 @@ def brute_force(params, dry_run=False):
     if dry_run:
         return
 
-    res.write(outfile, path="Full SNR", append=True)
-
-    if params.adding == "yes":
-        prev = Table.read(f"{grid_dir}/res.npy", path="Full SNR")
-        res["signal"] += prev["signal"]  # signal
-        res["noise"] = np.sqrt(res["noise"] ** 2 + prev["noise"] ** 2)  # noise
-        res["snr"] = -res["signal"] / res["noise"]  # recompute SNR
-        res.write(f"{grid_dir}/res_new.npy", path="Full SNR", append=True)
+    # if params.adding == "yes":
+    #     prev = Table.read(f"{grid_dir}/res.npy", path="Full SNR")
+    #     res["signal"] += prev["signal"]  # signal
+    #     res["noise"] = np.sqrt(res["noise"] ** 2 + prev["noise"] ** 2)  # noise
+    #     res["snr"] = -res["signal"] / res["noise"]  # recompute SNR
+    #     res.write(f"{grid_dir}/res_new.npy", path="Full SNR", append=True)
 
     # Sort on the SNR column and store the q best results
-    res.remove_columns(("signal", "noise"))
-    ind = np.argsort(res["snr"])
-    res = res[ind[: params.q]]
-
-    # Add back a,e,t0,omega,i,theta0 for the best solutions
     with h5py.File(outfile, "r") as f:
-        orbital_grid = f["Orbital grid"][:][res["orbit index"]]
-        projection_grid = f["Projection grid"][:][res["projection index"]]
+        res = f["DATA"][:]
 
-    res = np.concatenate([orbital_grid, projection_grid, res["snr"][:, None]], axis=1)
+    ind = np.argsort(res[:, 8])
+    res = res[ind]
+
     with h5py.File(f"{values_dir}/res_grid.h5", "w") as f:
-        f["Best solutions"] = res
+        f["Best solutions"] = res[: params.q]
