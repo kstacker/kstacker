@@ -129,10 +129,6 @@ class Grid:
         min_, max_, nsteps = self.limits(name)
         return slice(min_, max_, (max_ - min_) / nsteps)
 
-    def ranges(self):
-        """Return the ranges for all grid params."""
-        return [self.range(name) for name in self._grid_params]
-
     def make_2d_grid(self, params):
         lrange = [self.range(name) for name in params]
         # TODO: use np.meshgrid(np.linspace(min, max, step), ...,

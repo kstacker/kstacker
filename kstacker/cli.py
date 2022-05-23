@@ -33,6 +33,7 @@ def main():
     )
     sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
     sub_opt.add_argument("--num-threads", type=int, default=0, help="number of threads")
+    sub_opt.add_argument("--progress", action="store_true", help="show progress")
     sub_opt.add_argument(
         "--dry-run", action="store_true", help="do not run computation"
     )
@@ -62,7 +63,12 @@ def noise_profiles(args):
 
 def optimize(args):
     params = Params.read(args.parameter_file)
-    brute_force(params, dry_run=args.dry_run, num_threads=args.num_threads)
+    brute_force(
+        params,
+        dry_run=args.dry_run,
+        num_threads=args.num_threads,
+        show_progress=args.progress,
+    )
 
 
 def reoptimize(args):

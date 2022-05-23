@@ -4,6 +4,8 @@ part of the total grid (will be run on several nodes). A brute force algorithm
 is used.
 """
 
+import time
+
 import h5py
 import numpy as np
 from astropy.io import fits
@@ -95,6 +97,7 @@ def evaluate(
     dtype_index=np.int32,
     dry_run=False,
     num_threads=0,
+    show_progress=False,
 ):
     """Compute SNR for all the orbits."""
 
@@ -130,6 +133,7 @@ def evaluate(
     isave = 0
     idata = 0
     out_full = np.empty((nbest * nsave, 9), dtype=np.float32)
+    t0 = time.time()
 
     with h5py.File(outfile, "w") as f:
         f["Orbital grid"] = orbital_grid
@@ -185,6 +189,14 @@ def evaluate(
                 data[idata * nbest * nsave : (idata + 1) * nbest * nsave] = out_full
                 idata += 1
                 isave = 0
+                if show_progress:
+                    tt = time.time() - t0
+                    remaining = tt * (norbits / (idata * nsave) - 1)
+                    print(
+                        f"- {idata*nsave}/{norbits}, {tt:.2f} sec., remains"
+                        f" {remaining:.2f} sec.",
+                        flush=True,
+                    )
 
         if isave > 0:
             # write the remaining orbits (isave < nsave) to disk
@@ -193,7 +205,7 @@ def evaluate(
             data[istart : istart + size] = out_full[:size]
 
 
-def brute_force(params, dry_run=False, num_threads=0):
+def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     # name of the directory where one loads and saves the images and values
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
@@ -253,6 +265,7 @@ def brute_force(params, dry_run=False, num_threads=0):
         nchunks=params.nchunks,
         dry_run=dry_run,
         num_threads=num_threads,
+        show_progress=show_progress,
     )
 
     if dry_run:
