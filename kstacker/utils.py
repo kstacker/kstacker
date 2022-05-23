@@ -161,13 +161,13 @@ class Params:
         if attr in self._params:
             return self._params[attr]
         else:
-            raise KeyError
+            raise KeyError(f'parameter {attr} is not defined')
 
     def __getattr__(self, attr):
         if attr in self._params:
             return self._params[attr]
         else:
-            raise AttributeError
+            raise KeyError(f'parameter {attr} is not defined')
 
     @classmethod
     def read(cls, filename):
