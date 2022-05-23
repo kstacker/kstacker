@@ -94,6 +94,7 @@ def evaluate(
     nchunks=1,
     dtype_index=np.int32,
     dry_run=False,
+    num_threads=0,
 ):
     """Compute SNR for all the orbits."""
 
@@ -166,6 +167,7 @@ def evaluate(
                 size,
                 params.upsampling_factor,
                 out,
+                num_threads=num_threads,
             )
 
             # Sort by SNR
@@ -191,7 +193,7 @@ def evaluate(
             data[istart : istart + size] = out_full[:size]
 
 
-def brute_force(params, dry_run=False):
+def brute_force(params, dry_run=False, num_threads=0):
     # name of the directory where one loads and saves the images and values
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
@@ -250,6 +252,7 @@ def brute_force(params, dry_run=False):
         params.q,
         nchunks=params.nchunks,
         dry_run=dry_run,
+        num_threads=num_threads,
     )
 
     if dry_run:

@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 from Cython.Build import cythonize
-
-# from extension_helpers import add_openmp_flags_if_available
+from extension_helpers import add_openmp_flags_if_available
 from setuptools import Extension, setup
 
 extension = Extension(
@@ -13,7 +12,7 @@ extension = Extension(
     define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
 )
 
-# add_openmp_flags_if_available(extension)
+add_openmp_flags_if_available(extension)
 
 compiler_directives = {}
 

@@ -32,6 +32,7 @@ def main():
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
     sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_opt.add_argument("--num-threads", type=int, default=0, help="number of threads")
     sub_opt.add_argument(
         "--dry-run", action="store_true", help="do not run computation"
     )
@@ -61,7 +62,7 @@ def noise_profiles(args):
 
 def optimize(args):
     params = Params.read(args.parameter_file)
-    brute_force(params, dry_run=args.dry_run)
+    brute_force(params, dry_run=args.dry_run, num_threads=args.num_threads)
 
 
 def reoptimize(args):
