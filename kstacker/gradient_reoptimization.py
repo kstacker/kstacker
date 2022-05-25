@@ -73,6 +73,31 @@ def compute_snr(x, *args):
     return -snr
 
 
+def plot_coadd(idx, coadded, x, params, outdir):
+    a, e, t0, omega, i, theta_0 = x
+    # plot the corresponding image and save it as a png (for quick view)
+    plt.figure()
+    plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
+    plt.colorbar()
+    xa, ya = orb.project_position(
+        orb.position(t0, a, e, t0, params.m0),
+        omega,
+        i,
+        theta_0,
+    )
+    xpix = params.n // 2 + params.scale * xa
+    ypix = params.n // 2 + params.scale * ya
+    # comment this line if you don't want to see where the planet is recombined:
+    # decalage 2 fwhm Antoine Schneeberger
+    plt.scatter(xpix - 2 * params.fwhm, ypix, color="b", marker=">")
+    # '.png' old format  #New save format: tiff who have deeeper dynamics
+    # to manipulate with imageJ Antoine Schneeberger
+    plt.savefig(f"{outdir}/fin_tiff/fin_{idx}.tiff")
+    plt.close()
+
+    # fits.writeto(f"{outdir}/pla/pla_extracted_{idx}.fits", coadded, overwrite=True)
+
+
 def sort_results(path, filename, col=1):
     """
     Sort the result file following a reference colone. by default the reference
@@ -113,10 +138,8 @@ def reoptimize_gradient(params):
     os.makedirs(f"{values_dir}/fin_tiff", exist_ok=True)
     os.makedirs(f"{values_dir}/orbites", exist_ok=True)
     os.makedirs(f"{values_dir}/single", exist_ok=True)
-    os.makedirs(f"{values_dir}/pla", exist_ok=True)
+    # os.makedirs(f"{values_dir}/pla", exist_ok=True)
 
-    m0 = params.m0
-    q = params.q
     size = params.n  # number of pixels
     nimg = params.p + params.p_prev  # number of timesteps
 
@@ -125,11 +148,10 @@ def reoptimize_gradient(params):
 
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
-    images, bkg_profiles, noise_profiles = [], [], []
 
+    images, bkg_profiles, noise_profiles = [], [], []
     for k in range(nimg):
-        im = fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits")
-        images.append(im)
+        images.append(fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits"))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
 
@@ -142,12 +164,12 @@ def reoptimize_gradient(params):
 
     output_file = open(f"{values_dir}/results.txt", "w")
     # Computation on the q best SNR on one node:
-    for k in range(q):
-        print(f"Reoptimizing minimum {k+1} of {q}")
+    for k in range(params.q):
+        print(f"Reoptimizing minimum {k+1} of {params.q}")
 
         args = (
             ts,
-            m0,
+            params.m0,
             size,
             params.scale,
             images,
@@ -173,86 +195,28 @@ def reoptimize_gradient(params):
         )
         x_best = opt_result.x
         snr_best = opt_result.fun
-        a_best, e_best, t0_best, omega_best, i_best, theta_0_best = x_best
         print(f"reopt: {x_best} => {snr_best:.2f}")
 
         # create combined images (for the q eme best SNR)
-        coadded = recombine_images(
-            images,
-            ts,
-            params.scale,
-            a_best,
-            e_best,
-            t0_best,
-            m0,
-            omega_best,
-            i_best,
-            theta_0_best,
-        )
+        coadded = recombine_images(images, ts, params.scale, params.m0, *x_best)
 
-        output_file.write(
-            str(snr_i)
-            + " "
-            + str(snr_best)
-            + " "
-            + str(a_best)
-            + " "
-            + str(e_best)
-            + " "
-            + str(t0_best)
-            + " "
-            + str(omega_best)
-            + " "
-            + str(i_best)
-            + " "
-            + str(theta_0_best)
-        )  # save
-        output_file.write("\n")
-
-        # plot the corresponding image and save it as a png (for quick view)
-        plt.figure(k + 1)
-        plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
-        plt.colorbar()
-        xa, ya = orb.project_position(
-            orb.position(t0_best, a_best, e_best, t0_best, m0),
-            omega_best,
-            i_best,
-            theta_0_best,
-        )
-        xpix = size // 2 + params.scale * xa
-        ypix = size // 2 + params.scale * ya
-        # comment this line if you don't want to see where the planet is recombined:
-        # decalage 2 fwhm Antoine Schneeberger
-        plt.scatter(xpix - 2 * params.fwhm, ypix, color="b", marker=">")
-        # '.png' old format  #New save format: tiff who have deeeper dynamics
-        # to manipulate with imageJ Antoine Schneeberger
-        plt.savefig(f"{values_dir}/fin_tiff/fin_{k}.tiff")
-        plt.close()
-
-        # extract small part for future ML algorithm
-        # xmin = np.min([xpix - 5, 0])
-        # xmax = np.max([xpix + 5, size])
-        # ymin = np.min([ypix - 5, 0])
-        # ymax = np.max([ypix + 5, size])
-        fits.writeto(
-            f"{values_dir}/pla/pla_extracted_{k}.fits", coadded, overwrite=True
-        )
-        # [xmin:xmax, ymin:ymax]) The crop of the image as put as here don't
-        # work, so it's commented until a solution is found Antoine Schneeberger
+        plot_coadd(k, coadded, x_best, params, values_dir)
 
         # also save it as a fits file
-        hdu = fits.PrimaryHDU(coadded.T)
-        hdulist = fits.HDUList([hdu])
-        hdulist.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", overwrite=True)
+        # FIXME: also saved in plot_coadd ? (but without transpose...)
+        fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
+
+        line = " ".join(str(_) for _ in [snr_i, snr_best, *x_best])
+        output_file.write(line + "\n")  # save
 
         # save full signal and noise values
         res = get_res(x, *args)
         np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
 
         # plot the orbits
-        # orbit.plot.plot_orbites(x_best, x0, m0, sim_name + "/orbites{k}")
-        # orbit.plot.plot_orbites2(ts, x_best, m0, ax, f"{values_dir}/orbites{k}")
-        plot_orbites2(ts, x_best, m0, ax, f"{values_dir}/orbites/orbites{k}")
+        # orbit.plot.plot_orbites(x_best, x0, params.m0, sim_name + "/orbites{k}")
+        # orbit.plot.plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites{k}")
+        plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites/orbites{k}")
 
         # If single_plot=='yes' a cross is ploted on each image where the
         # planet is found (by default no);
@@ -260,7 +224,7 @@ def reoptimize_gradient(params):
             for l in range(len(ts)):
                 plot_ontop(
                     x_best,
-                    m0,
+                    params.m0,
                     params.dist,
                     [ts[l]],
                     params.resol,
