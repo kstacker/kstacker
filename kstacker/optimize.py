@@ -127,7 +127,7 @@ def evaluate(
     omega = i = theta_0 = None
 
     # Save results every nsave iterations
-    nsave = min(norbits, 10_000)
+    nsave = min(norbits, 1_000)
     isave = 0
     idata = 0
     out_full = np.empty((nbest * nsave, 9), dtype=np.float32)
