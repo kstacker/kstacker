@@ -5,6 +5,7 @@ SNR with a gradient descent method (L-BFGS-B).
 
 import os
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize
@@ -143,8 +144,9 @@ def reoptimize_gradient(params):
     #         f"{values_dir}/res_grid{k}.npy", allow_pickle=True
     #     )
 
-    results = np.load(f"{values_dir}/res_grid.npy")
-    sorted_arg = np.argsort(results[:, 0])
+    with h5py.File(f"{values_dir}/res_grid.h5") as f:
+        # note: results are already sorted by decreasing SNR
+        results = f["Best solutions"][:]
 
     # define bounds
     bounds = params.grid.bounds()
@@ -168,7 +170,7 @@ def reoptimize_gradient(params):
         )
 
         # get orbit and snr value before reoptimization for the k-th best value
-        snr_i, *x = results[sorted_arg[k]]
+        *x, signal, noise, snr_i = results[k]
         print(f"init: {x} => {snr_i:.2f}")
 
         # Gradient re-optimization:
