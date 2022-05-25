@@ -125,24 +125,13 @@ def reoptimize_gradient(params):
 
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
-    images, images_nonan, bkg_profiles, noise_profiles = [], [], [], []
+    images, bkg_profiles, noise_profiles = [], [], []
 
     for k in range(nimg):
         im = fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits")
         images.append(im)
-        im[np.isnan(im)] = 0
-        images_nonan.append(im)
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
         noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
-
-    # gradient optimization
-    # Load all the SNR+orbital param  files, gather and re-sort
-    # ncores = params.ncores
-    # results = np.zeros([ncores * q, 7])
-    # for k in range(ncores):
-    #     results[k * q : (k + 1) * q, :] = np.load(
-    #         f"{values_dir}/res_grid{k}.npy", allow_pickle=True
-    #     )
 
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR
@@ -189,7 +178,7 @@ def reoptimize_gradient(params):
 
         # create combined images (for the q eme best SNR)
         coadded = recombine_images(
-            images_nonan,
+            images,
             ts,
             params.scale,
             a_best,

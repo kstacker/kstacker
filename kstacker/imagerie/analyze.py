@@ -127,7 +127,7 @@ def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
         im = derotate(images[k], ts[k], scale, a, e, t0, m, omega, i, theta_0)
         rot_images.append(im)
 
-    return np.mean(rot_images, axis=0)
+    return np.nanmean(rot_images, axis=0)
 
 
 def noise(image, r_int, r_ext):

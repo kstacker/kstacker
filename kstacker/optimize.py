@@ -87,7 +87,6 @@ def evaluate(
     ts,
     size,
     images,
-    x_profile,
     bkg_profiles,
     noise_profiles,
     outfile,
@@ -219,7 +218,6 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     print(repr(params.grid))
 
     size = int(params["n"])  # number of pixels in one direction
-    x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
     # load the images .fits or .txt and the noise profiles
     images, bkg_profiles, noise_profiles = [], [], []
@@ -246,7 +244,6 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
         ts,
         size,
         images,
-        x_profile,
         bkg_profiles,
         noise_profiles,
         outfile,
