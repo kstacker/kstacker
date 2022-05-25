@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize
 from astropy.io import fits
+from joblib import Parallel, delayed
 
 from .imagerie import photometry, recombine_images
 from .orbit import orbit as orb
@@ -98,36 +99,28 @@ def plot_coadd(idx, coadded, x, params, outdir):
     # fits.writeto(f"{outdir}/pla/pla_extracted_{idx}.fits", coadded, overwrite=True)
 
 
-def sort_results(path, filename, col=1):
-    """
-    Sort the result file following a reference colone. by default the reference
-    colone is the snr_gradient (col=1)
-    :param path: folder of the result file
-    :param filename: name of the result file
-    :param col: default 1 reference colone fort the sort.
-    :return: save the sort result file in the same folder as the result's folder
-    """
-    results = np.loadtxt(path + "/" + filename)
-    arg_sort = results[:, col].argsort()
-    Size = np.shape(results)
-    results_sort = np.zeros((Size[0], Size[1] + 1))
-    print(arg_sort)
-    l = 0
-    for arg in arg_sort:
-        results_sort[l, :] = np.append(arg, results[arg, :])
-        l = l + 1
-    np.savetxt(
-        f"{path}/results_sort.txt",
-        results_sort,
-        fmt="%5.0f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f",
-        header=(
-            "image_number , snr_brut_force , snr_gradient ,         a            e     "
-            "          t0                  omega               i               theta_0 "
-        ),
+def optimize_orbit(result, k, args, bounds):
+    # get orbit and snr value before reoptimization for the k-th best value
+    *x, signal, noise, snr_i = result
+
+    # Gradient re-optimization:
+    opt_result = scipy.optimize.minimize(
+        compute_snr,
+        x,
+        args=args,
+        method="L-BFGS-B",
+        bounds=bounds,
+        options={"gtol": 1e-5},
     )
+    x_best = opt_result.x
+    snr_best = opt_result.fun
+    print(f"init {k}: {x} => {snr_i:.2f}")
+    print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
+
+    return snr_i, snr_best, *x_best
 
 
-def reoptimize_gradient(params):
+def reoptimize_gradient(params, n_jobs=1):
 
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
@@ -162,41 +155,39 @@ def reoptimize_gradient(params):
     # define bounds
     bounds = params.grid.bounds()
 
-    output_file = open(f"{values_dir}/results.txt", "w")
-    # Computation on the q best SNR on one node:
+    args = (
+        ts,
+        params.m0,
+        size,
+        params.scale,
+        images,
+        params.fwhm,
+        x_profile,
+        bkg_profiles,
+        noise_profiles,
+        params.r_mask,
+    )
+
+    # Computation on the q best SNR
+    reopt = Parallel(n_jobs=n_jobs)(
+        delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(params.q)
+    )
+    # Sort values with the recomputed SNR
+    reopt = np.array(reopt)
+    reopt = reopt[np.argsort(reopt[:, 1])]
+    # Add index column
+    reopt = np.concatenate([np.arange(reopt.shape[0])[:, None], reopt], axis=1)
+    # Save
+    fmt = "%5.0f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f"
+    header = (
+        "image_number , snr_brut_force , snr_gradient ,         a            e     "
+        "          t0                  omega               i               theta_0 "
+    )
+    np.savetxt(f"{values_dir}/results_sort.txt", reopt, fmt=fmt, header=header)
+
     for k in range(params.q):
-        print(f"Reoptimizing minimum {k+1} of {params.q}")
-
-        args = (
-            ts,
-            params.m0,
-            size,
-            params.scale,
-            images,
-            params.fwhm,
-            x_profile,
-            bkg_profiles,
-            noise_profiles,
-            params.r_mask,
-        )
-
-        # get orbit and snr value before reoptimization for the k-th best value
-        *x, signal, noise, snr_i = results[k]
-        print(f"init: {x} => {snr_i:.2f}")
-
-        # Gradient re-optimization:
-        opt_result = scipy.optimize.minimize(
-            compute_snr,
-            x,
-            args=args,
-            method="L-BFGS-B",
-            bounds=bounds,
-            options={"gtol": 1e-5},
-        )
-        x_best = opt_result.x
-        snr_best = opt_result.fun
-        print(f"reopt: {x_best} => {snr_best:.2f}")
-
+        print(f"Make plots for solution {k+1}")
+        snr_i, snr_best, *x_best = reopt[k]
         # create combined images (for the q eme best SNR)
         coadded = recombine_images(images, ts, params.scale, params.m0, *x_best)
 
@@ -206,10 +197,8 @@ def reoptimize_gradient(params):
         # FIXME: also saved in plot_coadd ? (but without transpose...)
         fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
 
-        line = " ".join(str(_) for _ in [snr_i, snr_best, *x_best])
-        output_file.write(line + "\n")  # save
-
         # save full signal and noise values
+        x = results[k][:6]
         res = get_res(x, *args)
         np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
 
@@ -231,16 +220,5 @@ def reoptimize_gradient(params):
                     images[l],
                     f"{values_dir}/single/single_{k}fin_{l}",
                 )
-
-    output_file.close()
-
-    # for k in range(ncores):
-    #     if os.path.exists(f"{values_dir}/fun_values{k}.npy"):
-    #         os.remove(f"{values_dir}/fun_values{k}.npy")
-    #     if os.path.exists(f"{values_dir}/grid{k}.npy"):
-    #         os.remove(f"{values_dir}/grid{k}.npy")
-
-    # Sorting of the final results by SNR (after gradient)
-    sort_results(values_dir, "results.txt")
 
     print("Done!")
