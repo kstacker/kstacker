@@ -158,6 +158,15 @@ class Params:
         else:
             raise KeyError(f"parameter {attr} is not defined")
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["grid"]
+        return state
+
+    def __setstate__(self, state):
+        self._params = state["_params"]
+        self.grid = Grid(self._params)
+
     @classmethod
     def read(cls, filename):
         with open(filename) as f:

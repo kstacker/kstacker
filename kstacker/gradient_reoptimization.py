@@ -99,6 +99,42 @@ def plot_coadd(idx, coadded, x, params, outdir):
     # fits.writeto(f"{outdir}/pla/pla_extracted_{idx}.fits", coadded, overwrite=True)
 
 
+def make_plots(x_best, k, params, images, ts, values_dir, args):
+    print(f"Make plots for solution {k+1}")
+    # create combined images (for the q eme best SNR)
+    coadded = recombine_images(images, ts, params.scale, params.m0, *x_best)
+
+    plot_coadd(k, coadded, x_best, params, values_dir)
+
+    # also save it as a fits file
+    # FIXME: also saved in plot_coadd ? (but without transpose...)
+    fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
+
+    # save full signal and noise values
+    res = get_res(x_best, *args)
+    np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
+
+    # plot the orbits
+    ax = [params.xmin, params.xmax, params.ymin, params.ymax]
+    # orbit.plot.plot_orbites(x_best, x0, params.m0, sim_name + "/orbites{k}")
+    # orbit.plot.plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites{k}")
+    plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites/orbites{k}")
+
+    # If single_plot=='yes' a cross is ploted on each image where the
+    # planet is found (by default no);
+    if params.single_plot == "yes":
+        for l in range(len(ts)):
+            plot_ontop(
+                x_best,
+                params.m0,
+                params.dist,
+                [ts[l]],
+                params.resol,
+                images[l],
+                f"{values_dir}/single/single_{k}fin_{l}",
+            )
+
+
 def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
@@ -139,7 +175,6 @@ def reoptimize_gradient(params, n_jobs=1):
     # time of observations (years)
     ts = params.get_ts()
 
-    ax = [params.xmin, params.xmax, params.ymin, params.ymax]
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
     images, bkg_profiles, noise_profiles = [], [], []
@@ -183,42 +218,11 @@ def reoptimize_gradient(params, n_jobs=1):
         "image_number , snr_brut_force , snr_gradient ,         a            e     "
         "          t0                  omega               i               theta_0 "
     )
-    np.savetxt(f"{values_dir}/results_sort.txt", reopt, fmt=fmt, header=header)
+    np.savetxt(f"{values_dir}/results.txt", reopt, fmt=fmt, header=header)
 
-    for k in range(params.q):
-        print(f"Make plots for solution {k+1}")
-        snr_i, snr_best, *x_best = reopt[k]
-        # create combined images (for the q eme best SNR)
-        coadded = recombine_images(images, ts, params.scale, params.m0, *x_best)
-
-        plot_coadd(k, coadded, x_best, params, values_dir)
-
-        # also save it as a fits file
-        # FIXME: also saved in plot_coadd ? (but without transpose...)
-        fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
-
-        # save full signal and noise values
-        x = results[k][:6]
-        res = get_res(x, *args)
-        np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
-
-        # plot the orbits
-        # orbit.plot.plot_orbites(x_best, x0, params.m0, sim_name + "/orbites{k}")
-        # orbit.plot.plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites{k}")
-        plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites/orbites{k}")
-
-        # If single_plot=='yes' a cross is ploted on each image where the
-        # planet is found (by default no);
-        if params.single_plot == "yes":
-            for l in range(len(ts)):
-                plot_ontop(
-                    x_best,
-                    params.m0,
-                    params.dist,
-                    [ts[l]],
-                    params.resol,
-                    images[l],
-                    f"{values_dir}/single/single_{k}fin_{l}",
-                )
+    Parallel(n_jobs=n_jobs)(
+        delayed(make_plots)(reopt[k, 3:], k, params, images, ts, values_dir, args)
+        for k in range(params.q)
+    )
 
     print("Done!")
