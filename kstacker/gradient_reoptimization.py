@@ -106,27 +106,21 @@ def reoptimize_gradient(params):
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
     values_dir = params.get_path("values_dir")
-    os.makedirs(values_dir, exist_ok=True)
 
     # We sort the results in several directories
-    dir_path = values_dir
-    os.makedirs(f"{dir_path}/fin_fits", exist_ok=True)
-    os.makedirs(f"{dir_path}/fin_tiff", exist_ok=True)
-    os.makedirs(f"{dir_path}/orbites", exist_ok=True)
-    os.makedirs(f"{dir_path}/single", exist_ok=True)
-    os.makedirs(f"{dir_path}/pla", exist_ok=True)
+    os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
+    os.makedirs(f"{values_dir}/fin_tiff", exist_ok=True)
+    os.makedirs(f"{values_dir}/orbites", exist_ok=True)
+    os.makedirs(f"{values_dir}/single", exist_ok=True)
+    os.makedirs(f"{values_dir}/pla", exist_ok=True)
 
     m0 = params.m0
     q = params.q
     size = params.n  # number of pixels
     nimg = params.p + params.p_prev  # number of timesteps
 
-    # total time of the observation (years)
-    total_time = float(params["total_time"])
-    if total_time == 0:
-        ts = [float(x) for x in params["time"].split("+")]
-    else:
-        ts = np.linspace(0, total_time, nimg)
+    # time of observations (years)
+    ts = params.get_ts()
 
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
@@ -292,6 +286,6 @@ def reoptimize_gradient(params):
     #         os.remove(f"{values_dir}/grid{k}.npy")
 
     # Sorting of the final results by SNR (after gradient)
-    sort_results(dir_path, "results.txt")
+    sort_results(values_dir, "results.txt")
 
     print("Done!")

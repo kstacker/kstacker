@@ -9,21 +9,10 @@ from .imagerie import photometry
 from .orbit import orbit as orb
 
 
-def create_output_dir(path):
-    if os.path.exists(path):
+def create_output_dir(path, remove_if_exist=False):
+    if remove_if_exist and os.path.exists(path):
         shutil.rmtree(path)
-    os.mkdir(path)
-
-
-def get_image_suffix(method):
-    if method == "convolve":
-        print("Using pre-convolved images")
-        return "_resampled"
-    elif method == "aperture":
-        print("Using photutils apertures")
-        return "_preprocessed"
-    else:
-        raise ValueError(f"invalid method {method}")
+    os.makedirs(path, exist_ok=True)
 
 
 def compute_signal_and_noise_grid(
@@ -161,13 +150,13 @@ class Params:
         if attr in self._params:
             return self._params[attr]
         else:
-            raise KeyError(f'parameter {attr} is not defined')
+            raise KeyError(f"parameter {attr} is not defined")
 
     def __getattr__(self, attr):
         if attr in self._params:
             return self._params[attr]
         else:
-            raise KeyError(f'parameter {attr} is not defined')
+            raise KeyError(f"parameter {attr} is not defined")
 
     @classmethod
     def read(cls, filename):
@@ -175,8 +164,41 @@ class Params:
             params = yaml.safe_load(f)
         return cls(params)
 
-    def get_path(self, key):
-        return os.path.join(os.path.expanduser(self.work_dir), self._params[key])
+    def get_path(self, key, remove_if_exist=False):
+        path = os.path.join(os.path.expanduser(self.work_dir), self._params[key])
+        create_output_dir(path, remove_if_exist=remove_if_exist)
+        return path
+
+    def get_ts(self, use_p_prev=False):
+        """Return the time for all the observations in years."""
+
+        # 0 for real observations (time will be used)
+        total_time = float(self.total_time)
+
+        if total_time == 0:
+            ts = np.array([float(x) for x in self.time.split("+")])
+            if use_p_prev:
+                ts = ts[self.p_prev :]
+        else:
+            # number of images
+            if use_p_prev:
+                nimg = self.p + self.p_prev
+            else:
+                nimg = self.p
+            ts = np.linspace(0, total_time, nimg)
+
+        print("time vector: ", ts)
+        return ts
+
+    def get_image_suffix(self):
+        if self.method == "convolve":
+            print("Using pre-convolved images")
+            return "_resampled"
+        elif self.method == "aperture":
+            print("Using photutils apertures")
+            return "_preprocessed"
+        else:
+            raise ValueError(f"invalid method {self.method}")
 
     @property
     def wav(self):

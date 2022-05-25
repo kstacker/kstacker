@@ -12,7 +12,6 @@ from astropy.io import fits
 
 from ._utils import compute_snr
 from .orbit import orbit
-from .utils import create_output_dir, get_image_suffix
 
 __author__ = "Mathias Nowak, Dimitri Estevez"
 __email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
@@ -208,22 +207,13 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     # name of the directory where one loads and saves the images and values
     images_dir = params.get_path("images_dir")
     profile_dir = params.get_path("profile_dir")
-    grid_dir = params.get_path("grid_dir")
-    values_dir = params.get_path("values_dir")
-    create_output_dir(grid_dir)
-    create_output_dir(values_dir)
+    grid_dir = params.get_path("grid_dir", remove_if_exist=True)
+    values_dir = params.get_path("values_dir", remove_if_exist=True)
+
+    nimg = params["p"]  # number of timesteps
 
     # total time of the observation (years)
-    total_time = float(params["total_time"])
-    nimg = params["p"]  # number of timesteps
-    p_prev = params["p_prev"]
-
-    if total_time == 0:
-        ts = [float(x) for x in params["time"].split("+")]
-        ts = np.array(ts[p_prev:])
-    else:
-        ts = np.linspace(0, total_time, nimg + p_prev)
-    print("time_vector:", ts)
+    ts = params.get_ts(use_p_prev=True)
 
     # grid on which the brute force algorithm will be computed on one node/core
     print(repr(params.grid))
@@ -233,9 +223,9 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
 
     # load the images .fits or .txt and the noise profiles
     images, bkg_profiles, noise_profiles = [], [], []
-    img_suffix = get_image_suffix(params.method)
+    img_suffix = params.get_image_suffix()
     for k in range(nimg):
-        i = k + p_prev
+        i = k + params.p_prev
         im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
         images.append(im.astype("float", order="C", copy=False))
         bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
