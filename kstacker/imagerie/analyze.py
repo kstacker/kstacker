@@ -290,7 +290,9 @@ def monte_carlo_noise(image, npix, radius, fwhm, upsampling_factor, method="conv
     position = [x + npix // 2, y + npix // 2]
 
     if method == "convolve":
-        fluxes = photometry_preprocessed(image, position, upsampling_factor)
+        fluxes = photometry_preprocessed(
+            image, position[0], position[1], upsampling_factor
+        )
     elif method == "aperture":
         fluxes = photometry(image, position, 2 * fwhm)
     else:
@@ -339,7 +341,7 @@ def monte_carlo_noise_remove_planet(
 
             if method == "convolve":
                 fluxes[realcount] = photometry_preprocessed(
-                    image, position, upsampling_factor
+                    image, position[0], position[1], upsampling_factor
                 )
             elif method == "aperture":
                 fluxes[realcount] = photometry(image, position, 2 * fwhm)

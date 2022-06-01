@@ -47,7 +47,9 @@ def compute_signal_and_noise_grid(
         # compute the signal by integrating flux on a PSF, and correct it for
         # background (using pre-computed background profile)
         if method == "convolve":
-            sig = photometry_preprocessed(images[k], position, upsampling_factor)
+            sig = photometry_preprocessed(
+                images[k], position[0], position[1], upsampling_factor
+            )
         elif method == "aperture":
             sig = photometry(images[k], position, 2 * fwhm)
         else:

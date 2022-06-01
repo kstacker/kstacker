@@ -246,6 +246,7 @@ def compute_noise_profiles(params):
         img_suffix = params.get_image_suffix()
         for k in range(nimg):
             img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
+            img = img.astype(float)
             if remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
@@ -307,6 +308,10 @@ def compute_noise_profiles(params):
 
         nimg = len(images)
         print("List of images used for the SNR computation:", used)
+
+        images = np.array(images)
+        bkg_profiles = np.array(bkg_profiles)
+        noise_profiles = np.array(noise_profiles)
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
