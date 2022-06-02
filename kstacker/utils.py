@@ -3,6 +3,7 @@ import shutil
 
 import numpy as np
 import yaml
+from astropy.io import fits
 
 from ._utils import photometry_preprocessed
 from .imagerie import photometry
@@ -210,6 +211,28 @@ class Params:
             return "_preprocessed"
         else:
             raise ValueError(f"invalid method {self.method}")
+
+    def load_data(self, selected=None, img_suffix=None):
+        """Load the fits images and the noise/background profiles."""
+        images_dir = self.get_path("images_dir")
+        profile_dir = self.get_path("profile_dir")
+        img_suffix = img_suffix or self.get_image_suffix()
+        nimg = self.p + self.p_prev  # number of timesteps
+
+        images, bkg_profiles, noise_profiles = [], [], []
+        for k in range(nimg):
+            if selected is not None and k not in selected:
+                continue
+            i = k + self.p_prev
+            im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
+            images.append(im.astype("float", order="C", copy=False))
+            bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
+            noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
+
+        images = np.array(images)
+        bkg_profiles = np.array(bkg_profiles)
+        noise_profiles = np.array(noise_profiles)
+        return images, bkg_profiles, noise_profiles
 
     @property
     def wav(self):

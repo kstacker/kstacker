@@ -8,7 +8,6 @@ import time
 
 import h5py
 import numpy as np
-from astropy.io import fits
 
 from ._utils import compute_snr
 from .orbit import orbit
@@ -84,14 +83,7 @@ def reject_invalid_orbits(orbital_grid, projection_grid, m0):
 
 def evaluate(
     params,
-    ts,
-    size,
-    images,
-    bkg_profiles,
-    noise_profiles,
     outfile,
-    nbest,
-    dtype_index=np.int32,
     dry_run=False,
     num_threads=0,
     show_progress=False,
@@ -110,6 +102,15 @@ def evaluate(
 
     if dry_run:
         return
+
+    # load the images and the noise/background profiles
+    images, bkg_profiles, noise_profiles = params.load_data()
+
+    # total time of the observation (years)
+    ts = params.get_ts(use_p_prev=True)
+
+    # number of solutions to keep
+    nbest = params.q
 
     # solve kepler equation on the a/e/t0 grid for all images
     positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
@@ -165,7 +166,7 @@ def evaluate(
                 proj_mat,
                 params.r_mask,
                 params.scale,
-                size,
+                params.n,
                 params.upsampling_factor,
                 out,
                 num_threads=num_threads,
@@ -204,34 +205,11 @@ def evaluate(
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     # name of the directory where one loads and saves the images and values
-    images_dir = params.get_path("images_dir")
-    profile_dir = params.get_path("profile_dir")
     grid_dir = params.get_path("grid_dir", remove_if_exist=True)
     values_dir = params.get_path("values_dir", remove_if_exist=True)
 
-    nimg = params["p"]  # number of timesteps
-
-    # total time of the observation (years)
-    ts = params.get_ts(use_p_prev=True)
-
     # grid on which the brute force algorithm will be computed on one node/core
     print(repr(params.grid))
-
-    size = int(params["n"])  # number of pixels in one direction
-
-    # load the images .fits or .txt and the noise profiles
-    images, bkg_profiles, noise_profiles = [], [], []
-    img_suffix = params.get_image_suffix()
-    for k in range(nimg):
-        i = k + params.p_prev
-        im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
-        images.append(im.astype("float", order="C", copy=False))
-        bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
-        noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
-
-    images = np.array(images)
-    bkg_profiles = np.array(bkg_profiles)
-    noise_profiles = np.array(noise_profiles)
 
     if params.adding == "no":
         outfile = f"{grid_dir}/res.h5"
@@ -241,13 +219,7 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     # brute force
     evaluate(
         params,
-        ts,
-        size,
-        images,
-        bkg_profiles,
-        noise_profiles,
         outfile,
-        params.q,
         dry_run=dry_run,
         num_threads=num_threads,
         show_progress=show_progress,

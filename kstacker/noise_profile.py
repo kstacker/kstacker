@@ -291,27 +291,14 @@ def compute_noise_profiles(params):
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
         print("Images removed because too noisy:", image_removed)
 
+        selected = [k for k in range(nimg) if k not in image_removed]
+        ts_selected = [ts[k] for k in selected]
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
-        # load the images .fits and the noise profiles
-        img_suffix = params.get_image_suffix()
-        used, images, bkg_profiles, noise_profiles, ts_selected = [], [], [], [], []
-        for k in range(nimg):
-            if k in image_removed:
-                # remove noisy images
-                continue
-            used.append(k)
-            ts_selected.append(ts[k])
-            images.append(fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits"))
-            bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
-            noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
-
+        # load the images and the noise/background profiles
+        images, bkg_profiles, noise_profiles = params.load_data(selected=selected)
         nimg = len(images)
-        print("List of images used for the SNR computation:", used)
-
-        images = np.array(images)
-        bkg_profiles = np.array(bkg_profiles)
-        noise_profiles = np.array(noise_profiles)
+        print("List of images used for the SNR computation:", selected)
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")

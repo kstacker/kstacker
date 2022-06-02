@@ -157,31 +157,19 @@ def optimize_orbit(result, k, args, bounds):
 
 
 def reoptimize_gradient(params, n_jobs=1):
-
-    images_dir = params.get_path("images_dir")
-    profile_dir = params.get_path("profile_dir")
-    values_dir = params.get_path("values_dir")
-
     # We sort the results in several directories
+    values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
     os.makedirs(f"{values_dir}/fin_tiff", exist_ok=True)
     os.makedirs(f"{values_dir}/orbites", exist_ok=True)
     os.makedirs(f"{values_dir}/single", exist_ok=True)
     # os.makedirs(f"{values_dir}/pla", exist_ok=True)
 
+    ts = params.get_ts()  # time of observations (years)
     size = params.n  # number of pixels
-    nimg = params.p + params.p_prev  # number of timesteps
-
-    # time of observations (years)
-    ts = params.get_ts()
-
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
-    images, bkg_profiles, noise_profiles = [], [], []
-    for k in range(nimg):
-        images.append(fits.getdata(f"{images_dir}/image_{k}_preprocessed.fits"))
-        bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
-        noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
+    images, bkg_profiles, noise_profiles = params.load_data(img_suffix="_preprocessed")
 
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR
