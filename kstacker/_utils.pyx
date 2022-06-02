@@ -56,11 +56,14 @@ def photometry_preprocessed(double[:,:] image, double[:] x, double[:] y,
     return resarr
 
 
-cdef inline double interp(double arr[], double x) nogil:
+cdef inline double interp(double arr[], double x, size_t size) nogil:
     cdef int x1 = <int>floor(x)
     cdef int x2 = x1 + 1
     # return  arr[x1] + ((arr[x2] - arr[x1]) / (x2 - x1)) * (x - x1)
-    return  arr[x1] + (arr[x2] - arr[x1]) * (x - x1)
+    if x2 > size - 1:
+        return arr[size - 1]
+    else:
+        return  arr[x1] + (arr[x2] - arr[x1]) * (x - x1)
 
 
 @cython.boundscheck(False)
@@ -119,10 +122,11 @@ def compute_snr(double[:,:,::1] images,
             if (xpix >= 0) and (xpix < nx) and (ypix >= 0) and (ypix < ny):
                 # add signal and correct for background (using pre-computed
                 # background profile)
-                signal = signal + images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d)
+                signal = (signal + images[k, xpix, ypix] -
+                          interp(&bkg_profiles[k, 0], temp_d, half_size))
 
                 # add noise using pre-computed radial noise profile
-                noise = noise + interp(&noise_profiles[k, 0], temp_d)**2
+                noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size)**2
 
         noise = sqrt(noise)
         out[i, 0] = signal
