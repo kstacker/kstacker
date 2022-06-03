@@ -6,6 +6,7 @@ cimport cython
 cimport numpy as np
 from cython.parallel import prange
 from libc.math cimport floor, sqrt
+from libc.stdio cimport printf
 
 np.import_array()
 
@@ -57,8 +58,8 @@ def photometry_preprocessed(double[:,:] image, double[:] x, double[:] y,
 
 
 cdef inline double interp(double arr[], double x, size_t size) nogil:
-    cdef int x1 = <int>floor(x)
-    cdef int x2 = x1 + 1
+    cdef size_t x1 = <size_t>floor(x)
+    cdef size_t x2 = x1 + 1
     # return  arr[x1] + ((arr[x2] - arr[x1]) / (x2 - x1)) * (x - x1)
     if x2 > size - 1:
         return arr[size - 1]
@@ -78,7 +79,8 @@ def compute_snr(double[:,:,::1] images,
                 int size,
                 int upsampling_factor,
                 double[:,::1] out,
-                int num_threads=0):
+                int num_threads=0,
+                int debug=0):
 
     cdef:
         double x, y, xproj, yproj, signal, noise, temp_d
@@ -127,6 +129,11 @@ def compute_snr(double[:,:,::1] images,
 
                 # add noise using pre-computed radial noise profile
                 noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size)**2
+
+            if debug:
+                printf("image %ld: xproj=%.2f, yproj=%.2f, xpix=%ld, ypix=%ld, "
+                       "dist=%f, signal=%f, noise=%.2f\n",
+                       k, xproj, yproj, xpix, ypix, temp_d, signal, noise)
 
         noise = sqrt(noise)
         out[i, 0] = signal
