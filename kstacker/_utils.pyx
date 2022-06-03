@@ -61,7 +61,7 @@ cdef inline double interp(double arr[], double x, size_t size) nogil:
     cdef size_t x1 = <size_t>floor(x)
     cdef size_t x2 = x1 + 1
     # return  arr[x1] + ((arr[x2] - arr[x1]) / (x2 - x1)) * (x - x1)
-    if x2 > size - 1:
+    if x2 >= size - 1:
         return arr[size - 1]
     else:
         return  arr[x1] + (arr[x2] - arr[x1]) * (x - x1)
