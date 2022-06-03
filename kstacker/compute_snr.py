@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.table import Table, vstack
 
-from ._utils import compute_snr
+from ._utils import compute_snr_debug
 from .orbit import orbit
 
 
@@ -37,7 +37,7 @@ def compute_snr_values(params, x):
 
     for j in range(norbits):
         out = np.zeros((nproj, 3))
-        compute_snr(
+        compute_snr_debug(
             images,
             positions[j],
             bkg_profiles,
@@ -48,7 +48,6 @@ def compute_snr_values(params, x):
             params.n,
             params.upsampling_factor,
             out,
-            debug=1,
         )
         out = np.broadcast_arrays(orbital_grid, projection_grid, out)
         tables.append(Table(np.concatenate(out, axis=1), names=names))

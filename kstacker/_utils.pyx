@@ -69,21 +69,21 @@ cdef inline double interp(double arr[], double x, size_t size) nogil:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def compute_snr(double[:,:,::1] images,
-                double[:,::1] positions,
-                double[:,::1] bkg_profiles,
-                double[:,::1] noise_profiles,
-                float[:,:,::1] proj_matrices,
-                double r_mask,
-                double scale,
-                int size,
-                int upsampling_factor,
-                double[:,::1] out,
-                int num_threads=0,
-                int debug=0):
+cdef inline _compute_snr(double[:,:,::1] images,
+                         double[:,::1] positions,
+                         double[:,::1] bkg_profiles,
+                         double[:,::1] noise_profiles,
+                         float[:,:,::1] proj_matrices,
+                         double r_mask,
+                         double scale,
+                         int size,
+                         int upsampling_factor,
+                         double[:,::1] out,
+                         int num_threads,
+                         int debug):
 
     cdef:
-        double x, y, xproj, yproj, signal, noise, temp_d
+        double x, y, xproj, yproj, signal, noise, snr, temp_d
         ssize_t i, k
         size_t xpix, ypix
         size_t half_size = size // 2
@@ -130,17 +130,64 @@ def compute_snr(double[:,:,::1] images,
                 # add noise using pre-computed radial noise profile
                 noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size)**2
 
-            if debug:
-                printf("image %ld: xproj=%.2f, yproj=%.2f, xpix=%ld, ypix=%ld, "
-                       "dist=%f, signal=%f, noise=%.2f\n",
-                       k, xproj, yproj, xpix, ypix, temp_d, signal, noise)
+                if debug:
+                    printf("image %2ld: xproj=%.2f, yproj=%.2f, xpix=%4ld, ypix=%4ld, "
+                           "dist=%f, signal=%f, bkg=%f, noise=%.2f\n",
+                           k, xproj, yproj, xpix, ypix, temp_d,
+                           images[k, xpix, ypix],
+                           interp(&bkg_profiles[k, 0], temp_d, half_size),
+                           interp(&noise_profiles[k, 0], temp_d, half_size))
+            elif debug:
+                printf("image %2ld: xproj=%.2f, yproj=%.2f, xpix=%4ld, ypix=%4ld, "
+                       "dist=%f, out\n",
+                       k, xproj, yproj, xpix, ypix, temp_d)
 
         noise = sqrt(noise)
-        out[i, 0] = signal
-        out[i, 1] = noise
         if noise == 0:
             # if the value of total noise is 0 (i.e. all values of noise are 0,
             # i.e. the orbit is completely out of the image) then snr=0
-            out[i, 2] = 0
+            snr = 0
         else:
-            out[i, 2] = - signal / noise
+            snr = - signal / noise
+
+        out[i, 0] = signal
+        out[i, 1] = noise
+        out[i, 2] = snr
+
+        if debug:
+            printf("Sum over images, signal=%f, noise=%f, snr=%.2f\n",
+                   signal, noise, snr)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_snr(double[:,:,::1] images,
+                double[:,::1] positions,
+                double[:,::1] bkg_profiles,
+                double[:,::1] noise_profiles,
+                float[:,:,::1] proj_matrices,
+                double r_mask,
+                double scale,
+                int size,
+                int upsampling_factor,
+                double[:,::1] out,
+                int num_threads=0):
+    _compute_snr(images, positions, bkg_profiles, noise_profiles, proj_matrices,
+                 r_mask, scale, size, upsampling_factor, out, num_threads, 0)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_snr_debug(double[:,:,::1] images,
+                      double[:,::1] positions,
+                      double[:,::1] bkg_profiles,
+                      double[:,::1] noise_profiles,
+                      float[:,:,::1] proj_matrices,
+                      double r_mask,
+                      double scale,
+                      int size,
+                      int upsampling_factor,
+                      double[:,::1] out,
+                      int num_threads=0):
+    _compute_snr(images, positions, bkg_profiles, noise_profiles, proj_matrices,
+                 r_mask, scale, size, upsampling_factor, out, num_threads, 1)
