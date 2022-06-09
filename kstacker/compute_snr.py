@@ -8,10 +8,10 @@ from .orbit import orbit
 def compute_snr_values(params, x):
     """Compute SNR for a set of parameters."""
 
-    x = np.atleast_2d(np.asarray(x, dtype='float32'))
+    x = np.atleast_2d(np.asarray(x, dtype="float32"))
 
     if x.shape[1] != 6:
-        raise ValueError('x should have 6 columns for a,e,t0,omega,i,theta0')
+        raise ValueError("x should have 6 columns for a,e,t0,omega,i,theta0")
     orbital_grid, projection_grid = np.split(x, 2, axis=1)
 
     # load the images and the noise/background profiles
