@@ -32,20 +32,26 @@ def main():
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
     sub_opt.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_opt.add_argument("--nthreads", type=int, default=0, help="number of threads")
+    sub_opt.add_argument("--progress", action="store_true", help="show progress")
+    sub_opt.add_argument(
+        "--dry-run", action="store_true", help="do not run computation"
+    )
     sub_opt.set_defaults(func=optimize)
 
     sub_reopt = subparsers.add_parser(
         "reopt", help="re-optimize the best SNR values with a gradient descent"
     )
     sub_reopt.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_reopt.add_argument("--njobs", type=int, default=0, help="number of processes")
     sub_reopt.set_defaults(func=reoptimize)
 
-    try:
-        args = parser.parse_args()
+    args = parser.parse_args()
+    if "func" in args:
         t0 = time.time()
         args.func(args)
         print(f"Done: took {time.time() - t0:.2f} sec.")
-    except AttributeError:
+    else:
         parser.print_usage()
 
 
@@ -58,9 +64,14 @@ def noise_profiles(args):
 
 def optimize(args):
     params = Params.read(args.parameter_file)
-    brute_force(params)
+    brute_force(
+        params,
+        dry_run=args.dry_run,
+        num_threads=args.nthreads,
+        show_progress=args.progress,
+    )
 
 
 def reoptimize(args):
     params = Params.read(args.parameter_file)
-    reoptimize_gradient(params)
+    reoptimize_gradient(params, n_jobs=args.njobs)

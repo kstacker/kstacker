@@ -16,7 +16,7 @@ from scipy.signal import convolve2d
 
 from . import coronagraph
 from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
-from .utils import compute_signal_and_noise_grid, create_output_dir, get_image_suffix
+from .utils import compute_signal_and_noise_grid, create_output_dir
 
 __author__ = "Herve Le Coroller"
 __mail__ = "herve.lecoroller@lam.fr"
@@ -174,7 +174,8 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
 def compute_noise_profiles(params):
     # Main Path definitions
     images_dir = params.get_path("images_dir")
-    profile_dir = params.get_path("profile_dir")
+    # Directories where the noise profiles will be stored
+    profile_dir = params.get_path("profile_dir", remove_if_exist=True)
 
     # images characteristic (size, masks size, number of images, etc.) for K-Stacker
     nimg = params.p  # number of images
@@ -197,17 +198,7 @@ def compute_noise_profiles(params):
             reject_coef = 999999
 
     # The epochs of observation are put in an array of time
-    total_time = float(params["total_time"])
-    # total time for all the observations in years for simulations;
-    # 0 for real observations (time will be used)
-
-    if total_time == 0:
-        ts = [float(x) for x in params["time"].split("+")]
-        print("time_vector used: ", ts)
-    else:
-        ts = np.linspace(0, total_time, nimg)
-        # put nimg + p_prev, if later we use the p_prev option
-        print("Creation of a regular time vector")
+    ts = params.get_ts()
 
     # This variables are used to determine the part of the software that will be run
     noise_prof = params["noise_prof"]  # yes or no
@@ -234,9 +225,6 @@ def compute_noise_profiles(params):
     ###################################
 
     if noise_prof == "yes":
-        # Directories where the noise profiles will be stored
-        create_output_dir(profile_dir)
-
         # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
         t0 = time.time()
         for k in range(nimg):
@@ -255,9 +243,10 @@ def compute_noise_profiles(params):
 
         # load the images and estimate the noise level assuming a radial profile
         t0 = time.time()
-        img_suffix = get_image_suffix(params.method)
+        img_suffix = params.get_image_suffix()
         for k in range(nimg):
             img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
+            img = img.astype(float)
             if remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
@@ -302,23 +291,14 @@ def compute_noise_profiles(params):
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
         print("Images removed because too noisy:", image_removed)
 
+        selected = [k for k in range(nimg) if k not in image_removed]
+        ts_selected = [ts[k] for k in selected]
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
-        # load the images .fits and the noise profiles
-        img_suffix = get_image_suffix(params.method)
-        used, images, bkg_profiles, noise_profiles, ts_selected = [], [], [], [], []
-        for k in range(nimg):
-            if k in image_removed:
-                # remove noisy images
-                continue
-            used.append(k)
-            ts_selected.append(ts[k])
-            images.append(fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits"))
-            bkg_profiles.append(np.load(f"{profile_dir}/background_prof{k}.npy"))
-            noise_profiles.append(np.load(f"{profile_dir}/noise_prof{k}.npy"))
-
+        # load the images and the noise/background profiles
+        images, bkg_profiles, noise_profiles = params.load_data(selected=selected)
         nimg = len(images)
-        print("List of images used for the SNR computation:", used)
+        print("List of images used for the SNR computation:", selected)
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")

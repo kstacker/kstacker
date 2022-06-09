@@ -102,7 +102,8 @@ def corono(
     # create and load static phase error mask
     if static == "y":
         if static_mask is None:
-            static_phase_mask = phase.my_static(wfe, n, wav)
+            # FIXME: wfe is undefined!
+            static_phase_mask = phase.my_static(wfe, n, wav)  # noqa
         else:
             static_phase_mask = static_mask  # mask is passed as a parameter
 

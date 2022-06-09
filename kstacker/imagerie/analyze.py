@@ -13,6 +13,7 @@ import numpy as np
 import scipy.ndimage as ndi
 from photutils import CircularAperture, aperture_photometry
 
+from .._utils import photometry_preprocessed
 from ..orbit import orbit as orb
 
 
@@ -39,26 +40,6 @@ def photometry(image, position, diameter):
     aperture = CircularAperture(position, r=diameter / 2.0)
     phot = aperture_photometry(image, aperture)
     res = np.array(phot["aperture_sum"])
-    return res[0] if res.size == 1 else res
-
-
-def photometry_preprocessed(image, position, upsampling_factor):
-    """
-    This function is used to compute the flux within a circular aperture in a given image.
-    @param float[n, n] image: image within wich the flux shall be computed
-    @param float[2] position: xy position (in pixels) of the center of the photometry box
-    @return float: flux contained in the circular photometry box
-    """
-    # grid for photutils is centered on pixels hence the - 0.5
-    position = np.array(position) - 0.5
-    xpix, ypix = ((position + 0.5) * upsampling_factor - 0.5).astype(int)
-
-    inside = (xpix >= 0) & (xpix < image.shape[0]) & (ypix >= 0) & (ypix < image.shape[1])
-    res = np.zeros(xpix.shape[0])
-    res[inside] = image[xpix[inside], ypix[inside]]
-    noutside = xpix.shape[0] - np.count_nonzero(inside)
-    if noutside > 0:
-        print(f"{noutside} values outside of the image")
     return res[0] if res.size == 1 else res
 
 
@@ -125,7 +106,7 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     return shift_image
 
 
-def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
+def recombine_images(images, ts, scale, m, a, e, t0, omega, i, theta_0):
     """
     This function is used to compute the coadded image form orbital parameters. Each image of the serie is rotated and shifted to put the planet on its perihelion
     position, and the results are coadded to give the final result.
@@ -146,7 +127,7 @@ def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
         im = derotate(images[k], ts[k], scale, a, e, t0, m, omega, i, theta_0)
         rot_images.append(im)
 
-    return np.mean(rot_images, axis=0)
+    return np.nanmean(rot_images, axis=0)
 
 
 def noise(image, r_int, r_ext):
@@ -309,7 +290,9 @@ def monte_carlo_noise(image, npix, radius, fwhm, upsampling_factor, method="conv
     position = [x + npix // 2, y + npix // 2]
 
     if method == "convolve":
-        fluxes = photometry_preprocessed(image, position, upsampling_factor)
+        fluxes = photometry_preprocessed(
+            image, position[0], position[1], upsampling_factor
+        )
     elif method == "aperture":
         fluxes = photometry(image, position, 2 * fwhm)
     else:
@@ -358,7 +341,7 @@ def monte_carlo_noise_remove_planet(
 
             if method == "convolve":
                 fluxes[realcount] = photometry_preprocessed(
-                    image, position, upsampling_factor
+                    image, position[0], position[1], upsampling_factor
                 )
             elif method == "aperture":
                 fluxes[realcount] = photometry(image, position, 2 * fwhm)

@@ -1,74 +1,19 @@
-import itertools
 import os
 import shutil
 
 import numpy as np
 import yaml
+from astropy.io import fits
 
-from .imagerie import photometry, photometry_preprocessed
+from ._utils import photometry_preprocessed
+from .imagerie import photometry
 from .orbit import orbit as orb
 
 
-def create_output_dir(path):
-    if os.path.exists(path):
+def create_output_dir(path, remove_if_exist=False):
+    if remove_if_exist and os.path.exists(path):
         shutil.rmtree(path)
-    os.mkdir(path)
-
-
-def get_image_suffix(method):
-    if method == "convolve":
-        print("Using pre-convolved images")
-        return "_resampled"
-    elif method == "aperture":
-        print("Using photutils apertures")
-        return "_preprocessed"
-    else:
-        raise ValueError(f"invalid method {method}")
-
-
-def reject_invalid_orbits(grid, m0):
-    a, e, t0, omega, i, theta_0 = grid.T
-
-    # precompute some comparisons
-    i_0_pi = np.isclose(i, 0) | np.isclose(i, 3.14)
-    e_null = np.isclose(e, 0)
-    theta_non_null = ~np.isclose(theta_0, 0)
-    omega_non_null = ~np.isclose(omega, 0)
-
-    print("Rejecting invalid orbits:")
-    rej = t0 <= -np.sqrt((a**3.0) / m0)
-    nrej = np.count_nonzero(rej)
-    if nrej:
-        print(f"- {nrej:,} rejected because t0 <= -np.sqrt(a**3 / starMass)")
-
-    rej2 = i_0_pi & theta_non_null
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(f"- {nrej2:,} rejected because (i = 0 or i = 3.14) and theta0 != 0")
-
-    # if e == 0. and (theta0 != 0. or omega !=0.):
-    #    # JE NE COMPREND PAS CETTE SOLUTION DE LOUIS-XAVIER !!
-    #    print('One orbit rejected because e == 0. and (theta0 != 0. or omega !=0.)')
-    #    return True
-
-    rej2 = e_null & theta_non_null
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(f"- {nrej2:,} rejected because e = 0 and (theta0 != 0 or omega !=0)")
-
-    rej2 = (e_null & i_0_pi) & (theta_non_null | omega_non_null)
-    nrej2 = np.count_nonzero(rej2)
-    rej |= rej2
-    if nrej2:
-        print(
-            f"- {nrej2:,} rejected because "
-            "(e = 0 and (i = 0 or i = 3.14)) and (theta0 != 0 or omega != 0)"
-        )
-
-    print(f"Rejecting {np.count_nonzero(rej):,} orbits out of {grid.shape[0]:,}")
-    return rej
+    os.makedirs(path, exist_ok=True)
 
 
 def compute_signal_and_noise_grid(
@@ -103,7 +48,9 @@ def compute_signal_and_noise_grid(
         # compute the signal by integrating flux on a PSF, and correct it for
         # background (using pre-computed background profile)
         if method == "convolve":
-            sig = photometry_preprocessed(images[k], position, upsampling_factor)
+            sig = photometry_preprocessed(
+                images[k], position[0], position[1], upsampling_factor
+            )
         elif method == "aperture":
             sig = photometry(images[k], position, 2 * fwhm)
         else:
@@ -145,125 +92,43 @@ class Grid:
     def __repr__(self):
         out = ["Grid("]
         for name in self._grid_params:
-            min_, max_, nsteps, nsplits = self.limits(name)
-            out.append(f"    {name}: {min_} → {max_}, {nsteps} steps, {nsplits} splits")
+            min_, max_, nsteps = self.limits(name)
+            out.append(f"    {name}: {min_} → {max_}, {nsteps} steps")
         out.append(")")
+        steps = [self.limits(name)[2] for name in self._grid_params]
+        nb = f"{np.prod(steps):,}".replace(",", "'")
+        out.append(f"{nb} orbits")
         return "\n".join(out)
 
     def limits(self, name):
-        """Return (min, max, nsteps, nsplits) for a given grid parameter."""
+        """Return (min, max, nsteps) for a given grid parameter."""
         if name not in self._grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
 
         min_ = self._params[f"{name}_min"]
         max_ = self._params[f"{name}_max"]
         nsteps = self._params[f"N{name}"]
-        nsplits = 1 if name == "t0" else self._params[f"S{name}"]
-        return min_, max_, nsteps, nsplits
+        return min_, max_, nsteps
 
     def bounds(self):
-        """Return (min, max, nsteps, nsplits) for a given grid parameter."""
+        """Return (min, max, nsteps) for a given grid parameter."""
         return [self.limits(name)[:2] for name in self._grid_params]
 
     def range(self, name):
         """Return a slice object for a given grid parameter."""
         if name not in self._grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
-        min_, max_, nsteps, nsplits = self.limits(name)
+        min_, max_, nsteps = self.limits(name)
         return slice(min_, max_, (max_ - min_) / nsteps)
 
-    def ranges(self):
-        """Return the ranges for all grid params."""
-        return [self.range(name) for name in self._grid_params]
-
-    def split_range(self, name):
-        """
-        Returns a list of slice objects (the sub_ranges for the brute force).
-        """
-
-        min_, max_, nsteps, nsplits = self.limits(name)
-        n = nsteps / nsplits
-
-        if nsteps == 1:
-            return np.array([slice(min_, max_, max_ - min_)], dtype=object)
-        if n < 2.0:
-            raise Exception("Number of values in each splited list under 2 : ABORTING")
-        elif int(n) != n:
-            print("n not int")
-            if n - int(n) >= 0.5:
-                n = float(int(n)) + 1.0
-            elif n - int(n) < 0.5:
-                n = float(int(n))
-
-        print("min/max/nsteps/nsplits/n:", min_, max_, nsteps, nsplits, n)
-        table = np.zeros(nsplits, dtype=object)
-        delta = (max_ - min_) / nsplits
-        x = min_
-        for k in range(nsplits):
-            # Dans version Antoine (bug):
-            # if x==0.2 or delta==0.2 and x==0.4 or delta==0.4:
-            # Pyhon decid that 0.2+0.4=6.000000001 and not 6.0
-            # --> Split version is not working with this ><'
-            #        x_max=0.6
-            # else :
-            #        x_max=x+delta
-            x_max = round(x + delta, 12)
-            table[k] = slice(x, x_max, delta / n)
-            x = x_max
-        return table
-
-    def split_ranges(self):
-        """Compute the combination of all splitted ranges."""
-        ranges = [self.split_range(name) for name in self._grid_params]
-        table = np.array(list(itertools.product(*ranges)), dtype=object)
-        return table
-
-    def evaluate(self, func, args=(), nchunks=1):
-        """Evaluate a function on the grid.
-
-        Adapted from `scipy.optimize.brute`.
-
-        Parameters
-        ----------
-        func : callable
-            The objective function to be minimized. Must be in the
-            form ``f(x, *args)``, where ``x`` is the argument in
-            the form of a 1-D array and ``args`` is a tuple of any
-            additional fixed parameters.
-        args : tuple, optional
-            Any additional fixed parameters needed to completely specify
-            the function.
-
-        Returns
-        -------
-        grid : tuple
-            Representation of the evaluation grid. It has the same
-            length as `x0`.
-        Jout : ndarray
-            Function values at each point of the evaluation
-            grid, i.e., ``Jout = func(*grid)``.
-
-        """
-        lrange = self.ranges()
-        grid = np.mgrid[lrange]
-
-        # reshape grid to a 2D array: Norbits x ('a', 'e', 't0', 'omega', 'i', 'theta_0')
+    def make_2d_grid(self, params):
+        lrange = [self.range(name) for name in params]
+        # TODO: use np.meshgrid(np.linspace(min, max, step), ...,
+        # indexing='ij') instead
+        grid = np.mgrid[lrange].astype(np.float32)
+        # reshape grid to a 2D array: Norbits x Nparams
         grid = grid.reshape(grid.shape[0], -1).T
-        print(f"Grid shape: {grid.shape[0]:,} x {grid.shape[1]}")
-
-        # skip invalid/redundant orbits
-        m0 = self._params["m0"]
-        rej = reject_invalid_orbits(grid, m0)
-        grid = grid[~rej]
-
-        Jout = []
-        for i, chunk in enumerate(np.array_split(grid, nchunks), start=1):
-            print(f"- chunk {i}/{nchunks}")
-            Jout.append(func(chunk, *args))
-
-        Jout = np.concatenate(Jout, axis=1)
-        snr = - Jout[0] / Jout[1]
-        return np.concatenate([grid, Jout.T, snr[:, None]], axis=1)
+        return grid
 
 
 class Params:
@@ -288,13 +153,22 @@ class Params:
         if attr in self._params:
             return self._params[attr]
         else:
-            raise KeyError
+            raise KeyError(f"parameter {attr} is not defined")
 
     def __getattr__(self, attr):
         if attr in self._params:
             return self._params[attr]
         else:
-            raise AttributeError
+            raise KeyError(f"parameter {attr} is not defined")
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["grid"]
+        return state
+
+    def __setstate__(self, state):
+        self._params = state["_params"]
+        self.grid = Grid(self._params)
 
     @classmethod
     def read(cls, filename):
@@ -302,8 +176,63 @@ class Params:
             params = yaml.safe_load(f)
         return cls(params)
 
-    def get_path(self, key):
-        return os.path.join(os.path.expanduser(self.work_dir), self._params[key])
+    def get_path(self, key, remove_if_exist=False):
+        path = os.path.join(os.path.expanduser(self.work_dir), self._params[key])
+        create_output_dir(path, remove_if_exist=remove_if_exist)
+        return path
+
+    def get_ts(self, use_p_prev=False):
+        """Return the time for all the observations in years."""
+
+        # 0 for real observations (time will be used)
+        total_time = float(self.total_time)
+
+        if total_time == 0:
+            ts = np.array([float(x) for x in self.time.split("+")])
+            if use_p_prev:
+                ts = ts[self.p_prev :]
+        else:
+            # number of images
+            if use_p_prev:
+                nimg = self.p + self.p_prev
+            else:
+                nimg = self.p
+            ts = np.linspace(0, total_time, nimg)
+
+        print("time vector: ", ts)
+        return ts
+
+    def get_image_suffix(self):
+        if self.method == "convolve":
+            print("Using pre-convolved images")
+            return "_resampled"
+        elif self.method == "aperture":
+            print("Using photutils apertures")
+            return "_preprocessed"
+        else:
+            raise ValueError(f"invalid method {self.method}")
+
+    def load_data(self, selected=None, img_suffix=None):
+        """Load the fits images and the noise/background profiles."""
+        images_dir = self.get_path("images_dir")
+        profile_dir = self.get_path("profile_dir")
+        img_suffix = img_suffix or self.get_image_suffix()
+        nimg = self.p + self.p_prev  # number of timesteps
+
+        images, bkg_profiles, noise_profiles = [], [], []
+        for k in range(nimg):
+            if selected is not None and k not in selected:
+                continue
+            i = k + self.p_prev
+            im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
+            images.append(im.astype("float", order="C", copy=False))
+            bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
+            noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
+
+        images = np.array(images)
+        bkg_profiles = np.array(bkg_profiles)
+        noise_profiles = np.array(noise_profiles)
+        return images, bkg_profiles, noise_profiles
 
     @property
     def wav(self):

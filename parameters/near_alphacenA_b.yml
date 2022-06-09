@@ -61,12 +61,10 @@ theta_0_init: 0.
 a_min: 0.9    # minimum semi-major axis (in a.u.)# At this distance (0.9 au), half of the integration circle is on the mask; expectd alphacenAb candidate at 1.1 au
 a_max: 1.75   # maximum semi-major axis (in a.u.)
 Na: 12 #
-Sa: 2        #Number of time the range of a is splitted in the temporary files (Na/Sa must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 e_min: 0.    # minimum eccentricity
 e_max: 0.9    # maximum eccentricity
 Ne: 6
-Se: 2         #Number of time the range of e is splitted in the temporary files (Ne/Se must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 t0_min: -2.1  # minimum epoch at perihelion in years (this is in fact the maximum but there is a minus sign)
 t0_max: -0.    # maximum epoch at perihelion in years (this is in fact the minimum but there is a minus sign)
@@ -75,23 +73,17 @@ Nt0: 28 # number of steps for the epoch at perihelion  (use plot_SNR.py to deter
 omega_min: -3.14   # minimum longitude of the ascending node in rad
 omega_max: 3.14    # maximum longitude of the ascending node in rad
 Nomega: 26
-Somega: 2       #Number of time the range of omega is splitted in the temporary files (Nomega/Somega must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 i_min: 0.      # minimum inclination in rad
 i_max: 3.    # maximum inclination in rad
 #Ni :  64
 Ni: 6
-Si: 2          #Number of time the range of i is splitted in the temporary files (Ni/Si must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 theta_0_min: -3.14   # minimum argument of the periapsis in rad
 theta_0_max: 3.14    # maximum argument of the periapsis in rad
 Ntheta_0: 26
-Stheta_0: 2     #Number of time the range of theta_0 is splitted in the temporary files (Ntheta_0/Stheta0 must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 xmin: -3.    # minimum value on x axis for the plot of the orbits (in a.u.) ex: xmin=-18.
 xmax: 3.     # maximum value on x axis for the plot of the orbits (in a.u.) ex: xmax=18.
 ymin: -3.    # minimum value on y axis for the plot of the orbits (in a.u.) ex: ymin=-18.
 ymax: 3.     # maximum value on y axis for the plot of the orbits (in a.u.) ex: ymax=18.
-
-# ncores: 28    # number of cores to parallelize the simulations (regarding the number of steps for the epoch at perihelion) On each core t0 is fixed, and we test all the others orbital parameters (a,e,omega,i,teta_0)
-nchunks: 10   # number of chunks to split the grid (even with one core this limits the amout of memory)
