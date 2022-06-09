@@ -1,103 +1,103 @@
 mail_address: "herve.lecoroller@lam.fr"
-job_name: 'm1p59' #Name prefix of your job's name on the cluster. For example for the brut your job name will be {job_name}_images_brute
+job_name: 'm1p59' #Name prefix of your job's name on the cluster
 
-profiles_walltime: "04:00:00" # walltime to create the profiles (load_images_profile.sh)
-brute_walltime: "01:00:00" # walltime for brute force on each core (image_brute.sh)
-grid_walltime: "01:00:00" # walltime for combining the grid (create_grid.sh)
-reopt_walltime: "01:00:00" # walltime for reoptimization (gradient_descent.sh)
-mess_walltime: "02:00:00" # walltime for K-Mess_teq or K-Mess
+#profiles_walltime: "04:00:00" # walltime to create the profiles (load_images_profile.sh)
+#brute_walltime: "01:00:00" # walltime for brute force on each core (image_brute.sh)
+#grid_walltime: "01:00:00" # walltime for combining the grid (create_grid.sh)
+#reopt_walltime: "01:00:00" # walltime for reoptimization (gradient_descent.sh)
+#mess_walltime: "02:00:00" # walltime for K-Mess_teq or K-Mess
 
-Tstar: 5800. # temperature of the star in Kelvin
-Rstar: 1.2 # Radius of the star in solar radius
-fextra: 0.5 # fextra=0.1 percentage of internal heating added to the Teq
-Albedo: 0.3 # Albedo of the planet
+#Tstar: 5800. # temperature of the star in Kelvin
+#Rstar: 1.2 # Radius of the star in solar radius
+#fextra: 0.5 # fextra=0.1 percentage of internal heating added to the Teq
+#Albedo: 0.3 # Albedo of the planet
 
-noise_prof: 'yes' # to compute the noise and background profile (with noise_profile_snr_herve.py)
-snr_plot: 'yes' # to compute the snr plots (with noise_profile_snr_herve.py)
+noise_prof: 'yes' # to compute the noise and background profile
+snr_plot: 'yes' # to compute the snr plots
 
-remove_noisy: 'no' # Default='weakly'; To reject bad images: 'no' or 'weakly' or 'strongly'; weakly (: coef of 1.4); See demo of herve logbook
+# remove_noisy: 'no' # Default='weakly'; To reject bad images: 'no' or 'weakly' or 'strongly'; weakly (: coef of 1.4); See demo of herve logbook
 
 p: 4   # number of images for a run, or number of images added to a previous run
-p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
-total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
+# p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
+#total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
 n: 124   # size of the images nxn
 upsampling_factor: 5 # equivalent to what do photutils
 method: "convolve"  # "aperture" or "convolve"
 
-time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115" # time (years) of each observation for p+p_prev images; Origin of dates
+time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115" # time (years) of each observation for p images
 
-remove_planet: 'no' #yes or no ; Remove planet from the noise and background computation (noise_profile_snr_herve)
-planet_coord: "(145:105)+(146:105)+(147:104)+(148:105)+(154:106)+(157:106)+(156:106)+(154:104)+(153:105)" # !! pixels python coordinates here; KEEP THIS FORMAT (no spaces, etc.)
+#remove_planet: 'no' #yes or no ; Remove planet from the noise and background computation (noise_profile_snr_herve)
+#planet_coord: "(145:105)+(146:105)+(147:104)+(148:105)+(154:106)+(157:106)+(156:106)+(154:104)+(153:105)" # !! pixels python coordinates here; KEEP THIS FORMAT (no spaces, etc.)
 
-remove_box: "20.0+20.0+20.0+20.0" #size of the exclusion box if remove_planet='yes'. In pixels.
+#remove_box: "20.0+20.0+20.0+20.0" #size of the exclusion box if remove_planet='yes'. In pixels.
 # Each number is a variation from the 01 Janvier 2000 : write the times spaced by a + sign
 
 work_dir: "/net/GSP/nas12c/kstacker/Test_HD95086_IRDIS_TLOCI_K1_a40-62_e0-0p4_dist86p2_very_small_int_circle_m1.59_waffles_4epochs_new_profile_low_steps_calcul_CeSAM_convolve_VJuin2022/"
 images_dir: "images"   # folder where to load the images
 grid_dir: "brute_grid"   # folder where to save the grid and the values of signals and noises after the brute force
-values_dir: "values"   # folder where to save the SNR and parameters of the q best orbits, the q final images and orbits
+values_dir: "values"   # folder where to save the results
 profile_dir: "profiles"   # folder where to save and load the background and noise profiles
-single_plot: 'yes'    # yes or no to display the positions of the planet in each frame for the q best solutions
-adding: 'no'   # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
+single_plot: 'yes'    # yes or no to display the positions of the planet in each frame for the best solutions
+# adding: 'no'   # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
 
 q: 100      # number of maxima that will be reoptimized by the gradient descent algorithm (default=100)
 dist: 86.2    # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels)
-wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size of the circle for integration of the flux); diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d; diameter = 2 X FWHM-PSF =>  pr 0.278e-6 m : 4 pixels pour Zimpol
+wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size of the circle for integration of the flux); diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d; diameter
 
-d: 8.2        # diameter of the primary miror (in meter)(used only to define the size of the circle for integration of the flux)
-resol: 12.25    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels )
+d: 8.2 # diameter of the primary mirror (in meter)(used only to define the size of the circle for integration of the flux)
+resol: 12.25    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels)
 
-r_mask: 26.    # radius of the coronagraphic mask (in pixels) (very important: put at zero all the values in this circle; put also a mask on the images by using mask_images.py (for visualisation); size of r_mask(a.u.) = r_mak(pixels)/(distance(PC)x12,25x10^-3))
-r_mask_ext: 61. # radius of the exterior mask (in pixels). Put at zero values at larger radius (use in noise_profile_snr_herve.py)
+r_mask: 26.    # radius of the coronagraphic mask (in pixels). put at zero all the values in this circle
+r_mask_ext: 61. # radius of the exterior mask (in pixels). Put at zero values at larger radius
 
 mask_value: 0. # Put the min value of the speckles. Default 0.
 
 m0: 1.59       # mass of the star in solar mass
 
-#orbital parameters to plot the SNRs curves (used to determine the grid steps); it can be the orbital parameters of a planet or not
+# orbital parameters to plot the SNRs curves (used to determine the grid steps)
 
-#Values of orbit_1 for DC dryrun
-
-a_init: 58. # expectd alphacenAb candidate at 1.1 au
+a_init: 58. # a.u.
 e_init: 0.05
-t0_init: -0.01
-omega_init: -0.1
-i_init: 0.1
-theta_0_init: 0.1
+t0_init: -0.01 # Yr
+omega_init: -0.1 # rad
+i_init: 0.1 # rad
+theta_0_init: 0.1 # rad
 
-a_min: 40.    # minimum semi-major axis (in a.u.)# At this distance (0.9 au), half of the integration circle is on the mask; expectd alphacenAb candidate at 1.1 au
+# Range of search
+
+a_min: 40.    # minimum semi-major axis (in a.u.)
 a_max: 62.    # maximum semi-major axis (in a.u.)
-Na: 8 #
-Sa: 2        #Number of time the range of a is splitted in the temporary files (Na/Sa must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
+Na: 8 # Number of step for the semi-major axis
+#Sa: 2        #Number of time the range of a is splitted in the temporary files (Na/Sa must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 e_min: 0.    # minimum eccentricity
 e_max: 0.4    # maximum eccentricity
-Ne: 10
-Se: 2         #Number of time the range of e is splitted in the temporary files (Ne/Se must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
+Ne: 10 # Number of step for the eccentricity
+#Se: 2         #Number of time the range of e is splitted in the temporary files (Ne/Se must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 t0_min: -393.  # minimum epoch at perihelion in years (this is in fact the maximum but there is a minus sign)
 t0_max: -0.01    # maximum epoch at perihelion in years (this is in fact the minimum but there is a minus sign)
-Nt0: 56 # number of steps for the epoch at perihelion  (use plot_SNR.py to determine this value)
+Nt0: 56 # number of steps for the epoch at perihelion
 
 omega_min: -3.14   # minimum longitude of the ascending node in rad
 omega_max: 3.14    # maximum longitude of the ascending node in rad
-Nomega: 42
-Somega: 2       #Number of time the range of omega is splitted in the temporary files (Nomega/Somega must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
+Nomega: 42 # Number of step for Omega
+#Somega: 2       #Number of time the range of omega is splitted in the temporary files (Nomega/Somega must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 i_min: 0.      # minimum inclination in rad
 i_max: 3.14    # maximum inclination in rad
-Ni: 6
-Si: 2          #Number of time the range of i is splitted in the temporary files (Ni/Si must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
+Ni: 6 # Number of step for i
+#Si: 2          #Number of time the range of i is splitted in the temporary files (Ni/Si must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
 theta_0_min: -3.14   # minimum argument of the periapsis in rad
 theta_0_max: 3.14    # maximum argument of the periapsis in rad
-Ntheta_0: 42
-Stheta_0: 2     #Number of time the range of theta_0 is splitted in the temporary files (Ntheta_0/Stheta0 must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
+Ntheta_0: 42 # Number of step for theta_0
+# Stheta_0: 2     #Number of time the range of theta_0 is splitted in the temporary files (Ntheta_0/Stheta0 must be an integer and superior or equal to 2) If you don't use the temporary files put it at 0
 
-xmin: -64.    # minimum value on x axis for the plot of the orbits (in a.u.) ex: xmin=-18.
-xmax: 64.     # maximum value on x axis for the plot of the orbits (in a.u.) ex: xmax=18.
-ymin: -64.    # minimum value on y axis for the plot of the orbits (in a.u.) ex: ymin=-18.
-ymax: 64.     # maximum value on y axis for the plot of the orbits (in a.u.) ex: ymax=18.
+xmin: -64.    # minimum value on x axis for the plot of the orbits (in a.u.)
+xmax: 64.     # maximum value on x axis for the plot of the orbits (in a.u.)
+ymin: -64.    # minimum value on y axis for the plot of the orbits (in a.u.)
+ymax: 64.     # maximum value on y axis for the plot of the orbits (in a.u.)
 
-ncores: 1    # number of cores to parallelize the simulations (regarding the number of steps for the epoch at perihelion) On each core t0 is fixed, and we test all the others orbital parameters (a,e,omega,i,teta_0)
-nchunks: 2   # number of chunks to split the grid (even with one core this limits the amout of memory)
+#ncores: 1    # number of cores to parallelize the simulations (regarding the number of steps for the epoch at perihelion) On each core t0 is fixed, and we test all the others orbital parameters (a,e,omega,i,teta_0)
+#nchunks: 2   # number of chunks to split the grid (even with one core this limits the amout of memory)
