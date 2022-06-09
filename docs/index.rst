@@ -68,7 +68,7 @@ Quick launch
 
     sh slurm_launch_reopt.sh
 
-k-stacker use opennp to run on several cores. You can download an exemple of the slurm_*.sh files " here " .
+k-stacker use opennp to run on several cores. You can find an exemple of the slurm_*.sh files in the example directory.
 
 Results
 -------
