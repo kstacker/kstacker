@@ -41,7 +41,7 @@ single_plot: 'yes'    # yes or no to display the positions of the planet in each
 adding: 'no'   # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
 
 q: 100      # number of maxima that will be reoptimized by the gradient descent algorithm (default=100)
-dist: 86.2    # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels) 
+dist: 86.2    # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels)
 wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size of the circle for integration of the flux); diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d; diameter = 2 X FWHM-PSF =>  pr 0.278e-6 m : 4 pixels pour Zimpol
 
 d: 8.2        # diameter of the primary miror (in meter)(used only to define the size of the circle for integration of the flux)

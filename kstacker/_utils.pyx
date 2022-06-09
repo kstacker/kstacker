@@ -132,7 +132,7 @@ cdef inline _compute_snr(double[:,:,::1] images,
 
                 if debug:
                     printf("image %2ld: xproj=%.2f, yproj=%.2f, xpix=%4ld, ypix=%4ld, "
-                           "dist=%f, signal=%f, bkg=%f, noise=%.2f\n",
+                           "dist=%f, signal=%f, bkg=%f, noise=%f\n",
                            k, xproj, yproj, xpix, ypix, temp_d,
                            images[k, xpix, ypix],
                            interp(&bkg_profiles[k, 0], temp_d, half_size),
