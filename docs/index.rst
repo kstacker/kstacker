@@ -1,4 +1,4 @@
-kstacker Documentation
+K-Stacker Documentation
 ======================
 
 Important
@@ -81,7 +81,12 @@ acknowledgements
 ----------------
 
 The idea to search for hidden planets in series of observations was proposed during the Observatoire de Haute-Provence 2015
-meeting (Le Coroller et al. 2015, 'Twenty years of giant exoplanets' Edited by I. Boisse, O. Demangeon, F. Bouchy & L. Arnold, p. 59-65). Nowak, M. et al. 2018 has written the first version of the K-Stacker algorithm and tested its capability for detecting hidden planets (snr_ks < 2 at each epoch) in simulated coronagraphic images. In Le Coroller et al. 2020, k-Stacker has been validated through a dry run where fake planets where injected and recovered in real SPHERE SHINE data. In this paper, we also discussed the capability for K-Stacker to recover the orbital parameters space. Recently, K-Stacker has been fully rewritten by Simon Conseil, a computer engineer working at CeSAM / Laboratoire d'astrophysique de Marseille (description in Le Coroller et al. 2022, a scientific paper on Alphacen A NEAR-VISIR survey where this git repository link is given for the first time).
+meeting (Le Coroller et al. 2015, 'Twenty years of giant exoplanets' Edited by I. Boisse, O. Demangeon, F. Bouchy & L. Arnold, p. 59-65). Nowak, M. et al. 2018 has written the first version of the K-Stacker algorithm and tested its capability for detecting hidden planets (snr_ks < 2 at each epoch) in simulated coronagraphic images. In Le Coroller et al. 2020, k-Stacker was validated through a dry run where fake planets where injected and recovered in real SPHERE SHINE data. In this paper, we also discussed the capability for K-Stacker to recover the orbital parameters space. Recently, K-Stacker has been fully rewritten by Simon Conseil, a computer engineer working at CeSAM / Laboratoire d'astrophysique de Marseille (Le Coroller et al. 2022, a scientific paper on Alphacen A NEAR-VISIR survey, where this git repository link is given for the first time).
+
+Students of L3-M2 had also contributed to the initial project:
+Antoine Schneeberger; Marie Devinat; Justin Bec-Canet; Dimitri Estevez
+
+---------
 
 If you use this k-stacker software for your research, please add this sentence in the acknowledgements of your paper:
 
@@ -95,14 +100,10 @@ You also have to cite the three original papers:
 
          Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
 
+---------
 
-If you need some help, you can contact us at this email address : herve.lecoroller@lam.fr, mcn35@cam.ac.uk
+If you need some help, you can contact us at this email address :
+
+herve.lecoroller@lam.fr, mcn35@cam.ac.uk, simon.conseil@lam.fr
 
 Our K-Stacker team would be happy to collaborate on scientific projects using k-Stacker.
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
