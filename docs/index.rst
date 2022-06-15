@@ -100,11 +100,11 @@ Acknowledgements
 The idea to search for hidden planets in series of observations was proposed
 during the Observatoire de Haute-Provence 2015 meeting (Le Coroller et al. 2015,
 'Twenty years of giant exoplanets' Edited by I. Boisse, O. Demangeon, F. Bouchy
-& L. Arnold, p. 59-65). Nowak, M. et al. 2018 has written the first version of
-the |kstacker| algorithm and tested its capability for detecting hidden planets
-(snr_ks < 2 at each epoch) in simulated coronagraphic images. In Le Coroller et
-al. 2020, |kstacker| was validated through a dry run where fake planets where
-injected and recovered in real SPHERE SHINE data. In this paper, we also
+& L. Arnold, p. 59-65). [Nowak2018]_ has written the first version of the
+|kstacker| algorithm and tested its capability for detecting hidden planets
+(snr_ks < 2 at each epoch) in simulated coronagraphic images. In
+[LeCoroller2020]_, |kstacker| was validated through a dry run where fake planets
+where injected and recovered in real SPHERE SHINE data. In this paper, we also
 discussed the capability for |kstacker| to recover the orbital parameters space.
 Recently, |kstacker| has been fully rewritten by Simon Conseil, a computer
 engineer working at CeSAM / Laboratoire d'Astrophysique de Marseille (Le
@@ -124,11 +124,13 @@ in the acknowledgements of your paper:
 
 You also have to cite the three original papers:
 
-    Nowak, M., Le Coroller, H., Arnold, L., et al. 2018, A&A, 615, A144
+.. [Nowak2018] Nowak, M., Le Coroller, H., Arnold, L., et al. 2018, A&A, 615,
+   A144, https://ui.adsabs.harvard.edu/abs/2018A%26A...615A.144N
 
-    Le Coroller, H., Nowak, M., Delorme, P., et al. 2020, A&A, 639, A113
+.. [LeCoroller2020] Le Coroller, H., Nowak, M., Delorme, P., et al. 2020,
+   A&A, 639, A113, https://ui.adsabs.harvard.edu/abs/2020A%26A...639A.113L
 
-    Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
+Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
 
 .. _contact:
 
