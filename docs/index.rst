@@ -1,15 +1,14 @@
 |kstacker| Documentation
 ========================
 
-.. important::
-   Before using this software, please read the acknowledgements at the end of
-   this documentation.
+.. important:: Before using this software, please read the
+   :ref:`acknowledgements` at the end of this documentation.
 
 How to install
 --------------
 
-|kstacker| requires Python>=3.7 and a C compiler (you can e.g. Anaconda to get
-a recent Python if needed).
+|kstacker| requires Python>=3.7 and a C compiler (you can use e.g. Anaconda to
+get a recent Python if needed).
 
 To install |kstacker| in your Python environment, from the git repository::
 
@@ -83,15 +82,17 @@ Running on a Slurm cluster
 The ``example/`` directory contains some examples of Slurm scripts to run
 |kstacker|::
 
-    sh slurm_launch_noise_prof.sh
-    sh slurm_launch_brute_force.sh
-    sh slurm_launch_reopt.sh
+    slurm_launch_noise_prof.sh
+    slurm_launch_brute_force.sh
+    slurm_launch_reopt.sh
 
 Results
 -------
 
 The results of your |kstacker| run will be in the values directory.  In case of
-difficulty, you can contact us (see below).
+difficulty, you can :ref:`contact us <contact>`.
+
+.. _acknowledgements:
 
 Acknowledgements
 ----------------
@@ -128,6 +129,8 @@ You also have to cite the three original papers:
     Le Coroller, H., Nowak, M., Delorme, P., et al. 2020, A&A, 639, A113
 
     Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
+
+.. _contact:
 
 Contact
 -------

@@ -11,7 +11,7 @@ from kstacker import __version__
 
 # -- Project information -----------------------------------------------------
 
-project = "kstacker"
+project = "K-Stacker"
 copyright = "2022, Hervé Le Coroller et al"
 author = "Hervé Le Coroller et al"
 
@@ -60,7 +60,8 @@ intersphinx_mapping = {"https://docs.python.org/": None}
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "alabaster"
+# html_theme = "alabaster"
+html_theme = "pydata_sphinx_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
