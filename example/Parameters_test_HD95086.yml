@@ -6,8 +6,6 @@
 noise_prof: 'yes' # to compute the noise and background profile
 snr_plot: 'yes' # to compute the snr plots
 
-# remove_noisy: 'no' # Default='weakly'; To reject bad images: 'no' or 'weakly' or 'strongly'; weakly (: coef of 1.4); See demo of herve logbook
-
 p: 4   # number of images for a run, or number of images added to a previous run
 # p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
 #total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable

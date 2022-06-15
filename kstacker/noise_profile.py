@@ -1,8 +1,5 @@
 """
-Compute the noise and background profiles. Then, compute SNR_K-Stacker profiles
-and can remove the noisy images.  We remove the images: average_noise_image
-> reject_coef * total_average_noise_images Use the values in parameters.sh
-
+Compute the noise and background profiles.
 """
 
 import os
@@ -126,24 +123,17 @@ def pre_process_image(
         plt.close()
 
 
-def plot_noise(q, reject_coef, profile_dir, output_snrdir):
+def plot_noise(q, profile_dir, output_snrdir):
     """
-    Plot the noise profile of each images
+    Plot the noise profile for each image.
+
     :param q: int number of images
-    :param reject_coef: float (default=1.4)
     :param profile_dir: directory where the noise and background profiles are stored
     :param output_snrdir: directory where snr plots are stored
     """
 
-    total_average_noise_images = 0
-
     for k in range(q):
         noise = np.load(f"{profile_dir}/noise_prof{k}.npy")
-
-        # Computation of the sum of average noise
-        average_noise_image = np.average(noise)
-        total_average_noise_images += average_noise_image
-
         plt.figure(f"Noise Plot {k}")
         plt.title(f"Noise Plot {k}")
         plt.plot(noise)
@@ -151,24 +141,6 @@ def plot_noise(q, reject_coef, profile_dir, output_snrdir):
         plt.ylabel("standart deviation of the noise")
         plt.savefig(f"{output_snrdir}/Plot_noise{k}.pdf")
         plt.close()
-
-    total_average_noise_images = total_average_noise_images / q
-
-    dict_params = {}
-    image_removed = []
-
-    for k in range(q):
-        noise = np.load(f"{profile_dir}/noise_prof{k}.npy")
-        average_noise_image = np.average(noise)
-        if average_noise_image > reject_coef * total_average_noise_images:
-            image_removed.append(k)
-            dict_params["num of bad images"] = k
-
-    with open(f"{output_snrdir}/bad_images.txt", "w") as file:
-        for key, val in dict_params.items():
-            file.write(f"{key}: {val}\n")
-
-    return image_removed
 
 
 def compute_noise_profiles(params):
@@ -181,21 +153,6 @@ def compute_noise_profiles(params):
     nimg = params.p  # number of images
     size = params.n  # to keep the initial size n
     upsampling_factor = params.upsampling_factor
-
-    # Parameters to reject very bad images (due to bad seeing, AO problems, etc.)
-    #  'no' or 'weakly' or 'strongly'; Default: weakly (=1.4)
-    remove_noisy = params["remove_noisy"]
-    if remove_noisy == "weakly":
-        print("We remove the noisy images [average_noise > 1.4 * total_average_noise]")
-        # Default: 1.4 for number of images large ; See demo of herve logbook
-        reject_coef = 1.4
-    else:
-        if remove_noisy == "strongly":
-            print("We remove strongly the noisy images (reject_coef = 1) ")
-            reject_coef = 1
-        else:
-            print("We don't remove noisy images")
-            reject_coef = 999999
 
     # The epochs of observation are put in an array of time
     ts = params.get_ts()
@@ -275,30 +232,22 @@ def compute_noise_profiles(params):
     ###################################
 
     if snr_plot == "yes":
-        print("Coeff of rejection for noisy images: ", reject_coef)
-
         # Directories where the snr plots will be stored
-        output_snrdir = (
-            f"{profile_dir}/snr_plot_steps_remove_noise_{remove_noisy}_{reject_coef}"
-        )
+        output_snrdir = f"{profile_dir}/snr_plot_steps"
         output_snrgraph = f"{output_snrdir}/snr_graph"
 
         create_output_dir(output_snrdir)
         create_output_dir(output_snrgraph)
 
         t0 = time.time()
-        image_removed = plot_noise(nimg, reject_coef, profile_dir, output_snrdir)
+        plot_noise(nimg, profile_dir, output_snrdir)
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
-        print("Images removed because too noisy:", image_removed)
 
-        selected = [k for k in range(nimg) if k not in image_removed]
-        ts_selected = [ts[k] for k in selected]
         x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
         # load the images and the noise/background profiles
-        images, bkg_profiles, noise_profiles = params.load_data(selected=selected)
+        images, bkg_profiles, noise_profiles = params.load_data()
         nimg = len(images)
-        print("List of images used for the SNR computation:", selected)
 
         # Definition of parameters that will be ploted function of the SNR
         parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
@@ -350,7 +299,7 @@ def compute_noise_profiles(params):
             x[:, param_idx] = param_vect
 
             args = (
-                ts_selected,
+                ts,
                 params.m0,
                 size,
                 params.scale,
