@@ -1,109 +1,142 @@
-K-Stacker Documentation
-======================
+|kstacker| Documentation
+========================
 
-Important
----------
-
-Before you use this software, please read the acknowledgements at the end of this documentation
+.. important::
+   Before using this software, please read the acknowledgements at the end of
+   this documentation.
 
 How to install
 --------------
 
-1) The most simple is to install kstacker in a conda environment:
+|kstacker| requires Python>=3.7 and a C compiler (you can e.g. Anaconda to get
+a recent Python if needed).
 
-        https://www.anaconda.com/products/distribution
+To install |kstacker| in your Python environment, from the git repository::
 
-2) In a terminal type:
+    $ git clone https://gitlab.lam.fr/RHCI/kstacker.git
+    $ cd kstacker
+    $ pip install -e .
 
-    - conda activate "path of your k-stacker conda environement"
+Quickstart
+----------
 
-    - git clone https://gitlab.lam.fr/RHCI/kstacker.git
+Before running |kstacker|
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    - cd "path of the kstacker directory"
+- Create a directory where you will run |kstacker|.
 
-    - pip install -e .
+- In this directory, create a sub-directory called ``images/`` (can be
+  configured with the ``images_dir`` parameter).
 
-Quick launch
-------------
+- In the images directory put your reduced images. The files must be names
+  ``image_0.fits``, ``image_1.fits``,... ``image_n.fits`` (squared images,
+  sorted by epochs).
 
-1) Before launching K-Stacker
+- Customize the ``parameters.yml`` configuration file for your data (you can
+  start from the example file ``example/Parameters_test_HD95086.yml``):
 
-    - Create a directory where you will run K-Stacker
-    - In this directory, create a sub-directory called /images
-    - In /images directory put your reduced images re-called image_0, image_1,... image_n (squared images, sorted by epochs)
-    - Fill the parameters.yml configuration file for your data (you can change with your values in " this exemple "):
+    * Adjusts the numbers such as explained in the comments of
+      ``parameters.yml``.
 
-        * Adjusts the numbers such as explained in the comments of parameters.yml
-        * a_init must be a value near the maximum you want to search (but smaller than r_mask_ext in a.u.); you don't need to change the other _init values
-        * Adjust the range of the orbital parameters where you want to search for a planet : a_min, a_max; e_min, e_max, etc. t_0_min must be equal to: - sqrt(a_max^3 / m0)
-        * You can put your parameters.yml file in the k-stacker directory (at the same level than the images directory)
+    * ``a_init`` must be a value near the maximum you want to search (but
+      smaller than ``r_mask_ext`` in a.u.); you don't need to change the other
+      ``_init`` values.
 
-2) Run K-Stacker on one core:
+    * Adjust the range of the orbital parameters where you want to search for
+      a planet : ``a_min``, ``a_max``; ``e_min``, ``e_max``, etc. ``t_0_min``
+      must be equal to ``- sqrt(a_max^3 / m0)``.
 
-- Activate your conda environement by typing in a terminal :
+    * You can put your ``parameters.yml`` file in the |kstacker| directory (at
+      the same level than the images directory).
 
-            conda activate "path of your k-stacker conda environement"
+Running |kstacker|
+^^^^^^^^^^^^^^^^^^
 
-- Launch the noise profiles software by typing in a terminal:
+- The first step is to compute noise, background, and SNR profiles::
 
-            kstacker noise_profiles parameters.yml
+    kstacker noise_profiles parameters.yml
 
-- When the noise profile computation has finished, adjust the size of the grid by counting the number of maximums (peaks) of each snr_ks plot (pdf in profiles/snr_plot_steps_remove_noise_no_999999/snr_graph/) and report these numbers in the parameters.yml file (Na, Ne, Nt0, etc.)
+- When the noise profiles computation has finished, adjust the size of the grid
+  by counting the number of maximums (peaks) of each ``snr_ks`` plot (see the
+  PDF files in ``profiles/snr_plot_steps_remove_noise_no_999999/snr_graph/``)
+  and report these numbers in the ``parameters.yml`` file (Na, Ne, Nt0, etc.)
 
-- Run the optimization software by typing in a terminal:
+- Then run the optimization step, which can be computationally intensive
+  depending on the number of steps for the orbital parameters. To get an idea of
+  the number of orbits that will be computed use the ``--dry-run`` argument. If
+  |kstacker| has been compiled with the support of OpenMP, which should be the
+  case by default on Linux, you can use the ``--nthreads`` argument to specify
+  the number of parallel threads.
 
-            kstacker optimize Parameters.yml
+  ::
 
-- When the optimization computation is finished, run the gradiant by launching in a terminal :
+      kstacker optimize parameters.yml
 
-            kstacker reopt Parameters.yml
+- When the optimization computation is finished, run the gradiant by launching
+  in a terminal::
 
-3) Alternativelly, you can run k-Stacker on a cluster of computation by using slurm:
+    kstacker reopt parameters.yml
 
-- Follow the same steps than in 2. but by launching, in a terminal:
+Running on a Slurm cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``example/`` directory contains some examples of Slurm scripts to run
+|kstacker|::
 
     sh slurm_launch_noise_prof.sh
-
     sh slurm_launch_brute_force.sh
-
     sh slurm_launch_reopt.sh
-
-k-stacker use opennp to run on several cores. You can find an exemple of the slurm_*.sh files in the example directory.
 
 Results
 -------
 
-The results of your k-stacker run will be in the values directory
+The results of your |kstacker| run will be in the values directory.  In case of
+difficulty, you can contact us (see below).
 
-In case of difficulty, you can contact us at herve.lecoroller@lam.fr, mcn35@cam.ac.uk
-
-acknowledgements
+Acknowledgements
 ----------------
 
-The idea to search for hidden planets in series of observations was proposed during the Observatoire de Haute-Provence 2015
-meeting (Le Coroller et al. 2015, 'Twenty years of giant exoplanets' Edited by I. Boisse, O. Demangeon, F. Bouchy & L. Arnold, p. 59-65). Nowak, M. et al. 2018 has written the first version of the K-Stacker algorithm and tested its capability for detecting hidden planets (snr_ks < 2 at each epoch) in simulated coronagraphic images. In Le Coroller et al. 2020, k-Stacker was validated through a dry run where fake planets where injected and recovered in real SPHERE SHINE data. In this paper, we also discussed the capability for K-Stacker to recover the orbital parameters space. Recently, K-Stacker has been fully rewritten by Simon Conseil, a computer engineer working at CeSAM / Laboratoire d'astrophysique de Marseille (Le Coroller et al. 2022, a scientific paper on Alphacen A NEAR-VISIR survey, where this git repository link is given for the first time).
+The idea to search for hidden planets in series of observations was proposed
+during the Observatoire de Haute-Provence 2015 meeting (Le Coroller et al. 2015,
+'Twenty years of giant exoplanets' Edited by I. Boisse, O. Demangeon, F. Bouchy
+& L. Arnold, p. 59-65). Nowak, M. et al. 2018 has written the first version of
+the |kstacker| algorithm and tested its capability for detecting hidden planets
+(snr_ks < 2 at each epoch) in simulated coronagraphic images. In Le Coroller et
+al. 2020, |kstacker| was validated through a dry run where fake planets where
+injected and recovered in real SPHERE SHINE data. In this paper, we also
+discussed the capability for |kstacker| to recover the orbital parameters space.
+Recently, |kstacker| has been fully rewritten by Simon Conseil, a computer
+engineer working at CeSAM / Laboratoire d'Astrophysique de Marseille (Le
+Coroller et al. 2022, a scientific paper on Alphacen A NEAR-VISIR survey, where
+this git repository link is given for the first time).
 
 Students of L3-M2 had also contributed to the initial project:
 Antoine Schneeberger; Marie Devinat; Justin Bec-Canet; Dimitri Estevez
 
 ---------
 
-If you use this k-stacker software for your research, please add this sentence in the acknowledgements of your paper:
+If you use this |kstacker| software for your research, please add this sentence
+in the acknowledgements of your paper:
 
-      "This work has make used of the K-Stacker algorithm maintened by CeSAM at Laboratoire d'Astrophysique de Marseille"
+    "This work has make used of the |kstacker| algorithm maintained by CeSAM at
+    Laboratoire d'Astrophysique de Marseille"
 
 You also have to cite the three original papers:
 
-         Nowak, M., Le Coroller, H., Arnold, L., et al. 2018, A&A, 615, A144
+    Nowak, M., Le Coroller, H., Arnold, L., et al. 2018, A&A, 615, A144
 
-         Le Coroller, H., Nowak, M., Delorme, P., et al. 2020, A&A, 639, A113
+    Le Coroller, H., Nowak, M., Delorme, P., et al. 2020, A&A, 639, A113
 
-         Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
+    Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
 
----------
+Contact
+-------
 
 If you need some help, you can contact us at this email address :
 
 herve.lecoroller@lam.fr, mcn35@cam.ac.uk, simon.conseil@lam.fr
 
-Our K-Stacker team would be happy to collaborate on scientific projects using k-Stacker.
+Our team would be happy to collaborate on scientific projects using |kstacker|.
+
+
+.. |kstacker| replace:: K-Stacker
