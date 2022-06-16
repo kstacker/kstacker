@@ -12,7 +12,7 @@ get a recent Python if needed).
 
 To install |kstacker| in your Python environment, from the git repository::
 
-    $ git clone https://gitlab.lam.fr/RHCI/kstacker.git
+    $ git clone https://github.com/kstacker/kstacker.git
     $ cd kstacker
     $ pip install -e .
 
@@ -34,7 +34,7 @@ Before running |kstacker|
 - Customize the ``parameters.yml`` configuration file for your data (you can
   start from the example file ``example/Parameters_test_HD95086.yml``):
 
-    * Adjusts the numbers such as explained in the comments of
+    * Adjust the numbers such as explained in the comments of
       ``parameters.yml``.
 
     * ``a_init`` must be a value near the maximum you want to search (but
@@ -71,7 +71,7 @@ Running |kstacker|
 
       kstacker optimize parameters.yml
 
-- When the optimization computation is finished, run the gradiant by launching
+- When the optimization computation is finished, run the gradient by launching
   in a terminal::
 
     kstacker reopt parameters.yml
@@ -114,12 +114,13 @@ this git repository link is given for the first time).
 Students of L3-M2 had also contributed to the initial project:
 Antoine Schneeberger; Marie Devinat; Justin Bec-Canet; Dimitri Estevez
 
----------
+Citation
+--------
 
 If you use this |kstacker| software for your research, please add this sentence
 in the acknowledgements of your paper:
 
-    "This work has make used of the |kstacker| algorithm maintained by CeSAM at
+    "This work made use of the |kstacker| algorithm maintained by CeSAM at
     Laboratoire d'Astrophysique de Marseille"
 
 You also have to cite the three original papers:
