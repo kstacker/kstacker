@@ -3,9 +3,6 @@ A set of functions used to analyze images produced by the rest of the code
 (compute photometry, Signal to Noise Ratios, etc.)
 """
 
-__author__ = "Mathias Nowak, Dimitri Estevez"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
 
 import math
 

@@ -4,9 +4,6 @@ the necessary functions, and perform the required Fourier Transform in proper
 order to get the image as given by a coronagraphic system
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
 
 import matplotlib.pyplot as plt
 import numpy as np

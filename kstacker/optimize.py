@@ -12,10 +12,6 @@ import numpy as np
 from ._utils import compute_snr
 from .orbit import orbit
 
-__author__ = "Mathias Nowak, Dimitri Estevez"
-__email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
-__status__ = "Development"
-
 
 def reject_invalid_orbits(orbital_grid, projection_grid, m0):
     a, e, t0 = orbital_grid.T

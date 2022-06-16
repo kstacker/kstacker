@@ -16,10 +16,6 @@ from .imagerie import photometry, recombine_images
 from .orbit import orbit as orb
 from .orbit import plot_ontop, plot_orbites2
 
-__author__ = "Mathias Nowak, Dimitri Estevez"
-__email__ = "mathias.nowak@ens-cachan.fr, destevez@lam.fr"
-__status__ = "Development"
-
 
 # define snr function as a function of the orbit (used for the gradient; we maximise this function)
 def get_res(

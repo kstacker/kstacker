@@ -2,10 +2,6 @@
 Functions used to generate and add noise to images
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
-
 
 import math
 

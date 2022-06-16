@@ -15,10 +15,6 @@ from . import coronagraph
 from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
 from .utils import compute_signal_and_noise_grid, create_output_dir
 
-__author__ = "Herve Le Coroller"
-__mail__ = "herve.lecoroller@lam.fr"
-__status = "initial Development"
-
 
 def pre_process_image(
     image_filename,

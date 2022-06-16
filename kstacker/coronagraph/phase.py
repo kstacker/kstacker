@@ -6,10 +6,6 @@ idl. Make sure to change the command and the PATH values according to your own
 System.
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
-
 
 import math
 

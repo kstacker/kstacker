@@ -2,9 +2,6 @@
 Functions used to represent the orbit of the planet
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
 
 import math
 

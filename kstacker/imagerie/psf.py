@@ -2,9 +2,6 @@
 Function to create a PSF of a given fwhm
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Working"
 
 import numpy as np
 import scipy.integrate

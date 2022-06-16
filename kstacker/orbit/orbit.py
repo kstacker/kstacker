@@ -1,9 +1,6 @@
 # Function to get the position vector (cartesian coordinates) of a planet on a
 # given orbit, at a given time
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Working"
 
 import kepler
 import numpy as np

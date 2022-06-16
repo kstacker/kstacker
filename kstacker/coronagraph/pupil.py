@@ -2,10 +2,6 @@
 This package contains all the functions required to generate and manipulate (i.e. apodize) the pupil wavefront
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
-
 
 import math
 

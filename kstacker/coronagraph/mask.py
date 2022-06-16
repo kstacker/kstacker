@@ -2,10 +2,6 @@
 This module contains all the functions that are used to generate coronagraphic masks
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
-
 
 import numpy as np
 

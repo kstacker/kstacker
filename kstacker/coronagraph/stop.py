@@ -2,10 +2,6 @@
 This module contains all the functions used in the lyot plane (lyot stop functions)
 """
 
-__author__ = "Mathias Nowak"
-__email__ = "mathias.nowak@ens-cachan.fr"
-__status__ = "Testing"
-
 
 import numpy as np
 

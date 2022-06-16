@@ -4,9 +4,6 @@ orbit, at a given time.  it uses orbit.py but we create classes for easy call
 in the softs.
 """
 
-__author__ = "Herve Le Coroller"
-__email__ = "herve.lecoroller@lam.fr"
-__status__ = "Development"
 
 from . import orbit
 
