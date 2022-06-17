@@ -2,7 +2,7 @@
 ========================
 
 .. important:: Before using this software, please read the
-   :ref:`acknowledgements` at the end of this documentation.
+   :ref:`acknowledgements` and :ref:`citation` at the end of this documentation.
 
 How to install
 --------------
@@ -94,6 +94,19 @@ difficulty, you can :ref:`contact us <contact>`.
 
 .. _acknowledgements:
 
+Trainning
+---------
+
+You can train you by launching |kstacker| on the data provided in the example directory.
+
+The Parameters_test_HD95086.yml has been pre-configured to search for HD95086b in the field of view of the SPHERE-IFS images.
+The IFS (K-band) images of HD95086 provided in this example come from the SPHERE / SHINE survey ([Chauvin2018]_, [Desgrange2022]_)
+
+Chauvin, Gratton, Bonnefoy, et al. 2018, A&A, 617, A76; Desgrange et al. 2022, accepted). They have been reduced by SPHERE-DC with an ASDI-TLOCI algorithm.
+These data are available in the HC-DC.DIVA data base (https://cesam.lam.fr/diva/).
+
+We also provide an example of slurm files that you can use on a cluster.
+
 Acknowledgements
 ----------------
 
@@ -107,8 +120,8 @@ during the Observatoire de Haute-Provence 2015 meeting (Le Coroller et al. 2015,
 where injected and recovered in real SPHERE SHINE data. In this paper, we also
 discussed the capability for |kstacker| to recover the orbital parameters space.
 Recently, |kstacker| has been fully rewritten by Simon Conseil, a computer
-engineer working at CeSAM / Laboratoire d'Astrophysique de Marseille (Le
-Coroller et al. 2022, a scientific paper on Alphacen A NEAR-VISIR survey, where
+engineer working at CeSAM / Laboratoire d'Astrophysique de Marseille ([LeCoroller2022]_,
+a scientific paper on Alphacen A NEAR-VISIR survey, where
 this git repository link is given for the first time).
 
 Students of L3-M2 had also contributed to the initial project:
@@ -131,7 +144,13 @@ You also have to cite the three original papers:
 .. [LeCoroller2020] Le Coroller, H., Nowak, M., Delorme, P., et al. 2020,
    A&A, 639, A113, https://ui.adsabs.harvard.edu/abs/2020A%26A...639A.113L
 
-Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
+.. [LeCoroller2022] Le Coroller, H., Nowak, M., Wagner, K. et al. 2022, A&A, submitted
+
+Papers describing the data used in the example directory:
+
+.. [Chauvin2018] Chauvin, C., Gratton, R., Bonnefoy, M. et al. 2018, A&A, 617, A76
+
+.. [Desgrange2022] Desgrange, C., Chauvin, G., Christiaens, et al. 2022, A&A, Accepted
 
 .. _contact:
 
