@@ -44,6 +44,7 @@ def compute_snr_values(params, x):
             noise_profiles,
             proj_matrices,
             params.r_mask,
+            params.r_mask_ext,
             params.scale,
             params.n,
             params.upsampling_factor,

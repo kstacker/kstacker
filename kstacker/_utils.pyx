@@ -111,6 +111,8 @@ cdef inline _compute_snr(double[:,:,::1] images,
             temp_d = sqrt(xproj**2 + yproj**2)
 
             if temp_d <= r_mask or temp_d >= r_mask_ext:
+                if debug:
+                    printf("image %2ld: dist=%f, out\n", k, temp_d)
                 continue
 
             # convert position into pixel in the image
