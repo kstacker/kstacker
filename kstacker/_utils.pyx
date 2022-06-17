@@ -75,6 +75,7 @@ cdef inline _compute_snr(double[:,:,::1] images,
                          double[:,::1] noise_profiles,
                          float[:,:,::1] proj_matrices,
                          double r_mask,
+                         double r_mask_ext,
                          double scale,
                          int size,
                          int upsampling_factor,
@@ -109,7 +110,7 @@ cdef inline _compute_snr(double[:,:,::1] images,
             # distance to the center
             temp_d = sqrt(xproj**2 + yproj**2)
 
-            if temp_d <= r_mask:
+            if temp_d <= r_mask or temp_d >= r_mask_ext:
                 continue
 
             # convert position into pixel in the image
@@ -167,13 +168,15 @@ def compute_snr(double[:,:,::1] images,
                 double[:,::1] noise_profiles,
                 float[:,:,::1] proj_matrices,
                 double r_mask,
+                double r_mask_ext,
                 double scale,
                 int size,
                 int upsampling_factor,
                 double[:,::1] out,
                 int num_threads=0):
     _compute_snr(images, positions, bkg_profiles, noise_profiles, proj_matrices,
-                 r_mask, scale, size, upsampling_factor, out, num_threads, 0)
+                 r_mask, r_mask_ext, scale, size, upsampling_factor, out,
+                 num_threads, 0)
 
 
 @cython.boundscheck(False)
@@ -184,10 +187,12 @@ def compute_snr_debug(double[:,:,::1] images,
                       double[:,::1] noise_profiles,
                       float[:,:,::1] proj_matrices,
                       double r_mask,
+                      double r_mask_ext,
                       double scale,
                       int size,
                       int upsampling_factor,
                       double[:,::1] out,
                       int num_threads=0):
     _compute_snr(images, positions, bkg_profiles, noise_profiles, proj_matrices,
-                 r_mask, scale, size, upsampling_factor, out, num_threads, 1)
+                 r_mask, r_mask_ext, scale, size, upsampling_factor, out,
+                 num_threads, 1)

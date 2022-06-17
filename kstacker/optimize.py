@@ -161,6 +161,7 @@ def evaluate(
                 noise_profiles,
                 proj_mat,
                 params.r_mask,
+                params.r_mask_ext,
                 params.scale,
                 params.n,
                 params.upsampling_factor,
