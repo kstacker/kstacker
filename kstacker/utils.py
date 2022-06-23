@@ -202,21 +202,22 @@ class Params:
         print("time vector: ", ts)
         return ts
 
-    def get_image_suffix(self):
-        if self.method == "convolve":
+    def get_image_suffix(self, method=None):
+        method = method or self.method
+        if method == "convolve":
             print("Using pre-convolved images")
             return "_resampled"
-        elif self.method == "aperture":
+        elif method == "aperture":
             print("Using photutils apertures")
             return "_preprocessed"
         else:
-            raise ValueError(f"invalid method {self.method}")
+            raise ValueError(f"invalid method {method}")
 
-    def load_data(self, selected=None, img_suffix=None):
+    def load_data(self, selected=None, method=None):
         """Load the fits images and the noise/background profiles."""
         images_dir = self.get_path("images_dir")
         profile_dir = self.get_path("profile_dir")
-        img_suffix = img_suffix or self.get_image_suffix()
+        img_suffix = self.get_image_suffix(method=method)
         nimg = self.p + self.p_prev  # number of timesteps
 
         images, bkg_profiles, noise_profiles = [], [], []

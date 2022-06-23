@@ -165,7 +165,7 @@ def reoptimize_gradient(params, n_jobs=1):
     size = params.n  # number of pixels
     x_profile = np.linspace(0, size // 2 - 1, size // 2)
 
-    images, bkg_profiles, noise_profiles = params.load_data(img_suffix="_preprocessed")
+    images, bkg_profiles, noise_profiles = params.load_data(method="aperture")
 
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR

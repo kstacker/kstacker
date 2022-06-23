@@ -9,7 +9,7 @@ import time
 import h5py
 import numpy as np
 
-from ._utils import compute_snr
+from ._utils import cy_compute_snr
 from .orbit import orbit
 
 
@@ -154,7 +154,7 @@ def evaluate(
             if nvalid == 0:
                 continue
             out = np.zeros((nvalid, 3))
-            compute_snr(
+            cy_compute_snr(
                 images,
                 positions[j],
                 bkg_profiles,
