@@ -282,16 +282,13 @@ def monte_carlo_noise(image, npix, radius, fwhm, upsampling_factor, method="conv
     """
     p = 1000  # number of disks to generate
     theta = np.random.uniform(-math.pi, math.pi, size=p)
-    x = radius * np.cos(theta)
-    y = radius * np.sin(theta)
-    position = [x + npix // 2, y + npix // 2]
+    x = radius * np.cos(theta) + npix // 2
+    y = radius * np.sin(theta) + npix // 2
 
     if method == "convolve":
-        fluxes = photometry_preprocessed(
-            image, position[0], position[1], upsampling_factor
-        )
+        fluxes = photometry_preprocessed(image, x, y, upsampling_factor)
     elif method == "aperture":
-        fluxes = photometry(image, position, 2 * fwhm)
+        fluxes = photometry(image, [x, y], 2 * fwhm)
     else:
         raise ValueError(f"invalid method {method}")
 
