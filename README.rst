@@ -1,4 +1,4 @@
 K-Stacker
 ---------
 
-WIP
+See https://kstacker.readthedocs.io/en/latest/
