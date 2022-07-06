@@ -127,6 +127,8 @@ this git repository link is given for the first time).
 Students of L3-M2 had also contributed to the initial project:
 Antoine Schneeberger; Marie Devinat; Justin Bec-Canet; Dimitri Estevez
 
+This research has been financed by PNP-INSU-CNRS
+
 Citation
 --------
 
