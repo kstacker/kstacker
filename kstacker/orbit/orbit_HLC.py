@@ -19,7 +19,6 @@ class Orbit:
         self.theta_0 = theta_0
 
     def get_position_au(self, t):
-
         [xau, yau] = orbit.project_position(
             orbit.position(t, self.a, self.e, self.t0, self.m0),
             self.omega,
@@ -30,7 +29,6 @@ class Orbit:
 
 
 def main():
-
     orbital_parameters = [
         1.518317,
         0.267951,
