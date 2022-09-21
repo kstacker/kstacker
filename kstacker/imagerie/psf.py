@@ -6,7 +6,7 @@ Function to create a PSF of a given fwhm
 import numpy as np
 import scipy.integrate
 import scipy.special
-from scipy.ndimage.interpolation import shift
+from scipy.ndimage import shift
 
 
 def psf(x, y, fwhm):

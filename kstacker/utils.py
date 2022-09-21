@@ -9,6 +9,8 @@ from astropy.table import Table, vstack
 from .imagerie.analyze import photometry, photometry_preprocessed
 from .orbit import orbit
 
+__doctest_skip__ = ["Params"]
+
 
 def create_output_dir(path, remove_if_exist=False):
     if remove_if_exist and os.path.exists(path):
