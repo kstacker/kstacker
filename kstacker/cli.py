@@ -43,7 +43,9 @@ def main():
         "reopt", help="re-optimize the best SNR values with a gradient descent"
     )
     sub_reopt.add_argument("parameter_file", help="Parameter file (yml)")
-    sub_reopt.add_argument("--njobs", type=int, default=0, help="number of processes")
+    sub_reopt.add_argument(
+        "--njobs", type=int, default=1, help="number of processes (-1 to use all CPUs)"
+    )
     sub_reopt.set_defaults(func=reoptimize)
 
     args = parser.parse_args()
