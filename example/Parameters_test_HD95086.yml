@@ -8,7 +8,7 @@ snr_plot: 'yes' # to compute the snr plots
 
 p: 4   # number of images for a run, or number of images added to a previous run
 # p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
-#total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
+total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
 n: 124   # size of the images nxn
 
 # To compute the flux at a given position, the optimize step can use 2 methods:
@@ -27,7 +27,7 @@ time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115"
 #remove_box: "20.0+20.0+20.0+20.0" #size of the exclusion box if remove_planet='yes'. In pixels.
 # Each number is a variation from the 01 Janvier 2000 : write the times spaced by a + sign
 
-work_dir: "/net/GSP/nas12c/kstacker/Test_HD95086_IRDIS_TLOCI_K1_a40-62_e0-0p4_dist86p2_very_small_int_circle_m1.59_waffles_4epochs_new_profile_low_steps_calcul_CeSAM_convolve_VJuin2022/"
+work_dir: "."
 images_dir: "images"   # folder where to load the images
 grid_dir: "brute_grid"   # folder where to save the grid and the values of signals and noises after the brute force
 values_dir: "values"   # folder where to save the results

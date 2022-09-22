@@ -122,11 +122,11 @@ def evaluate(
     proj_matrices = np.ascontiguousarray(proj_matrices)
     omega = i = theta_0 = None
 
-    # Save results every nsave iterations
-    nsave = min(norbits, 1_000)
+    # Results are saved in chuncks of nsave to avoid keeping all results in memory
+    nsave = min(norbits, 1_000) * nbest
     isave = 0
     idata = 0
-    out_full = np.empty((nbest * nsave, 9), dtype=np.float32)
+    out_full = np.empty((nsave, 9), dtype=np.float32)
     t0 = time.time()
 
     with h5py.File(outfile, "w") as f:
@@ -169,35 +169,42 @@ def evaluate(
                 num_threads=num_threads,
             )
 
-            # Sort by SNR
-            ind = np.argpartition(out[:, 2], nbest)[:nbest]
+            # Keep the nbest results, based on their SNR
+            nkeep = min(nvalid, nbest)
+            if nkeep == nvalid:
+                # then keep all results for this orbit
+                ind = np.arange(nkeep)
+            else:
+                ind = np.argpartition(out[:, 2], nkeep)[:nkeep]
 
             # Save best results in out_full
-            sl = slice(isave * nbest, (isave + 1) * nbest)
+            sl = slice(isave, isave + nkeep)
             out_full[sl, :3] = orbital_grid[j]  # a, e, t0
             out_full[sl, 3:6] = projection_grid[valid][ind]  # omega, i, theta0
             out_full[sl, 6:] = out[ind]  # signal, noise, snr
-            isave += 1
+            isave += nkeep
 
-            if isave == nsave:
-                # write to disk
-                data[idata * nbest * nsave : (idata + 1) * nbest * nsave] = out_full
-                idata += 1
+            if isave + nbest > nsave:
+                # write to disk the results that have been computed so far
+                data[idata : idata + isave] = out_full[:isave]
+                idata += isave
                 isave = 0
                 if show_progress:
                     tt = time.time() - t0
-                    remaining = tt * (norbits / (idata * nsave) - 1)
+                    remaining = tt * (norbits / j - 1)
                     print(
-                        f"- {idata*nsave}/{norbits}, {tt:.2f} sec., remains"
+                        f"- {j}/{norbits}, {tt:.2f} sec., remains"
                         f" {remaining:.2f} sec.",
                         flush=True,
                     )
 
         if isave > 0:
             # write the remaining orbits (isave < nsave) to disk
-            istart = idata * nbest * nsave
-            size = isave * nbest
-            data[istart : istart + size] = out_full[:size]
+            data[idata : idata + isave] = out_full[:isave]
+            idata += isave
+
+        # resize the dataset to the actual number of results that have been computed
+        data.resize((idata, 9))
 
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
