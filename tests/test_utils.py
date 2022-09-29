@@ -3,7 +3,7 @@ from kstacker.utils import Params
 from numpy.testing import assert_allclose
 
 CURRENT_PATH = pathlib.Path(__file__).absolute().parent
-EXAMPLE_PARAMS = CURRENT_PATH / ".." / "example" / "Parameters_test_HD95086.yml"
+EXAMPLE_PARAMS = CURRENT_PATH / ".." / "example" / "parameters_HD95086.yml"
 
 
 def test_params():
