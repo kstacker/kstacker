@@ -57,7 +57,7 @@ venv
 # VS code
 .vscode
 
-kstacker/version.py
+src/kstacker/version.py
 pip-wheel-metadata/
 
 # OS generated files
