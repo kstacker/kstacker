@@ -1,6 +1,6 @@
 import numpy as np
 
-from kstacker.orbit import position, project_position
+from kstacker.orbit import position, project_position, positions_at_multiple_times
 
 A = 0.9
 E = 0.55
@@ -24,6 +24,17 @@ def test_position_array():
         [0.16371403, 0.51217852],
         [-1.36238363, 0.2005189],
     ]
+    np.testing.assert_array_almost_equal(pos, expected, decimal=8)
+
+
+def test_position_multiple_times():
+    pos = positions_at_multiple_times(
+        np.array([0, 1]), np.array([[A, E, T0], [A, E, T0]]), M0
+    )
+    expected = (
+        [[-1.13492103, -1.13492103], [0.11133086, 0.11133086]],
+        [[-0.52853524, -0.52853524], [-0.55547108, -0.55547108]],
+    )
     np.testing.assert_array_almost_equal(pos, expected, decimal=8)
 
 
