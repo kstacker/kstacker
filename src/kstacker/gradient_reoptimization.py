@@ -152,7 +152,7 @@ def optimize_orbit(result, k, args, bounds):
     return snr_i, snr_best, *x_best
 
 
-def reoptimize_gradient(params, n_jobs=1):
+def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     # We sort the results in several directories
     values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
@@ -170,6 +170,11 @@ def reoptimize_gradient(params, n_jobs=1):
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR
         results = f["Best solutions"][:]
+
+    if n_orbits is not None:
+        results = results[:n_orbits]
+    else:
+        n_orbits = params.q
 
     # define bounds
     bounds = params.grid.bounds()
@@ -189,7 +194,7 @@ def reoptimize_gradient(params, n_jobs=1):
 
     # Computation on the q best SNR
     reopt = Parallel(n_jobs=n_jobs)(
-        delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(params.q)
+        delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
     )
     # Sort values with the recomputed SNR
     reopt = np.array(reopt)
@@ -206,7 +211,7 @@ def reoptimize_gradient(params, n_jobs=1):
 
     Parallel(n_jobs=n_jobs)(
         delayed(make_plots)(reopt[k, 3:], k, params, images, ts, values_dir, args)
-        for k in range(params.q)
+        for k in range(n_orbits)
     )
 
     print("Done!")

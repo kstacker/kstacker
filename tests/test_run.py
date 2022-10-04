@@ -2,23 +2,23 @@ import pathlib
 
 import h5py
 import numpy as np
+from astropy.io import ascii
 from numpy.testing import assert_almost_equal
 
+from kstacker.gradient_reoptimization import reoptimize_gradient
 from kstacker.noise_profile import compute_noise_profiles
 from kstacker.optimize import brute_force
 
 
-def test_full_run(params_tmp, capsys):
+def test_full_run(params_tmp):
     """Test a complete run, all in one to avoid recomputing several times the
     intermediate steps.
     """
     np.random.seed(42)
+    path = pathlib.Path(params_tmp.work_dir)
 
     # Noise and background profiles ------------------------------------------
     compute_noise_profiles(params_tmp)
-    out = capsys.readouterr().out.splitlines()
-    assert "Using pre-convolved images" in out
-    assert "Background and noise profile Done." in out
 
     path = pathlib.Path(params_tmp.work_dir)
     assert (path / "profiles" / "background_prof0.npy").is_file()
@@ -26,10 +26,6 @@ def test_full_run(params_tmp, capsys):
 
     # Brute force ------------------------------------------------------------
     brute_force(params_tmp, dry_run=False, num_threads=1, show_progress=True)
-    out = capsys.readouterr().out.splitlines()
-    assert "Using pre-convolved images" in out
-
-    path = pathlib.Path(params_tmp.work_dir)
 
     with h5py.File(path / "brute_grid" / "res.h5") as f:
         assert f["Orbital grid"].shape == (3130, 3)
@@ -61,4 +57,11 @@ def test_full_run(params_tmp, capsys):
             -16.694956,
             -16.69361,
         ]
-        assert_almost_equal(best[:10, 8], expected, decimal=6)
+        assert_almost_equal(best[:10, 8], expected, decimal=5)
+
+    # Reoptimize -------------------------------------------------------------
+    reoptimize_gradient(params_tmp, n_orbits=5)
+    names = ["idx", "snr_brut", "snr_grad", "a", "e", "t0", "omega", "i", "theta_0"]
+    res = ascii.read(path / "values" / "results.txt", names=names)
+    expected = [-17.06183, -17.0618 , -17.06171, -17.05881, -17.05147]
+    assert_almost_equal(res["snr_grad"], expected, decimal=5)
