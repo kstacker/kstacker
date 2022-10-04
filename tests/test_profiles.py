@@ -1,11 +1,9 @@
-import pathlib
-
 import matplotlib.pyplot as plt  # noqa
 import numpy as np
 import pytest
 from astropy.io import fits
 
-from kstacker.noise_profile import compute_noise_profiles, pre_process_image
+from kstacker.noise_profile import pre_process_image
 
 
 def test_pre_process_image(tmp_path):
@@ -36,14 +34,3 @@ def test_pre_process_image(tmp_path):
 
     assert (tmp_path / "img_preprocessed.png").is_file()
     assert (tmp_path / "img_resampled.png").is_file()
-
-
-def test_noise_profile(params_tmp, capsys):
-    compute_noise_profiles(params_tmp)
-    out = capsys.readouterr().out.splitlines()
-    assert "Using pre-convolved images" in out
-    assert "Background and noise profile Done." in out
-
-    path = pathlib.Path(params_tmp.work_dir)
-    assert (path / "profiles" / "background_prof0.npy").is_file()
-    assert (path / "profiles" / "noise_prof0.npy").is_file()

@@ -17,6 +17,7 @@ def params():
 
 @pytest.fixture()
 def params_small(params):
+    """Without fewer steps."""
     params._params["Na"] = 2
     params._params["Ne"] = 2
     params._params["Nt0"] = 2
@@ -28,6 +29,7 @@ def params_small(params):
 
 @pytest.fixture(scope="module")
 def params_tmp(tmp_path_factory):
+    """With data in a temporary directory."""
     p = Params.read(EXAMPLE_PARAMS)
     work_path = tmp_path_factory.mktemp("data")
     p.work_dir = str(work_path)
