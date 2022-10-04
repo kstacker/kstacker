@@ -1,6 +1,6 @@
 import numpy as np
 
-from kstacker.orbit import position, project_position, positions_at_multiple_times
+from kstacker.orbit import position, positions_at_multiple_times, project_position
 
 A = 0.9
 E = 0.55

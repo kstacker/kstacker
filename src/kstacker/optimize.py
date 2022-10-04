@@ -193,8 +193,7 @@ def evaluate(
                     tt = time.time() - t0
                     remaining = tt * (norbits / j - 1)
                     print(
-                        f"- {j}/{norbits}, {tt:.2f} sec., remains"
-                        f" {remaining:.2f} sec.",
+                        f"- {j}/{norbits}, {tt:.2f} sec., remains {remaining:.2f} sec.",
                         flush=True,
                     )
 

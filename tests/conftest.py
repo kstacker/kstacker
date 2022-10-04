@@ -29,7 +29,7 @@ def params_small(params):
 @pytest.fixture(scope="module")
 def params_tmp(tmp_path_factory):
     p = Params.read(EXAMPLE_PARAMS)
-    work_path = tmp_path_factory.mktemp('data')
+    work_path = tmp_path_factory.mktemp("data")
     p.work_dir = str(work_path)
     shutil.copytree(EXAMPLE_PATH / "images", work_path / "images")
     return p

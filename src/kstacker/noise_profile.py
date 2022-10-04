@@ -11,7 +11,6 @@ from astropy.io import fits
 from astropy.nddata import block_replicate
 from scipy.signal import convolve2d
 
-from . import coronagraph
 from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
 from .utils import compute_signal_and_noise_grid, create_output_dir
 
@@ -22,7 +21,7 @@ def pre_process_image(
     size=None,
     r_mask=None,
     r_mask_ext=None,
-    mask_value=None,
+    mask_value=0,
     upsampling_factor=1,
     plot=False,
 ):
@@ -54,7 +53,7 @@ def pre_process_image(
     """
     filename, extension = os.path.splitext(image_filename)
     if extension not in (".fits", ".FITS", ".Fits"):
-        raise Exception("Image must be a .fits file!")
+        raise ValueError("Image must be a .fits file!")
 
     image = fits.getdata(image_filename)
     nx, ny = np.shape(image)
@@ -67,24 +66,16 @@ def pre_process_image(
     npix = image.shape[0]
 
     if r_mask < 0 or r_mask > npix / 2:
-        raise Exception("Internal mask diameter must be > 0 and smaller than image")
+        raise ValueError("Internal mask diameter must be > 0 and smaller than image")
 
     if r_mask_ext < 0 or r_mask_ext > npix / 2:
-        raise Exception("External mask diameter must be > 0 and smaller than image")
+        raise ValueError("External mask diameter must be > 0 and smaller than image")
 
-    if mask_value is None:
-        # If mask_value is None, we put the pixel values at zero in the masks
-        # (internal, external)
-        mask = 0 * image + 1
-        mask = mask * np.abs(coronagraph.mask.lyot(npix, r_mask * 2))
-        mask = mask * np.abs(coronagraph.stop.circular_stop(npix, r_mask_ext * 2))
-        image = image * mask
-    else:
-        # In the mask (internal, external), we put the pixel values at 'mask_value'
-        x, y = np.mgrid[:npix, :npix] - npix / 2
-        dist2 = x**2 + y**2
-        mask = (dist2 < r_mask**2) | (dist2 > r_mask_ext**2)
-        image[mask] = mask_value
+    # In the mask (internal, external), we put the pixel values at 'mask_value'
+    x, y = np.mgrid[:npix, :npix] - npix / 2
+    dist2 = x**2 + y**2
+    mask = (dist2 < r_mask**2) | (dist2 > r_mask_ext**2)
+    image[mask] = mask_value
 
     image[np.isnan(image)] = 0
     hdr = fits.Header({"RMASK": r_mask, "RMASKEXT": r_mask_ext})
@@ -153,14 +144,9 @@ def compute_noise_profiles(params):
     # The epochs of observation are put in an array of time
     ts = params.get_ts()
 
-    # This variables are used to determine the part of the software that will be run
-    noise_prof = params["noise_prof"]  # yes or no
-    snr_plot = params["snr_plot"]  # yes or no
-
     # This section check if the program must remove the planet from noise and
     # background (Justin Bec-canet)
-    remove_planet = params["remove_planet"]  # yes or no
-    if remove_planet == "yes":
+    if params.remove_planet == "yes":
         # The coordinates of the planet are put into an array
         remove_box = [float(x) for x in params.remove_box.split("+")]
 
@@ -177,7 +163,7 @@ def compute_noise_profiles(params):
     # Main noise and background program
     ###################################
 
-    if noise_prof == "yes":
+    if params.noise_prof == "yes":
         # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
         t0 = time.time()
         for k in range(nimg):
@@ -200,7 +186,7 @@ def compute_noise_profiles(params):
         for k in range(nimg):
             img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
             img = img.astype(float)
-            if remove_planet == "yes":
+            if params.remove_planet == "yes":
                 # uses a function to remove the planet in background calculations
                 bg_prof, n_prof = monte_carlo_profiles_remove_planet(
                     img,
@@ -227,7 +213,7 @@ def compute_noise_profiles(params):
     # Main SNRs plot program
     ###################################
 
-    if snr_plot == "yes":
+    if params.snr_plot == "yes":
         # Directories where the snr plots will be stored
         output_snrdir = f"{profile_dir}/snr_plot_steps"
         output_snrgraph = f"{output_snrdir}/snr_graph"
