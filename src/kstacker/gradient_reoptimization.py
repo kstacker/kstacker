@@ -144,8 +144,9 @@ def optimize_orbit(result, k, args, bounds):
     )
     x_best = opt_result.x
     snr_best = opt_result.fun
-    print(f"init {k}: {x} => {snr_i:.2f}")
-    print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
+    with np.printoptions(precision=3, suppress=True):
+        print(f"init  {k}: {np.array(x)} => {snr_i:.2f}")
+        print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
 
     return snr_i, snr_best, *x_best
 
