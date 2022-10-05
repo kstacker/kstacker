@@ -13,15 +13,14 @@ from . import orbit
 # import pyfits
 
 
-def plot_orbites3(ts, x, m0, filename):
+def plot_orbites3(ts, x, filename):
     """
     Function used to plot the true orbit (in red) and the best orbit (in blue) found in the projected plane of sky (au-au).
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
-    @param float m0: mass of the central star (in solar mass)
     @param string filename: name of the file where to save the plot (extension will be .png)
     """
 
-    [a, e, t0, omega, i, theta_0] = x
+    a, e, t0, m0, omega, i, theta_0 = x
     p = a * (1 - e**2)
     thetas = np.linspace(0, 2 * math.pi, 1000)
     r = p / (1 + e * np.cos(thetas))
@@ -41,7 +40,7 @@ def plot_orbites3(ts, x, m0, filename):
     plt.plot([0], [0], "+", color="red")
     plt.axis([-35.0, 35.0, -35.0, 35.0])
     for t in ts:
-        [xp, yp] = orbit.project_position(
+        xp, yp = orbit.project_position(
             orbit.position(t, a, e, t0, m0), omega, i, theta_0
         )
         plt.scatter(yp, xp, marker="+")
@@ -58,17 +57,16 @@ def plot_orbites3(ts, x, m0, filename):
     return None
 
 
-def plot_orbites2(ts, x, m0, ax, filename):
+def plot_orbites2(ts, x, ax, filename):
     """
     Function used to plot the true orbit (in red) and the best orbit (in blue)
     found in the projected plane of sky (au-au).
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
-    @param float m0: mass of the central star (in solar mass)
     @param string filename: name of the file where to save the plot (extension will be .png)
     @param float[4] ax: scale of axes, xmin, xmax, ymin, ymax in astronomical units
     """
 
-    a, e, t0, omega, i, theta_0 = x
+    a, e, t0, m0, omega, i, theta_0 = x
     p = a * (1 - e**2)
     thetas = np.linspace(0, 2 * math.pi, 1000)
     r = p / (1 + e * np.cos(thetas))
@@ -91,17 +89,16 @@ def plot_orbites2(ts, x, m0, ax, filename):
     plt.close()
 
 
-def plot_orbites(x, m, x0, m0, ts, filename):
+def plot_orbites(x, x0, ts, filename):
     """
     Function used to plot the true orbit (in red) and the best orbit (in blue) found in the projected plane of sky (au-au).
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
     @param float[6] x0: parameters of the true orbit (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
-    @param float m0: mass of the central star (in solar mass)
     @param string filename: name of the file where to save the plot (extension will be .png)
     """
 
-    [a, e, t0, omega, i, theta_0] = x
-    [a0, e0, t00, omega0, i0, theta_00] = x0
+    a, e, t0, m, omega, i, theta_0 = x
+    a0, e0, t00, m0, omega0, i0, theta_00 = x0
     p = a * (1 - e**2)
     p0 = a0 * (1 - e0**2)
     thetas = np.linspace(0, 2 * math.pi, 1000)
@@ -142,12 +139,12 @@ def plot_orbites(x, m, x0, m0, ts, filename):
     plt.axis([-10.0, 10.0, -10.0, 10.0])
 
     for t in ts:
-        [xp, yp] = orbit.project_position(
+        xp, yp = orbit.project_position(
             orbit.position(t, a, e, t0, m), omega, i, theta_0
         )
         plt.plot(yp, xp, marker="o", color="blue", markersize=13)
     for t in ts:
-        [xp, yp] = orbit.project_position(
+        xp, yp = orbit.project_position(
             orbit.position(t, a0, e0, t00, m0), omega0, i0, theta_00
         )
         plt.plot(yp, xp, marker="o", color="red", markersize=13)
@@ -161,19 +158,18 @@ def plot_orbites(x, m, x0, m0, ts, filename):
     return None
 
 
-def plot_orbites_TN(x, m, angles, x0, m0, ts, num_im, filename):
+def plot_orbites_TN(x, angles, x0, ts, num_im, filename):
     """
     Function used to plot the true orbit (in red) and the best orbit (in blue) found in the projected plane of sky (au-au).
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
     @param float[6] x0: parameters of the true orbit (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
-    @param float m0: mass of the central star (in solar mass)
     @param float[p] angles: defect angles on the p images
     @param int num_im: number of images
     @param string filename: name of the file where to save the plot (extension will be .png)
     """
 
-    [a, e, t0, omega, i, theta_0] = x
-    [a0, e0, t00, omega0, i0, theta_00] = x0
+    a, e, t0, m, omega, i, theta_0 = x
+    a0, e0, t00, m0, omega0, i0, theta_00 = x0
     p = a * (1 - e**2)
     p0 = a0 * (1 - e0**2)
     thetas = np.linspace(0, 2 * math.pi, 1000)
@@ -189,7 +185,8 @@ def plot_orbites_TN(x, m, angles, x0, m0, ts, num_im, filename):
     # going to polar coordinates and adding the defect angle to the initial angle
 
     # r=np.sqrt(x**2+y**2)
-    # theta=np.angle(x+1j*y)+((def_ang/2.0)*np.pi)/180.0*random.randint(-1,1)                                                                                                                                          #getting new coordinates and return position
+    # theta=np.angle(x+1j*y)+((def_ang/2.0)*np.pi)/180.0*random.randint(-1,1)
+    # getting new coordinates and return position
 
     # x_new=r*math.cos(theta)
     # y_new=r*math.sin(theta)
@@ -200,8 +197,8 @@ def plot_orbites_TN(x, m, angles, x0, m0, ts, num_im, filename):
     y0_proj = np.zeros(1000)
 
     for k in range(1000):
-        [xp, yp] = orbit.project_position([xvalues[k], yvalues[k]], omega, i, theta_0)
-        [x0p, y0p] = orbit.project_position(
+        xp, yp = orbit.project_position([xvalues[k], yvalues[k]], omega, i, theta_0)
+        x0p, y0p = orbit.project_position(
             [x0values[k], y0values[k]], omega0, i0, theta_00
         )
         x_proj[k] = xp
@@ -216,7 +213,7 @@ def plot_orbites_TN(x, m, angles, x0, m0, ts, num_im, filename):
     plt.axis([-10.0, 10.0, -10.0, 10.0])
 
     for l in range(num_im):
-        [xp, yp] = orbit.project_position(
+        xp, yp = orbit.project_position(
             orbit.position(ts[l], a, e, t0, m), omega, i, theta_0
         )
         rp = np.sqrt(xp**2 + yp**2)
@@ -225,25 +222,22 @@ def plot_orbites_TN(x, m, angles, x0, m0, ts, num_im, filename):
         yp = rp * math.sin(thetap)
         plt.plot(yp, xp, marker="o", color="blue", markersize=13)
     for t in ts:
-        [x0p, y0p] = orbit.project_position(
+        x0p, y0p = orbit.project_position(
             orbit.position(t, a0, e0, t00, m0), omega0, i0, theta_00
         )
         plt.plot(y0p, x0p, marker="o", color="red", markersize=13)
 
     plt.xlabel("Astronomical Units")
     plt.ylabel("Astronomical Units")
-    #    plt.legend(["Orbite reelle", "Orbite trouvee"])
-
+    # plt.legend(["Orbite reelle", "Orbite trouvee"])
     plt.savefig(filename + ".png")
     plt.close()
-    return None
 
 
-def plot_ontop(x, m0, d, ts, res, back_image, filename):
+def plot_ontop(x, d, ts, res, back_image, filename):
     """
     Function used to plot an orbit on top of a background corono image.
     @param float[6] x: parameters of the best orbit found (a, e, t0, omega, i, theta0) in (au, nounit, year, rad, rad, rad)
-    @param float m0: mass of the central star (in solar mass)
     @param float d: distance of the star (in pc)
     @param float[q] ts: time steps (in years) at which the planet shall be plotted
     @param float res: res of the image (in mas/pixel)
@@ -253,8 +247,7 @@ def plot_ontop(x, m0, d, ts, res, back_image, filename):
     npix = np.size(back_image[0])
 
     scale = 1.0 / (d * (res / 1000.0))
-
-    a, e, t0, omega, i, theta_0 = x
+    a, e, t0, m0, omega, i, theta_0 = x
     p = a * (1 - e**2)
     thetas = np.linspace(-2 * math.pi, 0, 1000)
     r = p / (1 + e * np.cos(thetas))

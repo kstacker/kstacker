@@ -13,8 +13,8 @@ from ._utils import cy_compute_snr
 from .orbit import orbit
 
 
-def reject_invalid_orbits(orbital_grid, projection_grid, m0):
-    a, e, t0 = orbital_grid.T
+def reject_invalid_orbits(orbital_grid, projection_grid):
+    a, e, t0, m0 = orbital_grid.T
     omega, i, theta_0 = projection_grid.T
     proj_shape = projection_grid.shape[0]
     norbits = orbital_grid.shape[0] * proj_shape
@@ -86,14 +86,14 @@ def evaluate(
 ):
     """Compute SNR for all the orbits."""
 
-    orbital_grid = params.grid.make_2d_grid(("a", "e", "t0"))
+    orbital_grid = params.grid.make_2d_grid(("a", "e", "t0", "m0"))
     projection_grid = params.grid.make_2d_grid(("omega", "i", "theta_0"))
     print(f"Orbital grid: {orbital_grid.shape[0]:,} x {orbital_grid.shape[1]}")
     print(f"Projection grid: {projection_grid.shape[0]:,} x {projection_grid.shape[1]}")
 
     # skip invalid/redundant orbits
     orbital_grid, projection_grid, valid_proj = reject_invalid_orbits(
-        orbital_grid, projection_grid, params.m0
+        orbital_grid, projection_grid
     )
 
     if dry_run:
@@ -108,8 +108,8 @@ def evaluate(
     # number of solutions to keep
     nbest = params.q
 
-    # solve kepler equation on the a/e/t0 grid for all images
-    positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
+    # solve kepler equation on the a, e, t0, m0 grid for all images
+    positions = orbit.positions_at_multiple_times(ts, orbital_grid)
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.ascontiguousarray(np.transpose(positions))
 
@@ -117,32 +117,34 @@ def evaluate(
     e_null = np.isclose(orbital_grid[:, 1], 0)
 
     # pre-compute the projection matrices
-    omega, i, theta_0 = projection_grid.T
-    proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
+    proj_matrices = orbit.compute_projection_matrices(projection_grid.T)
     proj_matrices = np.ascontiguousarray(proj_matrices)
-    omega = i = theta_0 = None
 
     # Results are saved in chuncks of nsave to avoid keeping all results in memory
     nsave = min(norbits, 1_000) * nbest
     isave = 0
     idata = 0
-    out_full = np.empty((nsave, 9), dtype=np.float32)
+    ncols = 10
+    out_full = np.empty((nsave, ncols), dtype=np.float32)
     t0 = time.time()
 
     with h5py.File(outfile, "w") as f:
         f["Orbital grid"] = orbital_grid
         f["Projection grid"] = projection_grid
         data = f.create_dataset(
-            "DATA", dtype=np.float32, shape=(norbits * nbest, 9), chunks=(nbest, 9)
+            "DATA",
+            dtype=np.float32,
+            shape=(norbits * nbest, ncols),
+            chunks=(nbest, ncols),
         )
 
         # For each iteration:
         # - compute the SNR for 'nvalid' projections
         # - keep the 'nbest' best results
         # Then:
-        # - concatenate the results (a, e, t0, omega, i, theta0, signal, noise,
-        #   snr) in memory for 'nsave' iterations (in 'out_full') to avoid to
-        #   many small writes
+        # - concatenate the results (a, e, t0, m0, omega, i, theta0, signal,
+        #   noise, snr) in memory for 'nsave' iterations (in 'out_full') to
+        #   avoid to many small writes
         # - every 'nsave' iterations, save 'out_full' to the HDF5 file
 
         for j in range(norbits):
@@ -179,9 +181,9 @@ def evaluate(
 
             # Save best results in out_full
             sl = slice(isave, isave + nkeep)
-            out_full[sl, :3] = orbital_grid[j]  # a, e, t0
-            out_full[sl, 3:6] = projection_grid[valid][ind]  # omega, i, theta0
-            out_full[sl, 6:] = out[ind]  # signal, noise, snr
+            out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
+            out_full[sl, 4:7] = projection_grid[valid][ind]  # omega, i, theta0
+            out_full[sl, 7:] = out[ind]  # signal, noise, snr
             isave += nkeep
 
             if isave + nbest > nsave:
@@ -203,7 +205,7 @@ def evaluate(
             idata += isave
 
         # resize the dataset to the actual number of results that have been computed
-        data.resize((idata, 9))
+        data.resize((idata, ncols))
 
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
@@ -242,7 +244,7 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     with h5py.File(outfile, "r") as f:
         res = f["DATA"][:]
 
-    ind = np.argsort(res[:, 8])
+    ind = np.argsort(res[:, 9])
     res = res[ind]
 
     with h5py.File(f"{values_dir}/res_grid.h5", "w") as f:

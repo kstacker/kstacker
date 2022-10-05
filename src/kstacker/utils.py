@@ -21,7 +21,6 @@ def create_output_dir(path, remove_if_exist=False):
 def compute_signal_and_noise_grid(
     x,
     ts,
-    m0,
     size,
     scale,
     fwhm,
@@ -34,7 +33,7 @@ def compute_signal_and_noise_grid(
     method="convolve",
 ):
     nimg = len(images)
-    a, e, t0, omega, i, theta_0 = x.T
+    a, e, t0, m0, omega, i, theta_0 = x.T
     signal, noise = [], []
 
     # compute position
@@ -185,38 +184,38 @@ class Grid:
 
     def __init__(self, params):
         self._params = params
-        self._grid_params = ("a", "e", "t0", "omega", "i", "theta_0")
+        self.grid_params = ("a", "e", "t0", "m0", "omega", "i", "theta_0")
 
     def __repr__(self):
         out = ["Grid("]
-        for name in self._grid_params:
+        for name in self.grid_params:
             min_, max_, nsteps = self.limits(name)
             out.append(f"    {name}: {min_} → {max_}, {nsteps} steps")
         out.append(")")
-        steps = [self.limits(name)[2] for name in self._grid_params]
+        steps = [self.limits(name)[2] for name in self.grid_params]
         nb = f"{np.prod(steps):,}".replace(",", "'")
         out.append(f"{nb} orbits")
         return "\n".join(out)
 
     def limits(self, name):
         """Return (min, max, nsteps) for a given grid parameter."""
-        if name not in self._grid_params:
+        if name not in self.grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
 
-        min_ = self._params[f"{name}_min"]
-        max_ = self._params[f"{name}_max"]
-        nsteps = self._params[f"N{name}"]
-        return min_, max_, nsteps
+        param = self._params[name]
+        return param["min"], param["max"], param["N"]
 
     def bounds(self):
         """Return (min, max, nsteps) for a given grid parameter."""
-        return [self.limits(name)[:2] for name in self._grid_params]
+        return [self.limits(name)[:2] for name in self.grid_params]
 
     def range(self, name):
         """Return a slice object for a given grid parameter."""
-        if name not in self._grid_params:
+        if name not in self.grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
         min_, max_, nsteps = self.limits(name)
+        if nsteps == 1:
+            max_ = min_ + 1
         return slice(min_, max_, (max_ - min_) / nsteps)
 
     def make_2d_grid(self, params):

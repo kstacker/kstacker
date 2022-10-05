@@ -4,8 +4,6 @@ from numpy.testing import assert_allclose
 
 def test_params(params_tmp):
     params = params_tmp
-    assert params.m0 == 1.59
-    assert params["m0"] == 1.59
 
     assert_allclose(params.wav, 0.8e-6)
     assert_allclose(params.fwhm, 1.688723, rtol=1e-6)
@@ -36,6 +34,7 @@ Grid(
     a: 40.0 → 62.0, 2 steps
     e: 0.0 → 0.4, 2 steps
     t0: -393.0 → -0.01, 2 steps
+    m0: 1.59 → 1.59, 1 steps
     omega: -3.14 → 3.14, 2 steps
     i: 0.0 → 3.14, 2 steps
     theta_0: -3.14 → 3.14, 2 steps
@@ -49,6 +48,7 @@ Grid(
         (40.0, 62.0),
         (0.0, 0.4),
         (-393.0, -0.01),
+        (1.59, 1.59),
         (-3.14, 3.14),
         (0.0, 3.14),
         (-3.14, 3.14),
@@ -57,3 +57,21 @@ Grid(
     orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
     assert orbital_grid.shape == (8, 3)
     # projection_grid = grid.make_2d_grid(("omega", "i", "theta_0"))
+
+
+def test_grid_fixed_param(params_small):
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape[0] == 8  # 2x2x2
+
+    params_small["e"]["N"] = 1
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape[0] == 4  # 1x2x2
+
+    params_small["a"]["N"] = 1
+    params_small["e"]["N"] = 1
+    params_small["t0"]["N"] = 1
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape == (1, 3)  # 1x1x1

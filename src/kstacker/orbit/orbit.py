@@ -35,7 +35,7 @@ def position(t, a, e, t0, m):
         return np.stack([x, y], axis=1)
 
 
-def positions_at_multiple_times(t, orbit_params, m):
+def positions_at_multiple_times(t, orbit_params):
     """
     Compute the positions of a planet for an array of times t and orbital
     parameters.
@@ -47,8 +47,6 @@ def positions_at_multiple_times(t, orbit_params, m):
     orbit_params : float array
         Nx3 array where the 3 columns are the semi-major axis (astronomical
         unit), excentricity and time at perihelion (year).
-    m : float
-        Mass of the central body (in unit of solar masses).
 
     Returns
     -------
@@ -58,7 +56,7 @@ def positions_at_multiple_times(t, orbit_params, m):
         [1, 0] vector, star in [0, 0]).
 
     """
-    a, e, t0 = orbit_params.T
+    a, e, t0, m = orbit_params.T
     # compute other useful orbital parameters
     # p = a * (1 - e**2)  # ellipse parameter
     n = 2 * np.pi * np.sqrt(m / a**3)  # orbital pulsation (in rad/year)

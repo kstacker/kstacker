@@ -21,7 +21,6 @@ from .orbit import plot_ontop, plot_orbites2
 def get_res(
     x,
     ts,
-    m0,
     size,
     scale,
     images,
@@ -32,7 +31,7 @@ def get_res(
     r_mask,
 ):
     nimg = len(images)
-    a, e, t0, omega, i, theta_0 = x
+    a, e, t0, m0, omega, i, theta_0 = x
     # res will contain signal and noise for each image (hence the size 2*nimg)
     res = np.zeros([2, nimg])
 
@@ -71,13 +70,13 @@ def compute_snr(x, *args):
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
-    a, e, t0, omega, i, theta_0 = x
+    a, e, t0, m0, omega, i, theta_0 = x
     # plot the corresponding image and save it as a png (for quick view)
     plt.figure()
     plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
     plt.colorbar()
     xa, ya = orb.project_position(
-        orb.position(t0, a, e, t0, params.m0),
+        orb.position(t0, a, e, t0, m0),
         omega,
         i,
         theta_0,
@@ -98,7 +97,7 @@ def plot_coadd(idx, coadded, x, params, outdir):
 def make_plots(x_best, k, params, images, ts, values_dir, args):
     print(f"Make plots for solution {k+1}")
     # create combined images (for the q eme best SNR)
-    coadded = recombine_images(images, ts, params.scale, params.m0, *x_best)
+    coadded = recombine_images(images, ts, params.scale, *x_best)
 
     plot_coadd(k, coadded, x_best, params, values_dir)
 
@@ -112,9 +111,9 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
-    # orbit.plot.plot_orbites(x_best, x0, params.m0, sim_name + "/orbites{k}")
-    # orbit.plot.plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites{k}")
-    plot_orbites2(ts, x_best, params.m0, ax, f"{values_dir}/orbites/orbites{k}")
+    # orbit.plot.plot_orbites(x_best, x0, sim_name + "/orbites{k}")
+    # orbit.plot.plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites{k}")
+    plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
 
     # If single_plot=='yes' a cross is ploted on each image where the
     # planet is found (by default no);
@@ -122,7 +121,6 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
         for l in range(len(ts)):
             plot_ontop(
                 x_best,
-                params.m0,
                 params.dist,
                 [ts[l]],
                 params.resol,
@@ -181,7 +179,6 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
 
     args = (
         ts,
-        params.m0,
         size,
         params.scale,
         images,
@@ -202,10 +199,10 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     # Add index column
     reopt = np.concatenate([np.arange(reopt.shape[0])[:, None], reopt], axis=1)
     # Save
-    fmt = "%5.0f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f"
+    fmt = "%5.0f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f"
     header = (
-        "image_number , snr_brut_force , snr_gradient ,         a            e     "
-        "          t0                  omega               i               theta_0 "
+        "image_number   snr_brut_force   snr_gradient           a            e        "
+        "      t0            m0           omega               i               theta_0 "
     )
     np.savetxt(f"{values_dir}/results.txt", reopt, fmt=fmt, header=header)
 

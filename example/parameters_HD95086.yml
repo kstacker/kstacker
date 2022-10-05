@@ -42,49 +42,69 @@ wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size
 d: 8.2 # diameter of the primary mirror (in meter)(used only to define the size of the circle for integration of the flux)
 resol: 12.25    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels)
 
-r_mask: 26.    # radius of the coronagraphic mask (in pixels). put at zero all the values in this circle
-r_mask_ext: 61. # radius of the exterior mask (in pixels). Put at zero values at larger radius
+# Radius of the internal and external coronagraphic mask (in pixels).
+# Put at zero all the values inside / outside this circle.
+r_mask: 26
+r_mask_ext: 61
 
 mask_value: 0. # Put the min value of the speckles. Default 0.
 
-m0: 1.59       # mass of the star in solar mass
+# Ranges for the parameters:
+# - min, max and number of steps for the brute force
+# - value and number of steps for the SNR profiles (used to determine
+#   the grid steps)
+a:
+  label: "a, semi-major axis (a.u.)"
+  min: 40.
+  max: 62.
+  N: 8
+  init: 58.
+  Ninit: 3000
+e:
+  label: "e, eccentricity"
+  min: 0.
+  max: 0.4
+  N: 10
+  init: 0.05
+  Ninit: 2000
+t0:
+  label: "t0, epoch at perihelion (years)"
+  min: -393.
+  max: -0.01
+  N: 56
+  init: -0.01
+  Ninit: 2000
+m0:
+  label: "mass of the star (solar mass)"
+  min: 1.59
+  max: 1.59
+  N: 1
+  init: 1.59
+  Ninit: 1
+omega:
+  label: "omega, longitude of the ascending node (rad)"
+  min: -3.14
+  max: 3.14
+  N: 42
+  init: -0.1
+  Ninit: 3000
+i:
+  label: "i, inclination (rad)"
+  min: 0.
+  max: 3.14
+  N: 6
+  init: 0.1
+  Ninit: 3000
+theta_0:
+  label: "theta_0, argument of the periapsis (rad)"
+  min: -3.14
+  max: 3.14
+  N: 42
+  init: 0.1
+  Ninit: 3000
 
-# orbital parameters to plot the SNRs curves (used to determine the grid steps)
-
-a_init: 58. # a.u.
-e_init: 0.05
-t0_init: -0.01 # Yr
-omega_init: -0.1 # rad
-i_init: 0.1 # rad
-theta_0_init: 0.1 # rad
-
-# Range of search
-
-a_min: 40.    # minimum semi-major axis (in a.u.)
-a_max: 62.    # maximum semi-major axis (in a.u.)
-Na: 8 # Number of step for the semi-major axis
-
-e_min: 0.    # minimum eccentricity
-e_max: 0.4    # maximum eccentricity
-Ne: 10 # Number of step for the eccentricity
-
-t0_min: -393.  # minimum epoch at perihelion in years (this is in fact the maximum but there is a minus sign)
-t0_max: -0.01    # maximum epoch at perihelion in years (this is in fact the minimum but there is a minus sign)
-Nt0: 56 # number of steps for the epoch at perihelion
-
-omega_min: -3.14   # minimum longitude of the ascending node in rad
-omega_max: 3.14    # maximum longitude of the ascending node in rad
-Nomega: 42 # Number of step for Omega
-
-i_min: 0.      # minimum inclination in rad
-i_max: 3.14    # maximum inclination in rad
-Ni: 6 # Number of step for i
-
-theta_0_min: -3.14   # minimum argument of the periapsis in rad
-theta_0_max: 3.14    # maximum argument of the periapsis in rad
-Ntheta_0: 42 # Number of step for theta_0
-
-xmin: -64.    # minimum value on x axis for the plot of the orbits (in a.u.)
-xmax: 64.     # maximum value on x axis for the plot of the orbits (in a.u.)
-ymin: -64.    # minimum value on y axis for the plot of the orbits (in a.u.)
-ymax: 64.     # maximum value on y axis for the plot of the orbits (in a.u.)
+# min/max values on x/y axis for the plot of the orbits (in a.u.)
+xmin: -64.
+xmax: 64.
+ymin: -64.
+ymax: 64.
