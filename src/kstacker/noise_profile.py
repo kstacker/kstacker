@@ -231,77 +231,46 @@ def compute_noise_profiles(params):
         images, bkg_profiles, noise_profiles = params.load_data()
         nimg = len(images)
 
+        args = (
+            ts,
+            size,
+            params.scale,
+            params.fwhm,
+            images,
+            x_profile,
+            bkg_profiles,
+            noise_profiles,
+            upsampling_factor,
+            None,
+            params.method,
+        )
+
         # Definition of parameters that will be ploted function of the SNR
-        parameters = ("a_j", "e_j", "t0_j", "omega_j", "i_j", "theta_0_j")
-
-        for param in parameters:
-            print(f"Computing SNR for param {param}")
+        parameters = params.grid.grid_params
+        for name in parameters:
+            print(f"Computing SNR for param {name}")
             tstart = time.time()
+            param = params[name]
 
-            # parameters of the brute force search grid.
-            if param == "a_j":
-                param_vect = np.linspace(params.a_min, params.a_max, 3000)  # (A.U)
-                name_Xaxis = "semi major a in au"
+            if param["Ninit"] <= 1:
+                print("skipping this parameter")
+                continue
 
-            if param == "e_j":
-                # default (0,0.8,500)
-                param_vect = np.linspace(params.e_min, params.e_max, 2000)
-                name_Xaxis = "eccentricity"
-
-            if param == "t0_j":
-                param_vect = np.linspace(params.t0_min, params.t0_max, 2000)
-                name_Xaxis = "t0"
-
-            if param == "omega_j":
-                # (rad) default (-3.14,3.14,1000)
-                param_vect = np.linspace(params.omega_min, params.omega_max, 3000)
-                name_Xaxis = "omega"
-
-            if param == "i_j":
-                # (rad) default (0, PI,3000)
-                param_vect = np.linspace(params.i_min, params.i_max, 3000)
-                name_Xaxis = "i"
-
-            if param == "theta_0_j":
-                # (rad) default (-3.14,3.14,1000)
-                param_vect = np.linspace(params.theta_0_min, params.theta_0_max, 3000)
-                name_Xaxis = "theta_0"
-
-            # Orbital parameters initialisation
-            x = [
-                params.a_init,
-                params.e_init,
-                params.t0_init,
-                params.m0,
-                params.omega_init,
-                params.i_init,
-                params.theta_0_init,
-            ]
+            # Orbital parameters initialisation: fixed value for all
+            # parameters except for the one being processed in the loop
+            param_vect = np.linspace(param["min"], param["max"], param["Ninit"])
+            x = [params[key]["init"] for key in parameters]
             x = np.tile(x, (param_vect.size, 1))
-            param_idx = parameters.index(param)
+            param_idx = parameters.index(name)
             x[:, param_idx] = param_vect
-
-            args = (
-                ts,
-                size,
-                params.scale,
-                params.fwhm,
-                images,
-                x_profile,
-                bkg_profiles,
-                noise_profiles,
-                upsampling_factor,
-                None,
-                params.method,
-            )
 
             signal, noise = compute_signal_and_noise_grid(x, *args)
             snr = signal / noise
 
             plt.plot(param_vect, snr, linewidth=1)
-            plt.xlabel(name_Xaxis)
+            plt.xlabel(param["label"])
             plt.ylabel("SNR")
-            suffix = f"{param}_{np.min(param_vect)}-{np.max(param_vect)}"
+            suffix = f"{name}_{np.min(param_vect)}-{np.max(param_vect)}"
             plt.savefig(f"{output_snrgraph}/steps_{suffix}.pdf")
             plt.close()
 

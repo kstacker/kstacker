@@ -184,7 +184,7 @@ class Grid:
 
     def __init__(self, params):
         self._params = params
-        self.grid_params = ("a", "e", "t0", "omega", "i", "theta_0")
+        self.grid_params = ("a", "e", "t0", "m0", "omega", "i", "theta_0")
 
     def __repr__(self):
         out = ["Grid("]
@@ -202,10 +202,8 @@ class Grid:
         if name not in self.grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
 
-        min_ = self._params[f"{name}_min"]
-        max_ = self._params[f"{name}_max"]
-        nsteps = self._params[f"N{name}"]
-        return min_, max_, nsteps
+        param = self._params[name]
+        return param["min"], param["max"], param["N"]
 
     def bounds(self):
         """Return (min, max, nsteps) for a given grid parameter."""
