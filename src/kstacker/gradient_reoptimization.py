@@ -9,7 +9,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize
-from astropy.io import fits
+from astropy.io import ascii, fits
 from joblib import Parallel, delayed
 
 from .imagerie import photometry, recombine_images
@@ -198,13 +198,16 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     reopt = reopt[np.argsort(reopt[:, 1])]
     # Add index column
     reopt = np.concatenate([np.arange(reopt.shape[0])[:, None], reopt], axis=1)
-    # Save
-    fmt = "%5.0f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f %5.16f"
-    header = (
-        "image_number   snr_brut_force   snr_gradient           a            e        "
-        "      t0            m0           omega               i               theta_0 "
+
+    names = ("image_number", "snr_brut_force", "snr_gradient") + params.grid.grid_params
+    ascii.write(
+        reopt,
+        f"{values_dir}/results.txt",
+        names=names,
+        format="fixed_width_two_line",
+        formats={"image_number": "%d"},
+        overwrite=True,
     )
-    np.savetxt(f"{values_dir}/results.txt", reopt, fmt=fmt, header=header)
 
     Parallel(n_jobs=n_jobs)(
         delayed(make_plots)(reopt[k, 3:], k, params, images, ts, values_dir, args)
