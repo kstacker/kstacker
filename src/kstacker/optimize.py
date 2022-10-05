@@ -117,7 +117,7 @@ def evaluate(
     e_null = np.isclose(orbital_grid[:, 1], 0)
 
     # pre-compute the projection matrices
-    proj_matrices = orbit.compute_projection_matrices(projection_grid.T)
+    proj_matrices = orbit.compute_projection_matrices(*projection_grid.T)
     proj_matrices = np.ascontiguousarray(proj_matrices)
 
     # Results are saved in chuncks of nsave to avoid keeping all results in memory
