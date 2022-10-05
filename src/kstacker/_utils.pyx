@@ -79,11 +79,12 @@ def cy_compute_snr(double[:,:,::1] images,
                    double scale,
                    int size,
                    int upsampling_factor,
+                   int opt_type,
                    double[:,::1] out,
                    int num_threads):
 
     cdef:
-        double x, y, xproj, yproj, signal, noise, snr, temp_d
+        double x, y, xproj, yproj, signal, noise, snr, temp_d, F0, zk, sum_sk_on_zk2, sum_sk2_on_zk2, sum_one_on_zk2
         ssize_t i, k
         size_t xpix, ypix
         size_t half_size = size // 2
@@ -94,6 +95,11 @@ def cy_compute_snr(double[:,:,::1] images,
                     num_threads=num_threads):
         signal = 0
         noise = 0
+
+        F0 = 0. # Flux planet
+        sum_sk_on_zk2 = 0. # Sum of signal on variance in image k
+        sum_sk2_on_zk2 = 0. # Sum of signal**2 on variance in image k
+        sum_one_on_zk2 = 0. # Sum of one on variance in image k
 
         for k in range(images.shape[0]):
             x = positions[k, 0]
@@ -130,6 +136,15 @@ def cy_compute_snr(double[:,:,::1] images,
                 # add noise using pre-computed radial noise profile
                 noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size)**2
 
+                if opt_type == 1:
+                    zk = interp(&noise_profiles[k, 0], temp_d, half_size)
+                    if zk != 0.:
+                        sum_sk_on_zk2 = sum_sk_on_zk2 + ((images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d,
+                                                                                         half_size)) / zk**2.)
+                        sum_one_on_zk2 = sum_one_on_zk2 + 1 / zk**2.
+                        sum_sk2_on_zk2 = sum_sk2_on_zk2 + ((images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d,
+                                                                                           half_size))**2 / zk**2.)
+
         noise = sqrt(noise)
         if noise == 0:
             # if the value of total noise is 0 (i.e. all values of noise are 0,
@@ -137,6 +152,16 @@ def cy_compute_snr(double[:,:,::1] images,
             snr = 0
         else:
             snr = - signal / noise
+
+        if opt_type == 1:
+            if sum_one_on_zk2 != 0:
+                F0 =  sum_sk_on_zk2 / sum_one_on_zk2
+            else:
+                F0 = 0.
+            if F0 < 0:
+                F0 = 0.
+            snr = 0.5 * (sum_sk2_on_zk2 - (F0**2.) * sum_one_on_zk2) # It is not snr, but a function that must be minimized ! later use: L
+
 
         out[i, 0] = signal
         out[i, 1] = noise
