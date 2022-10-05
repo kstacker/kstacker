@@ -29,7 +29,7 @@ def test_position_array():
 
 def test_position_multiple_times():
     pos = positions_at_multiple_times(
-        np.array([0, 1]), np.array([[A, E, T0], [A, E, T0]]), M0
+        np.array([0, 1]), np.array([[A, E, T0, M0], [A, E, T0, M0]])
     )
     expected = (
         [[-1.13492103, -1.13492103], [0.11133086, 0.11133086]],

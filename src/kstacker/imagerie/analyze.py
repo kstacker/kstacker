@@ -103,7 +103,7 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     return shift_image
 
 
-def recombine_images(images, ts, scale, m, a, e, t0, omega, i, theta_0):
+def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
     """
     This function is used to compute the coadded image form orbital parameters. Each image of the serie is rotated and shifted to put the planet on its perihelion
     position, and the results are coadded to give the final result.

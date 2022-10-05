@@ -18,12 +18,9 @@ def params():
 @pytest.fixture()
 def params_small(params):
     """Without fewer steps."""
-    params._params["Na"] = 2
-    params._params["Ne"] = 2
-    params._params["Nt0"] = 2
-    params._params["Nomega"] = 2
-    params._params["Ni"] = 2
-    params._params["Ntheta_0"] = 2
+    for name in params.grid.grid_params:
+        if name != "m0":
+            params[name]["N"] = 2
     return params
 
 

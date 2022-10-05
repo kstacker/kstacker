@@ -42,12 +42,12 @@ wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size
 d: 8.2 # diameter of the primary mirror (in meter)(used only to define the size of the circle for integration of the flux)
 resol: 12.25    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels)
 
-r_mask: 26.    # radius of the coronagraphic mask (in pixels). put at zero all the values in this circle
-r_mask_ext: 61. # radius of the exterior mask (in pixels). Put at zero values at larger radius
+# Radius of the internal and external coronagraphic mask (in pixels).
+# Put at zero all the values inside / outside this circle.
+r_mask: 26
+r_mask_ext: 61
 
 mask_value: 0. # Put the min value of the speckles. Default 0.
-
-m0: 1.59       # mass of the star in solar mass
 
 # Ranges for the parameters:
 # - min, max and number of steps for the brute force

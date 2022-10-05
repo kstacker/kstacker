@@ -214,6 +214,8 @@ class Grid:
         if name not in self.grid_params:
             raise ValueError(f"'{name}' is not a parameter of the grid")
         min_, max_, nsteps = self.limits(name)
+        if nsteps == 1:
+            max_ = min_ + 1
         return slice(min_, max_, (max_ - min_) / nsteps)
 
     def make_2d_grid(self, params):
