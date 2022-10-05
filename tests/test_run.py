@@ -64,4 +64,4 @@ def test_full_run(params_tmp):
     names = ["idx", "snr_brut", "snr_grad", "a", "e", "t0", "omega", "i", "theta_0"]
     res = ascii.read(path / "values" / "results.txt", names=names)
     expected = [-17.0618, -17.0618 , -17.0617, -17.0588, -17.0514]
-    assert_almost_equal(res["snr_grad"], expected, decimal=4)
+    assert_almost_equal(res["snr_grad"], expected, decimal=3)
