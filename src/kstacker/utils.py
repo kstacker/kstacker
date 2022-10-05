@@ -257,7 +257,7 @@ class Params:
         if attr in self._params:
             return self._params[attr]
         else:
-            raise KeyError(f"parameter {attr} is not defined")
+            raise AttributeError(f"parameter {attr} is not defined")
 
     def __getstate__(self):
         state = self.__dict__.copy()
