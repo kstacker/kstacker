@@ -57,3 +57,21 @@ Grid(
     orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
     assert orbital_grid.shape == (8, 3)
     # projection_grid = grid.make_2d_grid(("omega", "i", "theta_0"))
+
+
+def test_grid_fixed_param(params_small):
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape[0] == 8  # 2x2x2
+
+    params_small._params['Ne'] = 1
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape[0] == 4  # 1x2x2
+
+    params_small._params['Na'] = 1
+    params_small._params['Ne'] = 1
+    params_small._params['Nt0'] = 1
+    grid = params_small.grid
+    orbital_grid = grid.make_2d_grid(("a", "e", "t0"))
+    assert orbital_grid.shape == (1, 3)  # 1x1x1

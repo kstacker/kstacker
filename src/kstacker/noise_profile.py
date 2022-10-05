@@ -272,6 +272,7 @@ def compute_noise_profiles(params):
                 params.a_init,
                 params.e_init,
                 params.t0_init,
+                params.m0,
                 params.omega_init,
                 params.i_init,
                 params.theta_0_init,
@@ -282,7 +283,6 @@ def compute_noise_profiles(params):
 
             args = (
                 ts,
-                params.m0,
                 size,
                 params.scale,
                 params.fwhm,
