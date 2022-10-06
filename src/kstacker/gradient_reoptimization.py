@@ -97,8 +97,9 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
     fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
 
     # save full signal and noise values
-    res = get_res(x_best, *args)
-    np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
+    # TODO: could be saved in a HDF5 table instead
+    # res = get_res(x_best, *args)
+    # np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
