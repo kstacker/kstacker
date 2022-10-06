@@ -100,7 +100,7 @@ def evaluate(
         return
 
     # load the images and the noise/background profiles
-    images, bkg_profiles, noise_profiles = params.load_data()
+    input_data = params.load_data()
 
     # total time of the observation (years)
     ts = params.get_ts(use_p_prev=True)
@@ -157,10 +157,10 @@ def evaluate(
                 continue
             out = np.zeros((nvalid, 3))
             cy_compute_snr(
-                images,
+                input_data["images"],
                 positions[j],
-                bkg_profiles,
-                noise_profiles,
+                input_data["bkg"],
+                input_data["noise"],
                 proj_mat,
                 params.r_mask,
                 params.r_mask_ext,

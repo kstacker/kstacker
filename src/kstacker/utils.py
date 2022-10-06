@@ -24,15 +24,12 @@ def compute_signal_and_noise_grid(
     size,
     scale,
     fwhm,
-    images,
-    x_profile,
-    bkg_profiles,
-    noise_profiles,
+    data,
     upsampling_factor,
     r_mask=None,
     method="convolve",
 ):
-    nimg = len(images)
+    nimg = len(data["images"])
     a, e, t0, m0, omega, i, theta_0 = x.T
     signal, noise = [], []
 
@@ -50,14 +47,14 @@ def compute_signal_and_noise_grid(
         # background (using pre-computed background profile)
         if method == "convolve":
             sig = photometry_preprocessed(
-                images[k], position[0], position[1], upsampling_factor
+                data["images"][k], position[0], position[1], upsampling_factor
             )
         elif method == "aperture":
-            sig = photometry(images[k], position, 2 * fwhm)
+            sig = photometry(data["images"][k], position, 2 * fwhm)
         else:
             raise ValueError(f"invalid method {method}")
 
-        sig -= np.interp(temp_d, x_profile, bkg_profiles[k])
+        sig -= np.interp(temp_d, data["x"], data["bkg"][k])
 
         if r_mask is not None:
             sig[temp_d <= r_mask] = 0.0
@@ -65,7 +62,7 @@ def compute_signal_and_noise_grid(
         signal.append(sig)
 
         # get noise at position using pre-computed radial noise profil
-        noise.append(np.interp(temp_d, x_profile, noise_profiles[k]))
+        noise.append(np.interp(temp_d, data["x"], data["noise"][k]))
 
     signal = np.nansum(signal, axis=0)
     noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
@@ -86,7 +83,7 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
     orbital_grid, projection_grid = np.split(x, 2, axis=1)
 
     # load the images and the noise/background profiles
-    images, bkg_profiles, noise_profiles = params.load_data(method=method)
+    data = params.load_data(method=method)
 
     # total time of the observation (years)
     ts = params.get_ts(use_p_prev=True)
@@ -104,8 +101,7 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
     # tables = []
     # names = "a e t0 omega i theta_0 signal noise snr".split()
     size = params.n
-    nimg = len(images)
-    x_profile = np.linspace(0, size // 2 - 1, size // 2)
+    nimg = len(data["images"])
     out = []
     method = method or params.method
 
@@ -127,27 +123,27 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
             # background (using pre-computed background profile)
             if method == "convolve":
                 sig = photometry_preprocessed(
-                    images[k],
+                    data["images"][k],
                     position[k, :1],
                     position[k, 1:],
                     params.upsampling_factor,
                 )[0]
             elif method == "aperture":
-                sig = photometry(images[k], position[k], 2 * params.fwhm)
+                sig = photometry(data["images"][k], position[k], 2 * params.fwhm)
             else:
                 raise ValueError(f"invalid method {method}")
 
             if temp_d[k] <= params.r_mask or temp_d[k] >= params.r_mask_ext:
                 sig = 0.0
             else:
-                sig -= np.interp(temp_d[k], x_profile, bkg_profiles[k])
+                sig -= np.interp(temp_d[k], data["x"], data["bkg"][k])
             signal.append(sig)
 
             # get noise at position using pre-computed radial noise profil
             if sig == 0:
                 noise.append(0)
             else:
-                noise.append(np.interp(temp_d[k], x_profile, noise_profiles[k]))
+                noise.append(np.interp(temp_d[k], data["x"], data["noise"][k]))
 
         res = Table(position, names=("xpix", "ypix"))
         res["signal"] = signal
@@ -316,6 +312,7 @@ class Params:
         profile_dir = self.get_path("profile_dir")
         img_suffix = self.get_image_suffix(method=method)
         nimg = self.p + self.p_prev  # number of timesteps
+        size = self.n
 
         images, bkg_profiles, noise_profiles = [], [], []
         for k in range(nimg):
@@ -327,10 +324,12 @@ class Params:
             bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
             noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))
 
-        images = np.array(images)
-        bkg_profiles = np.array(bkg_profiles)
-        noise_profiles = np.array(noise_profiles)
-        return images, bkg_profiles, noise_profiles
+        return {
+            "x": np.linspace(0, size // 2 - 1, size // 2),
+            "images": np.array(images),
+            "bkg": np.array(bkg_profiles),
+            "noise": np.array(noise_profiles),
+        }
 
     @property
     def wav(self):

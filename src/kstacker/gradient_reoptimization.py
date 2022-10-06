@@ -17,20 +17,11 @@ from .orbit import orbit as orb
 from .orbit import plot_ontop, plot_orbites2
 
 
-# define snr function as a function of the orbit (used for the gradient; we maximise this function)
-def get_res(
-    x,
-    ts,
-    size,
-    scale,
-    images,
-    fwhm,
-    x_profile,
-    bkg_profiles,
-    noise_profiles,
-    r_mask,
-):
-    nimg = len(images)
+def get_res(x, ts, size, scale, fwhm, data, r_mask):
+    """define snr function as a function of the orbit (used for the gradient;
+    we maximise this function)
+    """
+    nimg = len(data["images"])
     a, e, t0, m0, omega, i, theta_0 = x
     # res will contain signal and noise for each image (hence the size 2*nimg)
     res = np.zeros([2, nimg])
@@ -46,10 +37,10 @@ def get_res(
         if temp_d[k] > r_mask:
             # compute signal by integrating flux on a PSF, and correct it for
             # background (using pre-computed background profile)
-            bkg = np.interp(temp_d[k], x_profile, bkg_profiles[k])
-            res[0, k] = photometry(images[k], positions[k], 2 * fwhm) - bkg
+            bkg = np.interp(temp_d[k], data["x"], data["bkg"][k])
+            res[0, k] = photometry(data["images"][k], positions[k], 2 * fwhm) - bkg
             # get noise at position using pre-computed radial noise profil
-            res[1, k] = np.interp(temp_d[k], x_profile, noise_profiles[k])
+            res[1, k] = np.interp(temp_d[k], data["x"], data["noise"][k])
 
     # if the value of signal is nan (outside of the image, consider it to be 0
     res[:, np.isnan(res[0])] = 0.0
@@ -162,9 +153,7 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
 
     ts = params.get_ts()  # time of observations (years)
     size = params.n  # number of pixels
-    x_profile = np.linspace(0, size // 2 - 1, size // 2)
-
-    images, bkg_profiles, noise_profiles = params.load_data(method="aperture")
+    data = params.load_data(method="aperture")
 
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR
@@ -178,19 +167,8 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     # define bounds
     bounds = params.grid.bounds()
 
-    args = (
-        ts,
-        size,
-        params.scale,
-        images,
-        params.fwhm,
-        x_profile,
-        bkg_profiles,
-        noise_profiles,
-        params.r_mask,
-    )
-
     # Computation on the q best SNR
+    args = (ts, size, params.scale, params.fwhm, data, params.r_mask)
     reopt = Parallel(n_jobs=n_jobs)(
         delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
     )
@@ -211,7 +189,9 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     )
 
     Parallel(n_jobs=n_jobs)(
-        delayed(make_plots)(reopt[k, 3:], k, params, images, ts, values_dir, args)
+        delayed(make_plots)(
+            reopt[k, 3:], k, params, data["images"], ts, values_dir, args
+        )
         for k in range(n_orbits)
     )
 

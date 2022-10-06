@@ -225,21 +225,15 @@ def compute_noise_profiles(params):
         plot_noise(nimg, profile_dir, output_snrdir)
         print(f"plot_noise: took {time.time() - t0:.2f} sec.")
 
-        x_profile = np.linspace(0, size // 2 - 1, size // 2)
-
         # load the images and the noise/background profiles
-        images, bkg_profiles, noise_profiles = params.load_data()
-        nimg = len(images)
+        data = params.load_data()
 
         args = (
             ts,
             size,
             params.scale,
             params.fwhm,
-            images,
-            x_profile,
-            bkg_profiles,
-            noise_profiles,
+            data,
             upsampling_factor,
             None,
             params.method,
