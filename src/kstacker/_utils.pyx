@@ -83,7 +83,7 @@ def cy_compute_snr(double[:,:,::1] images,
                    int num_threads):
 
     cdef:
-        double x, y, xproj, yproj, signal, noise, snr, temp_d
+        double x, y, xproj, yproj, signal, noise, snr, temp_d, sigma_inv2, flux
         ssize_t i, k
         size_t xpix, ypix
         size_t half_size = size // 2
@@ -122,13 +122,18 @@ def cy_compute_snr(double[:,:,::1] images,
             ypix = int(yproj * upsampling_factor - 0.5)
 
             if (xpix >= 0) and (xpix < nx) and (ypix >= 0) and (ypix < ny):
-                # add signal and correct for background (using pre-computed
-                # background profile)
-                signal = (signal + images[k, xpix, ypix] -
-                          interp(&bkg_profiles[k, 0], temp_d, half_size))
+                # inverse-variance weighting:
+                # signal = ∑(yi/σi²) / ∑(1/σi²)
+                # var = 1 / ∑(1/σi²)
+                #
+                # noise, using precomputed radial noise profile
+                sigma_inv2 = 1 / interp(&noise_profiles[k, 0], temp_d, half_size)**2
+                noise = noise + sigma_inv2
 
-                # add noise using pre-computed radial noise profile
-                noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size)**2
+                # signal, corrected for background (using pre-computed
+                # background profile)
+                flux = images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d, half_size)
+                signal = signal + flux * sigma_inv2
 
         noise = sqrt(noise)
         if noise == 0:
