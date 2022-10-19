@@ -78,9 +78,10 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
 
     x = np.atleast_2d(np.asarray(x, dtype="float32"))
 
-    if x.shape[1] != 6:
-        raise ValueError("x should have 6 columns for a,e,t0,omega,i,theta0")
-    orbital_grid, projection_grid = np.split(x, 2, axis=1)
+    if x.shape[1] != 7:
+        raise ValueError("x should have 7 columns for a,e,t0,m,omega,i,theta0")
+    orbital_grid = x[:, :4]
+    projection_grid = x[:, 4:]
 
     # load the images and the noise/background profiles
     data = params.load_data(method=method)
@@ -89,7 +90,7 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
     ts = params.get_ts(use_p_prev=True)
 
     # solve kepler equation on the a/e/t0 grid for all images
-    positions = orbit.positions_at_multiple_times(ts, orbital_grid, params.m0)
+    positions = orbit.positions_at_multiple_times(ts, orbital_grid)
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.ascontiguousarray(np.transpose(positions))
 
