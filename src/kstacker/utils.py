@@ -157,12 +157,16 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
         res.add_column((res["ypix"] - size // 2) * params.resol, index=5, name="ymas")
         out.append(res)
 
+        signal = np.nansum(signal, axis=0)
+        noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
+        res.meta['signal_sum'] = signal
+        res.meta['noise_sum'] = noise
+        res.meta['snr_sum'] = signal / noise
+
         if verbose:
             print(f"\nValues for orbit {j}, x = {x[j]}")
             print("Detail per image:")
             res.pprint(max_lines=-1, max_width=-1)
-            signal = np.nansum(signal, axis=0)
-            noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
             print(f"Total signal={signal}, noise={noise}, SNR={signal / noise}")
 
     out = vstack(out)
