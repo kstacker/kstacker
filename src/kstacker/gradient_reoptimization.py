@@ -14,7 +14,7 @@ from joblib import Parallel, delayed
 
 from .imagerie import photometry, recombine_images
 from .orbit import orbit as orb
-from .orbit import plot_ontop, plot_orbites2
+from .orbit import plot_ontop, plot_orbites
 
 
 def get_res(x, ts, size, scale, fwhm, data, r_mask):
@@ -111,9 +111,7 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
-    # orbit.plot.plot_orbites(x_best, x0, sim_name + "/orbites{k}")
-    # orbit.plot.plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites{k}")
-    plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
+    plot_orbites(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
 
     # If single_plot=='yes' a cross is ploted on each image where the
     # planet is found (by default no);
