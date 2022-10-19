@@ -49,8 +49,6 @@ def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
     """Compute theoretical snr in combined image."""
 
     signal, noise = get_res(x, ts, size, scale, fwhm, data, r_mask)
-    # print("signal :", signal.tolist())
-    # print("noise  :", noise.tolist())
 
     null = np.isnan(signal) | np.isclose(signal, 0)
     if np.all(null):
@@ -135,11 +133,10 @@ def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
-    snr_1 = compute_snr(x, *args[:-1], invvar_weighted=False)
-    snr_2 = compute_snr(x, *args[:-1], invvar_weighted=True)
+    snr_init = compute_snr(x, *args[:-1], invvar_weighted=args[-1])
 
     with np.printoptions(precision=3, suppress=True):
-        print(f"init  {k}: {np.array(x)} => {snr_i:.2f} ({snr_1:.2f}, {snr_2:.2f})")
+        print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")
 
     # Gradient re-optimization:
     opt_result = scipy.optimize.minimize(
