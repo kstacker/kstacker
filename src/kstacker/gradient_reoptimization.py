@@ -45,8 +45,10 @@ def get_res(x, ts, size, scale, fwhm, data, r_mask):
     return res
 
 
-def compute_snr(x, *args):
-    signal, noise = get_res(x, *args)
+def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
+    """Compute theoretical snr in combined image."""
+
+    signal, noise = get_res(x, ts, size, scale, fwhm, data, r_mask)
     # print("signal :", signal.tolist())
     # print("noise  :", noise.tolist())
 
@@ -57,13 +59,15 @@ def compute_snr(x, *args):
         noise = noise[~null]
         signal = signal[~null]
 
-    sigma_inv2 = np.sum(1 / noise**2)
-    noise = np.sqrt(1 / sigma_inv2)
-    signal = np.sum(signal / noise**2) / sigma_inv2
-    # compute theoretical snr in combined image
-    snr = signal / noise
-    # print(signal, noise, snr)
-    return -snr
+    if invvar_weighted:
+        sigma_inv2 = np.sum(1 / noise**2)
+        noise = np.sqrt(1 / sigma_inv2)
+        signal = np.sum(signal / noise**2) / sigma_inv2
+    else:
+        signal = np.sum(signal)
+        noise = np.sqrt(np.sum(noise**2))
+
+    return -signal / noise
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -131,10 +135,11 @@ def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
-    snr_phot = compute_snr(x, *args)
+    snr_1 = compute_snr(x, *args[:-1], invvar_weighted=False)
+    snr_2 = compute_snr(x, *args[:-1], invvar_weighted=True)
 
     with np.printoptions(precision=3, suppress=True):
-        print(f"init  {k}: {np.array(x)} => {snr_i:.2f} ({snr_phot:.2f})")
+        print(f"init  {k}: {np.array(x)} => {snr_i:.2f} ({snr_1:.2f}, {snr_2:.2f})")
 
     # Gradient re-optimization:
     opt_result = scipy.optimize.minimize(
@@ -180,7 +185,8 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     bounds = params.grid.bounds()
 
     # Computation on the q best SNR
-    args = (ts, size, params.scale, params.fwhm, data, params.r_mask)
+    args = (ts, size, params.scale, params.fwhm, data, params.r_mask,
+            params.invvar_weight)
     reopt = Parallel(n_jobs=n_jobs)(
         delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
     )

@@ -80,10 +80,11 @@ def cy_compute_snr(double[:,:,::1] images,
                    int size,
                    int upsampling_factor,
                    double[:,::1] out,
-                   int num_threads):
+                   int num_threads,
+                   int invvar_weighted):
 
     cdef:
-        double x, y, xproj, yproj, signal, noise, snr, temp_d, sigma_inv2, flux
+        double x, y, xproj, yproj, signal, noise, snr, temp_d, sigma, flux
         ssize_t i, k
         size_t xpix, ypix
         size_t half_size = size // 2
@@ -122,25 +123,33 @@ def cy_compute_snr(double[:,:,::1] images,
             ypix = int(yproj * upsampling_factor - 0.5)
 
             if (xpix >= 0) and (xpix < nx) and (ypix >= 0) and (ypix < ny):
-                # inverse-variance weighting:
-                # signal = ∑(yi/σi²) / ∑(1/σi²)
-                # var = 1 / ∑(1/σi²)
-                #
                 # noise, using precomputed radial noise profile
-                sigma_inv2 = 1 / interp(&noise_profiles[k, 0], temp_d, half_size)**2
-                noise = noise + sigma_inv2
+                sigma = interp(&noise_profiles[k, 0], temp_d, half_size)
 
-                # signal, corrected for background (using pre-computed
-                # background profile)
+                # signal, corrected with pre-computed background profile
                 flux = images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d, half_size)
-                signal = signal + flux * sigma_inv2
 
-        noise = sqrt(noise)
+                if invvar_weighted:
+                    # inverse-variance weighting:
+                    # signal = ∑(yi/σi²) / ∑(1/σi²)
+                    # var = 1 / ∑(1/σi²)
+                    sigma = 1 / sigma**2
+                    signal = signal + flux * sigma
+                    noise = noise + sigma
+                else:
+                    signal = signal + flux
+                    noise = noise + sigma**2
+
         if noise == 0:
             # if the value of total noise is 0 (i.e. all values of noise are 0,
             # i.e. the orbit is completely out of the image) then snr=0
             snr = 0
         else:
+            if invvar_weighted:
+                signal = signal / noise
+                noise = 1 / noise
+
+            noise = sqrt(noise)
             snr = - signal / noise
 
         out[i, 0] = signal

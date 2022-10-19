@@ -8,8 +8,9 @@ snr_plot: 'yes' # to compute the snr plots
 
 p: 4   # number of images for a run, or number of images added to a previous run
 p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
-total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
 n: 124   # size of the images nxn
+total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
+time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115" # time (years) of each observation for p images
 
 # To compute the flux at a given position, the optimize step can use 2 methods:
 # - "aperture" uses an exact computation, from photutils. More precise but much
@@ -19,7 +20,7 @@ n: 124   # size of the images nxn
 method: "convolve"
 upsampling_factor: 5
 
-time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115" # time (years) of each observation for p images
+invvar_weight: False
 
 remove_planet: 'no' #yes or no ; Remove planet from the noise and background computation (noise_profile_snr_herve)
 #planet_coord: "(145:105)+(146:105)+(147:104)+(148:105)+(154:106)+(157:106)+(156:106)+(154:104)+(153:105)" # !! pixels python coordinates here; KEEP THIS FORMAT (no spaces, etc.)
