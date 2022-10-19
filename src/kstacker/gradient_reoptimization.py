@@ -61,8 +61,8 @@ def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
 
     if invvar_weighted:
         sigma_inv2 = np.sum(1 / noise**2)
-        noise = np.sqrt(1 / sigma_inv2)
         signal = np.sum(signal / noise**2) / sigma_inv2
+        noise = np.sqrt(1 / sigma_inv2)
     else:
         signal = np.sum(signal)
         noise = np.sqrt(np.sum(noise**2))
@@ -185,8 +185,15 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     bounds = params.grid.bounds()
 
     # Computation on the q best SNR
-    args = (ts, size, params.scale, params.fwhm, data, params.r_mask,
-            params.invvar_weight)
+    args = (
+        ts,
+        size,
+        params.scale,
+        params.fwhm,
+        data,
+        params.r_mask,
+        params.invvar_weight,
+    )
     reopt = Parallel(n_jobs=n_jobs)(
         delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
     )

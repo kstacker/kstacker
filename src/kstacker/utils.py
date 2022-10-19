@@ -159,9 +159,18 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
 
         signal = np.nansum(signal, axis=0)
         noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
-        res.meta['signal_sum'] = signal
-        res.meta['noise_sum'] = noise
-        res.meta['snr_sum'] = signal / noise
+        res.meta["signal_sum"] = signal
+        res.meta["noise_sum"] = noise
+        res.meta["snr_sum"] = signal / noise
+
+        # With inverse variance weighting
+        signal = np.sum(res["signal"] / res["noise"] ** 2) / np.sum(
+            1 / res["noise"] ** 2
+        )
+        noise = np.sqrt(1 / np.sum(1 / res["noise"] ** 2))
+        res.meta["signal_invvar"] = signal
+        res.meta["noise_invvar"] = noise
+        res.meta["snr_invvar"] = signal / noise
 
         if verbose:
             print(f"\nValues for orbit {j}, x = {x[j]}")

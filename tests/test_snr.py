@@ -11,7 +11,11 @@ from kstacker.utils import compute_snr_detailed
 x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]
 expected = {
     "convolve": [0.0004428637, 2.64439168e-05, 16.74728012],
-    "aperture": [0.000449212, 2.644391768e-05, 16.987346605],
+    "aperture": [0.00044921199, 2.64439177e-05, 16.987346605],
+}
+expected_invvar = {
+    "convolve": [0.000110405, 6.542620672e-06, 16.8747297135],
+    "aperture": [0.000112108, 6.542620672e-06, 17.1349995529],
 }
 
 
@@ -72,6 +76,18 @@ def test_compute_snr_grad(params_with_images):
     )
     assert_allclose(-snr, expected["aperture"][2], rtol=1e-6)
 
+    snr = compute_snr(
+        x,
+        ts,
+        params.n,
+        params.scale,
+        params.fwhm,
+        data,
+        r_mask=0,
+        invvar_weighted=True,
+    )
+    assert_allclose(-snr, expected_invvar["aperture"][2], rtol=1e-6)
+
 
 def test_compute_snr_cython(params_with_images):
     params = params_with_images
@@ -102,3 +118,26 @@ def test_compute_snr_cython(params_with_images):
     )
     out[:, 2] *= -1  # positive SNR
     assert_allclose(out[0], expected["convolve"], rtol=1e-6)
+
+    # With inverse variance weight
+    out = np.zeros((1, 3))
+    cy_compute_snr(
+        data["images"],
+        positions[0],
+        data["bkg"],
+        data["noise"],
+        proj_matrices,
+        params.r_mask,
+        params.r_mask_ext,
+        params.scale,
+        params.n,
+        params.upsampling_factor,
+        out,
+        1,
+        1,
+    )
+    out[:, 2] *= -1  # positive SNR
+    assert_allclose(out[0], expected_invvar["convolve"], rtol=1e-6)
+    # res = compute_snr_detailed(params, x, method="convolve", verbose=True)
+    # assert_allclose(out[0, 0], res.meta["signal_invvar"], rtol=1e-6)
+    # assert_allclose(out[0, 1], res.meta["noise_invvar"], rtol=1e-6)
