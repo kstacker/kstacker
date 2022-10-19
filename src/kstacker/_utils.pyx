@@ -83,7 +83,7 @@ def cy_compute_snr(double[:,:,::1] images,
                    int num_threads):
 
     cdef:
-        double x, y, xproj, yproj, signal, snr, temp_d, sk, zk, sum_sk_on_zk2, sum_sk2_on_zk2, sum_one_on_zk2 #,noise
+        double x, y, xproj, yproj, signal, snr, temp_d, sk, zk, sum_sk_on_zk2, sum_sk2_on_zk2, sum_one_on_zk2, noise
         ssize_t i, k
         size_t xpix, ypix
         size_t half_size = size // 2
@@ -92,8 +92,8 @@ def cy_compute_snr(double[:,:,::1] images,
 
     for i in prange(proj_matrices.shape[0], nogil=True, schedule='static',
                     num_threads=num_threads):
-        signal = 0
-        #noise = 0
+        signal = 0.
+        noise = 0.
         sum_sk_on_zk2 = 0. # Sum of signal on variance in image k
         sum_sk2_on_zk2 = 0. # Sum of signal**2 on variance in image k
         sum_one_on_zk2 = 0. # Sum of one on variance in image k (replace noise)
@@ -125,6 +125,7 @@ def cy_compute_snr(double[:,:,::1] images,
             ypix = int(yproj * upsampling_factor - 0.5)
 
             if (xpix >= 0) and (xpix < nx) and (ypix >= 0) and (ypix < ny):
+                # computations used to optimize a probability of detection
                 zk = interp(&noise_profiles[k, 0], temp_d, half_size)
                 sk = images[k, xpix, ypix] - interp(&bkg_profiles[k, 0], temp_d, half_size)
                 if zk != 0.:
@@ -132,16 +133,52 @@ def cy_compute_snr(double[:,:,::1] images,
                     sum_one_on_zk2 = sum_one_on_zk2 + 1. / zk**2.
                     sum_sk2_on_zk2 = sum_sk2_on_zk2 + sk**2. / zk**2.
 
-        if sum_one_on_zk2 != 0:
-            signal =  sum_sk_on_zk2 / sum_one_on_zk2
-        else:
-            signal = 0.
-        if signal < 0:
-            signal = 0.
-        snr = -0.5 * ((signal ** 2.) * sum_one_on_zk2)
-        #snr = 0.5 * (sum_sk2_on_zk2 - (signal**2.) * sum_one_on_zk2) # It is not snr, but a function that must be minimized ! later use: L
+                # For classical SNR computation only
+                # add signal and correct for background (using pre-computed
+                # background profile)
 
+                signal = (signal + images[k, xpix, ypix] -
+                          interp(&bkg_profiles[k, 0], temp_d, half_size))
+
+                # add noise using pre-computed radial noise profile
+
+                noise = noise + interp(&noise_profiles[k, 0], temp_d, half_size) ** 2
+
+        noise = sqrt(noise)
+
+        # For classical SNR computation only
+        if noise == 0:
+            # if the value of total noise is 0 (i.e. all values of noise are 0,
+            # i.e. the orbit is completely out of the image) then snr=0
+            snr = 0
+        else:
+            snr = - signal / noise
+
+        # Flux planet that maximize a probability of detection in a gaussian noise
+
+        #if sum_one_on_zk2 != 0:
+        #    signal =  sum_sk_on_zk2 / sum_one_on_zk2
+        #else:
+        #    signal = 0.
+
+        # Function that maximize a probability of detection
+
+        #if signal > 0:
+        #    snr = 0.5 * (sum_sk2_on_zk2 - (signal**2.) * sum_one_on_zk2)
+        #else:
+        #    snr = 999999.
+
+        # Function that maximize a probability of detection normalized by the probability to detect nothing (signal = 0)
+
+        #if signal > 0:
+        #    snr = -0.5 * ((signal ** 2.) * sum_one_on_zk2)
+        #else:
+        #    snr = 0.
+
+        # Function that maximize the SNR found to maximize the probability of detection i.e. signal (eq. 18 of Zackey)
+
+        #snr = - signal
 
         out[i, 0] = signal
-        out[i, 1] = sum_one_on_zk2 # noise is expected
+        out[i, 1] = noise #sum_one_on_zk2 # noise is expected
         out[i, 2] = snr
