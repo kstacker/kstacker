@@ -57,17 +57,28 @@ def get_res(
 
 
 def compute_snr(x, *args):
-    signal, noise = get_res(x, *args)
-    noise = np.sqrt(np.sum(noise**2))
-    if noise == 0:
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbi is completely out of the image) then snr=0
-        snr = 0.0
-    else:
-        # compute theoretical snr in combined image
-        snr = np.sum(signal) / noise
-    return -snr
+    nimg = 4
+    s, z = get_res(x, *args)
+    sum_sk_on_zk2 = 0.
+    sum_sk2_on_zk2 = 0.
+    sum_one_on_zk2 = 0.
 
+    for k in range(nimg):
+        if z[k] != 0:
+            sum_sk_on_zk2 = sum_sk_on_zk2 + s[k] / z[k] ** 2.
+            sum_one_on_zk2 = sum_one_on_zk2 + 1. / z[k] ** 2.
+            sum_sk2_on_zk2 = sum_sk2_on_zk2 + s[k] ** 2. / z[k] ** 2.
+
+   # Signal that maximize the probability of detection in a gaussian noise (eq. 18 of Zackey)
+
+    if sum_one_on_zk2 != 0:
+        signal = sum_sk_on_zk2 / sum_one_on_zk2
+    else:
+        signal = 0.
+
+    snr = - signal
+
+    return snr
 
 def plot_coadd(idx, coadded, x, params, outdir):
     a, e, t0, m0, omega, i, theta_0 = x
