@@ -8,11 +8,15 @@ from kstacker.noise_profile import compute_noise_profiles, compute_signal_and_no
 from kstacker.orbit import orbit
 from kstacker.utils import compute_snr_detailed
 
+# orbit parameters: a, e, t0, m, omega, i theta_0
 x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]
+# expected values with plain summation
 expected = {
+    # method  :  signal,       noise,          snr
     "convolve": [0.0004428637, 2.64439168e-05, 16.74728012],
     "aperture": [0.00044921199, 2.64439177e-05, 16.987346605],
 }
+# expected values with inverse variance weighting
 expected_invvar = {
     "convolve": [0.000110405, 6.542620672e-06, 16.8747297135],
     "aperture": [0.000112108, 6.542620672e-06, 17.1349995529],
