@@ -4,11 +4,14 @@ Functions used to represent the orbit of the planet
 
 
 import math
+import os
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
 from . import orbit
+from ..utils import Params, read_results
 
 
 def plot_orbites(ts, x, ax, filename):
@@ -90,3 +93,90 @@ def plot_ontop(x, d, ts, res, back_image, filename):
 
     plt.savefig(filename + ".png")
     plt.close()
+
+
+def plot_orbits(x, snr, img, scale, ax=None, norbits=None):
+    if ax is None:
+        _, ax = plt.subplots()
+
+    norbits = min(norbits or x.shape[0], x.shape[0])
+    cmap = plt.get_cmap("Blues")
+    norm = mpl.colors.Normalize(vmin=snr.min() - 0.1, vmax=snr.max())
+
+    npix = img.shape[0]
+    thetas = np.linspace(-2 * np.pi, 0, 100)
+    ax.imshow(img, origin="lower", interpolation="none", cmap="gray", alpha=0.5)
+
+    for j in reversed(range(norbits)):
+        a, e, t0, m0, omega, i, theta_0 = x[j]
+        p = a * (1 - e**2)
+        r = p / (1 + e * np.cos(thetas))
+        positions = r * np.array([np.cos(thetas), np.sin(thetas)])
+        x_proj, y_proj = (
+            npix // 2 + scale * orbit.project_position(positions.T, omega, i, theta_0).T
+        )
+        ax.plot(y_proj, x_proj, lw=1, color=cmap(norm(snr[j])), alpha=0.2)
+
+
+def plot_snr_hist(snr_gradient, snr_brut_force, ax=None):
+    if ax is None:
+        _, ax = plt.subplots()
+
+    min_ = int(min(snr_gradient.min(), snr_brut_force.min()) * 10) / 10
+    max_ = int(max(snr_gradient.max(), snr_brut_force.max()) * 10 + 1) / 10
+    bins = np.linspace(min_, max_, int((max_ - min_) / 0.01) + 1)
+
+    ax.hist(snr_gradient, bins=bins, histtype="step", label="snr_gradient")
+    ax.hist(snr_brut_force, bins=bins, histtype="step", label="snr_brut_force")
+    ax.legend(loc="upper left")
+    ax.set(title="SNR Histogram")
+
+
+def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
+    if ax is None:
+        _, ax = plt.subplots()
+
+    ax.plot(snr_gradient, label="snr_gradient", drawstyle="steps-mid")
+    ax.plot(snr_brut_force, label="snr_brut_force", drawstyle="steps-mid")
+    ax.legend()
+    ax.set(title="SNR Curves")
+
+
+def plot_results(paramfile, nimg=None, savefig=None):
+    path = os.path.dirname(paramfile)
+    params = Params.read(paramfile)
+    params.work_dir = path
+    res = read_results(os.path.join(path, "values", "results.txt"), params)
+    res["snr_gradient"] *= -1
+    res["snr_brut_force"] *= -1
+
+    data = params.load_data(method="aperture")
+    grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
+    grid = grid.view("f8").reshape(grid.shape[0], 7)
+
+    nimg = nimg or len(data["images"])
+    fig, axes = plt.subplots(2, nimg, figsize=(nimg * 3, 6), layout="constrained")
+
+    for i in range(nimg):
+        plot_orbits(
+            grid, res["snr_gradient"], data["images"][i], params.scale, ax=axes[0, i]
+        )
+        axes[0, i].set(title=f"Image {i}")
+
+    plot_snr_hist(res["snr_gradient"], res["snr_brut_force"], ax=axes[1, 0])
+    plot_snr_curve(res["snr_gradient"], res["snr_brut_force"], ax=axes[1, 1])
+
+    ax = axes[1, 2]
+    for i, arr in enumerate(data["noise"]):
+        ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
+    ax.legend(fontsize="x-small", loc="upper left")
+    ax.set(title="Noise")
+
+    ax = axes[1, 3]
+    for i, arr in enumerate(data["bkg"]):
+        ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
+    ax.legend(fontsize="x-small", loc="upper left")
+    ax.set(title="Background")
+
+    if savefig:
+        fig.savefig(savefig)

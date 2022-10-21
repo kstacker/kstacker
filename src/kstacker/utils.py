@@ -3,7 +3,7 @@ import shutil
 
 import numpy as np
 import yaml
-from astropy.io import fits
+from astropy.io import ascii, fits
 from astropy.table import Table, vstack
 
 from .imagerie.analyze import photometry, photometry_preprocessed
@@ -180,6 +180,27 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
 
     out = vstack(out)
     return out
+
+
+def read_results(filename, params):
+    """Read the results.txt file and add the mass column if it is missing."""
+
+    tbl = ascii.read(filename)
+    if len(tbl.colnames) == 9:
+        names = [
+            "image_number",
+            "snr_brut_force",
+            "snr_gradient",
+            "a",
+            "e",
+            "t0",
+            "omega",
+            "i",
+            "theta_0",
+        ]
+        tbl = ascii.read(filename, names=names)
+        tbl.add_column(params.m0, name="m0", index=6)
+    return tbl
 
 
 class Grid:
