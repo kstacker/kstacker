@@ -14,7 +14,7 @@ from joblib import Parallel, delayed
 
 from .imagerie import photometry, recombine_images
 from .orbit import orbit as orb
-from .orbit import plot_ontop, plot_orbites2
+from .orbit import plot_ontop, plot_orbites
 
 
 def get_res(x, ts, size, scale, fwhm, data, r_mask):
@@ -42,22 +42,30 @@ def get_res(x, ts, size, scale, fwhm, data, r_mask):
             # get noise at position using pre-computed radial noise profil
             res[1, k] = np.interp(temp_d[k], data["x"], data["noise"][k])
 
-    # if the value of signal is nan (outside of the image, consider it to be 0
-    res[:, np.isnan(res[0])] = 0.0
     return res
 
 
-def compute_snr(x, *args):
-    signal, noise = get_res(x, *args)
-    noise = np.sqrt(np.sum(noise**2))
-    if noise == 0:
-        # if the value of total noise is 0 (i.e. all values of noise are 0,
-        # i.e. the orbi is completely out of the image) then snr=0
-        snr = 0.0
+def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
+    """Compute theoretical snr in combined image."""
+
+    signal, noise = get_res(x, ts, size, scale, fwhm, data, r_mask)
+
+    null = np.isnan(signal) | np.isclose(signal, 0)
+    if np.all(null):
+        return 0
+    if np.any(null):
+        noise = noise[~null]
+        signal = signal[~null]
+
+    if invvar_weighted:
+        sigma_inv2 = np.sum(1 / noise**2)
+        signal = np.sum(signal / noise**2) / sigma_inv2
+        noise = np.sqrt(1 / sigma_inv2)
     else:
-        # compute theoretical snr in combined image
-        snr = np.sum(signal) / noise
-    return -snr
+        signal = np.sum(signal)
+        noise = np.sqrt(np.sum(noise**2))
+
+    return -signal / noise
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -103,9 +111,7 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
-    # orbit.plot.plot_orbites(x_best, x0, sim_name + "/orbites{k}")
-    # orbit.plot.plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites{k}")
-    plot_orbites2(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
+    plot_orbites(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
 
     # If single_plot=='yes' a cross is ploted on each image where the
     # planet is found (by default no);
@@ -125,6 +131,11 @@ def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
+    snr_init = compute_snr(x, *args[:-1], invvar_weighted=args[-1])
+
+    with np.printoptions(precision=3, suppress=True):
+        print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")
+
     # Gradient re-optimization:
     opt_result = scipy.optimize.minimize(
         compute_snr,
@@ -136,8 +147,8 @@ def optimize_orbit(result, k, args, bounds):
     )
     x_best = opt_result.x
     snr_best = opt_result.fun
+
     with np.printoptions(precision=3, suppress=True):
-        print(f"init  {k}: {np.array(x)} => {snr_i:.2f}")
         print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
 
     return snr_i, snr_best, *x_best
@@ -169,7 +180,15 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     bounds = params.grid.bounds()
 
     # Computation on the q best SNR
-    args = (ts, size, params.scale, params.fwhm, data, params.r_mask)
+    args = (
+        ts,
+        size,
+        params.scale,
+        params.fwhm,
+        data,
+        params.r_mask,
+        params.invvar_weight,
+    )
     reopt = Parallel(n_jobs=n_jobs)(
         delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
     )

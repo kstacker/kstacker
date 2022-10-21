@@ -99,6 +99,9 @@ def evaluate(
     if dry_run:
         return
 
+    if params.invvar_weight:
+        print('Using inverse variance weights')
+
     # load the images and the noise/background profiles
     input_data = params.load_data()
 
@@ -168,7 +171,8 @@ def evaluate(
                 params.n,
                 params.upsampling_factor,
                 out,
-                num_threads=num_threads,
+                num_threads,
+                int(params.invvar_weight),
             )
 
             # Keep the nbest results, based on their SNR
