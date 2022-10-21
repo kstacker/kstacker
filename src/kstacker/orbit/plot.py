@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from . import orbit
-from ..utils import Params, read_results
 
 
 def plot_orbites(ts, x, ax, filename):
@@ -143,6 +142,7 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
 
 
 def plot_results(paramfile, nimg=None, savefig=None):
+    from ..utils import Params, read_results
     path = os.path.dirname(paramfile)
     params = Params.read(paramfile)
     params.work_dir = path
