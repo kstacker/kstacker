@@ -239,6 +239,7 @@ def compute_snr_plots(params):
 
         signal, noise = compute_signal_and_noise_grid(x, *args)
         snr = signal / noise
+        np.save(f"{outdir}/snr_{name}.npy", snr)
 
         fig, ax = plt.subplots()
         ax.plot(param_vect, snr, linewidth=1)
