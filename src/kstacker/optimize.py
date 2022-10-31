@@ -100,7 +100,7 @@ def evaluate(
         return
 
     if params.invvar_weight:
-        print('Using inverse variance weights')
+        print("Using inverse variance weights")
 
     # load the images and the noise/background profiles
     input_data = params.load_data()
