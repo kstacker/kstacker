@@ -8,6 +8,7 @@ from numpy.testing import assert_almost_equal
 from kstacker.gradient_reoptimization import reoptimize_gradient
 from kstacker.noise_profile import compute_noise_profiles
 from kstacker.optimize import brute_force
+from kstacker.orbit import plot_results
 
 
 def test_full_run(params_tmp):
@@ -64,3 +65,6 @@ def test_full_run(params_tmp):
     res = ascii.read(path / "values" / "results.txt")
     expected = [-17.0618, -17.0618, -17.0617, -17.0588, -17.0514]
     assert_almost_equal(res["snr_gradient"], expected, decimal=3)
+
+    # Plot results -----------------------------------------------------------
+    plot_results(params_tmp, nimg=3)

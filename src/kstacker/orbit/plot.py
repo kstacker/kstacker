@@ -141,12 +141,15 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
     ax.set(title="SNR Curves")
 
 
-def plot_results(paramfile, nimg=None, savefig=None):
+def plot_results(params, nimg=None, savefig=None):
     from ..utils import Params, read_results
-    path = os.path.dirname(paramfile)
-    params = Params.read(paramfile)
-    params.work_dir = path
-    res = read_results(os.path.join(path, "values", "results.txt"), params)
+
+    if isinstance(params, str):
+        path = os.path.dirname(params)
+        params = Params.read(params)
+        params.work_dir = path
+
+    res = read_results(os.path.join(params.work_dir, "values", "results.txt"), params)
     res["snr_gradient"] *= -1
     res["snr_brut_force"] *= -1
 
@@ -155,13 +158,18 @@ def plot_results(paramfile, nimg=None, savefig=None):
     grid = grid.view("f8").reshape(grid.shape[0], 7)
 
     nimg = nimg or len(data["images"])
-    fig, axes = plt.subplots(2, nimg, figsize=(nimg * 3, 6), layout="constrained")
+    ncols = max(4, nimg)
+    fig, axes = plt.subplots(2, ncols, figsize=(ncols * 3, 6), layout="constrained")
 
-    for i in range(nimg):
-        plot_orbits(
-            grid, res["snr_gradient"], data["images"][i], params.scale, ax=axes[0, i]
-        )
-        axes[0, i].set(title=f"Image {i}")
+    for i in range(ncols):
+        ax = axes[0, i]
+        if i < nimg:
+            plot_orbits(
+                grid, res["snr_gradient"], data["images"][i], params.scale, ax=ax
+            )
+            ax.set(title=f"Image {i}")
+        else:
+            ax.axis("off")
 
     plot_snr_hist(res["snr_gradient"], res["snr_brut_force"], ax=axes[1, 0])
     plot_snr_curve(res["snr_gradient"], res["snr_brut_force"], ax=axes[1, 1])
