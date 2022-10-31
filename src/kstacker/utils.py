@@ -213,9 +213,10 @@ class Grid:
 
     """
 
+    grid_params = ("a", "e", "t0", "m0", "omega", "i", "theta_0")
+
     def __init__(self, params):
         self._params = params
-        self.grid_params = ("a", "e", "t0", "m0", "omega", "i", "theta_0")
 
     def __repr__(self):
         out = ["Grid("]
@@ -369,7 +370,7 @@ class Params:
     @property
     def fwhm(self):
         """Apodized fwhm of the PSF (in pixels)."""
-        return float(self._params["aperture_diameter"])
+        return float(self._params["fwhm"])
 
     @property
     def scale(self):

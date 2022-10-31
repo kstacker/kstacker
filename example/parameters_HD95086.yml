@@ -44,9 +44,10 @@ q: 100
 # used to project the orbits on the CCD and in the convertion a.u. in pixels
 dist: 86.2
 
-# diameter of the circle for integration of the flux (pixel)
-# typically diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d
-aperture_diameter: 1.6887225152574619
+# FWHM (pixel)
+# used to compute the diameter of the circle for integration of the flux,
+# diameter = 2 x FWHM
+fwhm: 1.6887225152574619
 
 # plate-scale (marcsec/pixel)
 # used to define the size of the circle for integration of the flux and
