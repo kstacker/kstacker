@@ -367,16 +367,9 @@ class Params:
         }
 
     @property
-    def wav(self):
-        # force wav to be float since '2e-6' is parsed as string by pyyaml
-        return float(self._params["wav"])
-
-    @property
     def fwhm(self):
         """Apodized fwhm of the PSF (in pixels)."""
-        return (
-            (1.028 * self.wav / self.d) * (180.0 / np.pi) * 3600 / (self.resol / 1000.0)
-        )
+        return float(self._params["aperture_diameter"])
 
     @property
     def scale(self):

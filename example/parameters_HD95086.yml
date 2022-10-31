@@ -36,12 +36,22 @@ profile_dir: "profiles"   # folder where to save and load the background and noi
 single_plot: 'yes'    # yes or no to display the positions of the planet in each frame for the best solutions
 adding: 'no'   # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
 
-q: 100      # number of maxima that will be reoptimized by the gradient descent algorithm (default=100)
-dist: 86.2    # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels)
-wav: 0.8e-6  # wavelength of observation (in meter)(used only to define the size of the circle for integration of the flux); diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d; diameter
+# number of maxima that will be reoptimized by the gradient descent algorithm
+# (default=100)
+q: 100
 
-d: 8.2 # diameter of the primary mirror (in meter)(used only to define the size of the circle for integration of the flux)
-resol: 12.25    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels)
+# distance of the star (parsec)
+# used to project the orbits on the CCD and in the convertion a.u. in pixels
+dist: 86.2
+
+# diameter of the circle for integration of the flux (pixel)
+# typically diameter = 2 X FWHM-PSF = 2 x 1.028 x lambda /d
+aperture_diameter: 1.6887225152574619
+
+# plate-scale (marcsec/pixel)
+# used to define the size of the circle for integration of the flux and
+# convert a.u. in pixels
+resol: 12.25
 
 # Radius of the internal and external coronagraphic mask (in pixels).
 # Put at zero all the values inside / outside this circle.
