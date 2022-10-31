@@ -355,7 +355,16 @@ class Params:
             if selected is not None and k not in selected:
                 continue
             i = k + self.p_prev
-            im = fits.getdata(f"{images_dir}/image_{i}{img_suffix}.fits")
+            im, hdr = fits.getdata(
+                f"{images_dir}/image_{i}{img_suffix}.fits", header=True
+            )
+            if img_suffix == "_resampled" and hdr["FACTOR"] != self.upsampling_factor:
+                raise ValueError(
+                    f"images have been resampled with a factor={hdr['FACTOR']} "
+                    "which is not compatible with the current value of "
+                    f"{self.upsampling_factor}"
+                )
+
             images.append(im.astype("float", order="C", copy=False))
             bkg_profiles.append(np.load(f"{profile_dir}/background_prof{i}.npy"))
             noise_profiles.append(np.load(f"{profile_dir}/noise_prof{i}.npy"))

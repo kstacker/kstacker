@@ -99,7 +99,7 @@ def pre_process_image(
     hdr.update(
         {"KERNEL": "circle", "RADIUS": aperture_radius, "FACTOR": upsampling_factor}
     )
-    fits.writeto(f"{filename}_resampled.fits", imconv, overwrite=True)
+    fits.writeto(f"{filename}_resampled.fits", imconv, header=hdr, overwrite=True)
 
     if plot:
         plt.imshow(image.T, origin="lower", interpolation="none", cmap="gray")
