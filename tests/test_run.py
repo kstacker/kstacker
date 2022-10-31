@@ -6,7 +6,7 @@ from astropy.io import ascii
 from numpy.testing import assert_almost_equal
 
 from kstacker.gradient_reoptimization import reoptimize_gradient
-from kstacker.noise_profile import compute_noise_profiles
+from kstacker.noise_profile import compute_noise_profiles, compute_snr_plots
 from kstacker.optimize import brute_force
 from kstacker.orbit import plot_results
 
@@ -24,6 +24,12 @@ def test_full_run(params_tmp):
     path = pathlib.Path(params_tmp.work_dir)
     assert (path / "profiles" / "background_prof0.npy").is_file()
     assert (path / "profiles" / "noise_prof0.npy").is_file()
+    assert (path / "profiles" / "snr_plot_steps" / "Plot_noise0.pdf").is_file()
+
+    compute_snr_plots(params_tmp)
+    assert (
+        path / "profiles" / "snr_plot_steps" / "snr_graph" / "steps_a_40.0-62.0.pdf"
+    ).is_file()
 
     # Brute force ------------------------------------------------------------
     brute_force(params_tmp, dry_run=False, num_threads=1, show_progress=True)

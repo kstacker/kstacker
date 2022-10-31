@@ -110,48 +110,20 @@ def pre_process_image(
         plt.close()
 
 
-def plot_noise(q, profile_dir, output_snrdir):
-    """
-    Plot the noise profile for each image.
-
-    :param q: int number of images
-    :param profile_dir: directory where the noise and background profiles are stored
-    :param output_snrdir: directory where snr plots are stored
-    """
-
-    for k in range(q):
-        noise = np.load(f"{profile_dir}/noise_prof{k}.npy")
-        plt.figure(f"Noise Plot {k}")
-        plt.title(f"Noise Plot {k}")
-        plt.plot(noise)
-        plt.xlabel("radius in pixel")
-        plt.ylabel("standart deviation of the noise")
-        plt.savefig(f"{output_snrdir}/Plot_noise{k}.pdf")
-        plt.close()
-
-
 def compute_noise_profiles(params):
-    # Main Path definitions
-    images_dir = params.get_path("images_dir")
-    # Directories where the noise profiles will be stored
-    profile_dir = params.get_path("profile_dir", remove_if_exist=True)
-
-    # images characteristic (size, masks size, number of images, etc.) for K-Stacker
+    # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
+    t0 = time.time()
     nimg = params.p  # number of images
     size = params.n  # to keep the initial size n
-    upsampling_factor = params.upsampling_factor
-
-    # The epochs of observation are put in an array of time
-    ts = params.get_ts()
 
     # This section check if the program must remove the planet from noise and
     # background (Justin Bec-canet)
     if params.remove_planet == "yes":
         # The coordinates of the planet are put into an array
         remove_box = [float(x) for x in params.remove_box.split("+")]
-
         print(params.planet_coord)
         print(remove_box)
+
         # planet coordinates is put in a numpy python format (1 Dim array)
         # splits coordinates, replace ':' by ','
         planet_coord_elem = [x.split(":") for x in params.planet_coord.split("+")]
@@ -159,113 +131,119 @@ def compute_noise_profiles(params):
         # different coordinates
         planet_coord = [eval(f"{elem[0]},{elem[1]}") for elem in planet_coord_elem]
 
-    ###################################
-    # Main noise and background program
-    ###################################
-
-    if params.noise_prof == "yes":
-        # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
-        t0 = time.time()
-        for k in range(nimg):
-            pre_process_image(
-                f"{images_dir}/image_{k}.fits",
-                params.fwhm,
-                size=size,
-                r_mask=params.r_mask,
-                r_mask_ext=params.r_mask_ext,
-                mask_value=params.mask_value,
-                upsampling_factor=upsampling_factor,
-                plot=True,
-            )
-        print(f"preprocess: took {time.time() - t0:.2f} sec.")
-        print("The images have been adjusted in size, masked and saved")
-
-        # load the images and estimate the noise level assuming a radial profile
-        t0 = time.time()
-        img_suffix = params.get_image_suffix()
-        for k in range(nimg):
-            img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
-            img = img.astype(float)
-            if params.remove_planet == "yes":
-                # uses a function to remove the planet in background calculations
-                bg_prof, n_prof = monte_carlo_profiles_remove_planet(
-                    img,
-                    size,
-                    planet_coord[k],
-                    remove_box,
-                    params.fwhm,
-                    upsampling_factor,
-                    method=params.method,
-                )
-            else:
-                bg_prof, n_prof = monte_carlo_profiles(
-                    img, size, params.fwhm, upsampling_factor, method=params.method
-                )
-
-            np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
-            np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
-            print(f"{k} sur {nimg - 1}")
-
-        print(f"profiles: took {time.time() - t0:.2f} sec.")
-        print("Background and noise profile Done.")
-
-    ###################################
-    # Main SNRs plot program
-    ###################################
-
-    if params.snr_plot == "yes":
-        # Directories where the snr plots will be stored
-        output_snrdir = f"{profile_dir}/snr_plot_steps"
-        output_snrgraph = f"{output_snrdir}/snr_graph"
-
-        create_output_dir(output_snrdir)
-        create_output_dir(output_snrgraph)
-
-        t0 = time.time()
-        plot_noise(nimg, profile_dir, output_snrdir)
-        print(f"plot_noise: took {time.time() - t0:.2f} sec.")
-
-        # load the images and the noise/background profiles
-        data = params.load_data()
-
-        args = (
-            ts,
-            size,
-            params.scale,
+    images_dir = params.get_path("images_dir")
+    for k in range(nimg):
+        pre_process_image(
+            f"{images_dir}/image_{k}.fits",
             params.fwhm,
-            data,
-            upsampling_factor,
-            None,
-            params.method,
+            size=size,
+            r_mask=params.r_mask,
+            r_mask_ext=params.r_mask_ext,
+            mask_value=params.mask_value,
+            upsampling_factor=params.upsampling_factor,
+            plot=True,
         )
+    print(f"preprocess: took {time.time() - t0:.2f} sec.")
+    print("The images have been adjusted in size, masked and saved")
 
-        # Definition of parameters that will be ploted function of the SNR
-        parameters = params.grid.grid_params
-        for name in parameters:
-            print(f"Computing SNR for param {name}")
-            tstart = time.time()
-            param = params[name]
+    # load the images and estimate the noise level assuming a radial profile
+    t0 = time.time()
+    img_suffix = params.get_image_suffix()
+    profile_dir = params.get_path("profile_dir", remove_if_exist=True)
+    output_snrdir = f"{profile_dir}/snr_plot_steps"
+    create_output_dir(output_snrdir)
 
-            if param["Ninit"] <= 1:
-                print("skipping this parameter")
-                continue
+    for k in range(nimg):
+        img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
+        img = img.astype(float)
+        if params.remove_planet == "yes":
+            # uses a function to remove the planet in background calculations
+            bg_prof, n_prof = monte_carlo_profiles_remove_planet(
+                img,
+                size,
+                planet_coord[k],
+                remove_box,
+                params.fwhm,
+                params.upsampling_factor,
+                method=params.method,
+            )
+        else:
+            bg_prof, n_prof = monte_carlo_profiles(
+                img,
+                size,
+                params.fwhm,
+                params.upsampling_factor,
+                method=params.method,
+            )
 
-            # Orbital parameters initialisation: fixed value for all
-            # parameters except for the one being processed in the loop
-            param_vect = np.linspace(param["min"], param["max"], param["Ninit"])
-            x = [params[key]["init"] for key in parameters]
-            x = np.tile(x, (param_vect.size, 1))
-            param_idx = parameters.index(name)
-            x[:, param_idx] = param_vect
+        np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
+        np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
+        print(f"{k} sur {nimg - 1}")
 
-            signal, noise = compute_signal_and_noise_grid(x, *args)
-            snr = signal / noise
+        fig, ax = plt.subplots()
+        ax.plot(n_prof)
+        ax.set(
+            title=f"Noise Plot {k}",
+            xlabel="radius in pixel",
+            ylabel="standart deviation of the noise",
+        )
+        plt.savefig(f"{output_snrdir}/Plot_noise{k}.pdf")
+        plt.close()
 
-            plt.plot(param_vect, snr, linewidth=1)
-            plt.xlabel(param["label"])
-            plt.ylabel("SNR")
-            suffix = f"{name}_{np.min(param_vect)}-{np.max(param_vect)}"
-            plt.savefig(f"{output_snrgraph}/steps_{suffix}.pdf")
-            plt.close()
+    print(f"profiles: took {time.time() - t0:.2f} sec.")
+    print("Background and noise profile Done.")
 
-            print(f"compute snr: took {time.time() - tstart:.2f} sec.")
+
+def compute_snr_plots(params):
+    """Create SNR plot for each grid parameter."""
+
+    # Directories where the snr plots will be stored
+    profile_dir = params.get_path("profile_dir")
+    outdir = f"{profile_dir}/snr_plot_steps/snr_graph"
+    create_output_dir(outdir)
+
+    # load the images and the noise/background profiles
+    data = params.load_data()
+    ts = params.get_ts()
+    size = params.n  # to keep the initial size n
+
+    args = (
+        ts,
+        size,
+        params.scale,
+        params.fwhm,
+        data,
+        params.upsampling_factor,
+        None,
+        params.method,
+    )
+
+    # Definition of parameters that will be ploted function of the SNR
+    parameters = params.grid.grid_params
+    for name in parameters:
+        print(f"Computing SNR for param {name}")
+        tstart = time.time()
+        param = params[name]
+
+        if param["Ninit"] <= 1:
+            print("skipping this parameter")
+            continue
+
+        # Orbital parameters initialisation: fixed value for all
+        # parameters except for the one being processed in the loop
+        param_vect = np.linspace(param["min"], param["max"], param["Ninit"])
+        x = [params[key]["init"] for key in parameters]
+        x = np.tile(x, (param_vect.size, 1))
+        param_idx = parameters.index(name)
+        x[:, param_idx] = param_vect
+
+        signal, noise = compute_signal_and_noise_grid(x, *args)
+        snr = signal / noise
+
+        fig, ax = plt.subplots()
+        ax.plot(param_vect, snr, linewidth=1)
+        ax.set(xlabel=param["label"], ylabel="SNR")
+        plt.savefig(f"{outdir}/steps_{name}_{param_vect.min()}-{param_vect.max()}.pdf")
+        plt.close()
+
+        print(f"compute snr: took {time.time() - tstart:.2f} sec.")

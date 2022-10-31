@@ -4,7 +4,7 @@ import time
 import numpy as np
 
 from .gradient_reoptimization import reoptimize_gradient
-from .noise_profile import compute_noise_profiles
+from .noise_profile import compute_noise_profiles, compute_snr_plots
 from .optimize import brute_force
 from .utils import Params
 from .version import version
@@ -61,7 +61,10 @@ def noise_profiles(args):
     if args.seed:
         np.random.seed(args.seed)
     params = Params.read(args.parameter_file)
-    compute_noise_profiles(params)
+    if params.noise_prof == "yes":
+        compute_noise_profiles(params)
+    if params.snr_plot == "yes":
+        compute_snr_plots(params)
 
 
 def optimize(args):
