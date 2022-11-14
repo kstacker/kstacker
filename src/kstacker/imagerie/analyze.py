@@ -389,6 +389,43 @@ def monte_carlo_profiles_remove_planet(
     return background_profile, noise_profile
 
 
+def compute_noise_apertures(img, radius, aperture_radius, mask=None):
+    """Compute noise and bkg profiles with apertures on a disk for a given radius."""
+    angle = np.arcsin(aperture_radius / radius) * 2
+    n_aper = int(np.floor(2 * np.pi / angle))
+
+    center = img.shape[0] // 2
+    x = 0
+    y = radius
+    angles = np.linspace(0, 2 * np.pi, n_aper)
+
+    xx = center + np.cos(angles) * x + np.sin(angles) * y
+    yy = center + np.cos(angles) * y - np.sin(angles) * x
+
+    apertures = CircularAperture(list(zip(xx, yy)), r=aperture_radius)
+    fluxes = aperture_photometry(img, apertures, mask=mask)["aperture_sum"]
+    # Remove apertures that fall on masked data
+    fluxes = fluxes[fluxes != 0]
+    return np.mean(fluxes), np.std(fluxes), n_aper
+
+
+def compute_noise_profile_apertures(img, aperture_radius, mask_apertures=None):
+    """Compute noise and bkg profiles with apertures on a disk for each radius."""
+    if mask_apertures is not None:
+        mask = np.zeros(img.shape, dtype=bool)
+        for x, y, r in mask_apertures:
+            mask_planet = CircularAperture((y, x), r=r).to_mask(method="center")
+            mask |= mask_planet.to_image(img.shape, dtype=bool)
+    else:
+        mask = None
+
+    res = []
+    for r in range(2, img.shape[0] // 2):
+        res.append(compute_noise_apertures(img, r, aperture_radius, mask=mask))
+    bg, noise, n_aper = np.array(res).T
+    return bg, noise, n_aper
+
+
 def gauss_function(x_model, a, x0, sigma):
     return a * np.exp(-((x_model - x0) ** 2) / (2 * sigma**2))
 
