@@ -12,12 +12,12 @@ import scipy.optimize
 from astropy.io import ascii, fits
 from joblib import Parallel, delayed
 
-from .imagerie import photometry, recombine_images
+from .imagerie import compute_noise_apertures, photometry, recombine_images
 from .orbit import orbit as orb
 from .orbit import plot_ontop, plot_orbites
 
 
-def get_res(x, ts, size, scale, fwhm, data, r_mask):
+def get_res(x, ts, size, scale, fwhm, data):
     """define snr function as a function of the orbit (used for the gradient;
     we maximise this function)
     """
@@ -28,27 +28,25 @@ def get_res(x, ts, size, scale, fwhm, data, r_mask):
 
     # compute position
     positions = orb.project_position(orb.position(ts, a, e, t0, m0), omega, i, theta_0)
-    xx, yy = positions.T
-    temp_d = np.sqrt(xx**2 + yy**2) * scale  # get distance to center
     # convert to pixel in the image
     positions = positions * scale + size // 2
 
     for k in range(nimg):
-        if temp_d[k] > r_mask:
-            # compute signal by integrating flux on a PSF, and correct it for
-            # background (using pre-computed background profile)
-            bkg = np.interp(temp_d[k], data["x"], data["bkg"][k])
-            res[0, k] = photometry(data["images"][k], positions[k], 2 * fwhm) - bkg
-            # get noise at position using pre-computed radial noise profil
-            res[1, k] = np.interp(temp_d[k], data["x"], data["noise"][k])
+        # compute signal by integrating flux on a PSF, and correct it for
+        # background
+        img = data["images"][k]
+        x, y = positions[k]
+        bg, noise, _ = compute_noise_apertures(img, x, y, fwhm, mask=None)
+        res[0, k] = photometry(img, positions[k], 2 * fwhm) - bg
+        res[1, k] = noise
 
     return res
 
 
-def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
+def compute_snr(x, ts, size, scale, fwhm, data, invvar_weighted):
     """Compute theoretical snr in combined image."""
 
-    signal, noise = get_res(x, ts, size, scale, fwhm, data, r_mask)
+    signal, noise = get_res(x, ts, size, scale, fwhm, data)
 
     null = np.isnan(signal) | np.isclose(signal, 0)
     if np.all(null):
@@ -186,7 +184,6 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
         params.scale,
         params.fwhm,
         data,
-        params.r_mask,
         params.invvar_weight,
     )
     reopt = Parallel(n_jobs=n_jobs)(
