@@ -9,6 +9,7 @@ import os
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from astropy.visualization import ZScaleInterval
 
 from . import orbit
 
@@ -98,13 +99,23 @@ def plot_orbits(x, snr, img, scale, ax=None, norbits=None):
     if ax is None:
         _, ax = plt.subplots()
 
+    vmin, vmax = ZScaleInterval().get_limits(img)
+    ax.imshow(
+        img,
+        origin="lower",
+        interpolation="none",
+        cmap="gray",
+        alpha=0.5,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
     norbits = min(norbits or x.shape[0], x.shape[0])
     cmap = plt.get_cmap("Blues")
     norm = mpl.colors.Normalize(vmin=snr.min() - 0.1, vmax=snr.max())
 
     npix = img.shape[0]
     thetas = np.linspace(-2 * np.pi, 0, 100)
-    ax.imshow(img, origin="lower", interpolation="none", cmap="gray", alpha=0.5)
 
     for j in reversed(range(norbits)):
         a, e, t0, m0, omega, i, theta_0 = x[j]
@@ -136,7 +147,8 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
         _, ax = plt.subplots()
 
     ax.plot(snr_gradient, label="snr_gradient", drawstyle="steps-mid")
-    ax.plot(snr_brut_force, label="snr_brut_force", drawstyle="steps-mid")
+    snr_brut = np.sort(snr_brut_force)[::-1]
+    ax.plot(snr_brut, label="snr_brut_force", drawstyle="steps-mid")
     ax.legend()
     ax.set(title="SNR Curves")
 
@@ -178,13 +190,19 @@ def plot_results(params, nimg=None, savefig=None):
     for i, arr in enumerate(data["noise"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
     ax.legend(fontsize="x-small", loc="upper left")
-    ax.set(title="Noise", yscale='log')
+    ax.set(title="Noise", yscale="log")
 
     ax = axes[1, 3]
     for i, arr in enumerate(data["bkg"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
     ax.legend(fontsize="x-small", loc="upper left")
-    ax.set(title="Background", yscale='log')
+
+    arr = data["bkg"][:, params.r_mask - 1 :]
+    ymin = np.nanmin(arr)
+    ymax = np.nanmax(arr)
+    ymin = ymin / 2 if ymin > 0 else ymin * 2
+    ymax = ymax * 2 if ymax > 0 else ymax / 2
+    ax.set(title="Background", ylim=(ymin, ymax))
 
     if savefig:
         fig.savefig(savefig)
