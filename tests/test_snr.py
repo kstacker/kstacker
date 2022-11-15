@@ -13,15 +13,15 @@ x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]
 # expected values with plain summation
 expected = {
     # method  :  signal,       noise,          snr
-    "convolve": [0.000443, 2.796e-05, 15.911],
-    "aperture": [0.000449, 2.796e-05, 16.139],
-    "gradient": [0.000448, 2.837e-05, 15.682],
+    "convolve": [0.000443, 2.796e-05, 15.739],
+    "aperture": [0.000449, 2.796e-05, 15.965],
+    "gradient": [0.000448, 2.837e-05, 15.514],
 }
 # expected values with inverse variance weighting
 expected_invvar = {
-    "convolve": [0.000110, 6.91e-06, 16.036],
+    "convolve": [0.000110, 6.91e-06, 15.863],
     "aperture": [0.000112, 6.91e-06, 16.201],
-    "gradient": [0.000112, 7.02e-06, 15.811],
+    "gradient": [0.000112, 7.02e-06, 15.641],
 }
 
 

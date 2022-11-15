@@ -266,7 +266,8 @@ def compute_noise_apertures(
     if fluxes.size == 0:
         res = 0, 0, 0
     else:
-        res = np.mean(fluxes), np.std(fluxes), n_aper
+        std = np.std(fluxes, ddof=1) * np.sqrt(1 + (1 / n_aper))
+        res = np.mean(fluxes), std, n_aper
 
     if return_apertures:
         return *res, apertures
