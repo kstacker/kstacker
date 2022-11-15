@@ -13,13 +13,15 @@ x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]
 # expected values with plain summation
 expected = {
     # method  :  signal,       noise,          snr
-    "convolve": [0.000443, 2.796e-05, 15.829],
-    "aperture": [0.000449, 2.796e-05, 16.056],
+    "convolve": [0.000443, 2.796e-05, 15.911],
+    "aperture": [0.000449, 2.796e-05, 16.139],
+    "gradient": [0.000448, 2.837e-05, 15.792],
 }
 # expected values with inverse variance weighting
 expected_invvar = {
-    "convolve": [0.000110, 6.91e-06, 15.957],
+    "convolve": [0.000110, 6.91e-06, 16.036],
     "aperture": [0.000112, 6.91e-06, 16.201],
+    "gradient": [0.000112, 7.02e-06, 15.906],
 }
 
 
@@ -69,28 +71,14 @@ def test_compute_snr_grad(params_with_images):
 
     data = params.load_data(method="aperture")
     snr = compute_snr(
-        x,
-        ts,
-        params.n,
-        params.scale,
-        params.fwhm,
-        data,
-        r_mask=0,
-        invvar_weighted=False,
+        x, ts, params.n, params.scale, params.fwhm, data, invvar_weighted=False
     )
-    assert_allclose(-snr, expected["aperture"][2], atol=1e-3, rtol=0)
+    assert_allclose(-snr, expected["gradient"][2], atol=1e-3, rtol=0)
 
     snr = compute_snr(
-        x,
-        ts,
-        params.n,
-        params.scale,
-        params.fwhm,
-        data,
-        r_mask=0,
-        invvar_weighted=True,
+        x, ts, params.n, params.scale, params.fwhm, data, invvar_weighted=True
     )
-    assert_allclose(-snr, expected_invvar["aperture"][2], atol=1e-3, rtol=0)
+    assert_allclose(-snr, expected_invvar["gradient"][2], atol=1e-3, rtol=0)
 
 
 def test_compute_snr_cython(params_with_images):

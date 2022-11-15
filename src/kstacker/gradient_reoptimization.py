@@ -36,7 +36,9 @@ def get_res(x, ts, size, scale, fwhm, data):
         # background
         img = data["images"][k]
         x, y = positions[k]
-        bg, noise, _ = compute_noise_apertures(img, x, y, fwhm, mask=None)
+        bg, noise, _ = compute_noise_apertures(
+            img, x, y, fwhm, mask=None, exclude_source=True, exclude_lobes=True
+        )
         res[0, k] = photometry(img, positions[k], 2 * fwhm) - bg
         res[1, k] = noise
 

@@ -389,7 +389,16 @@ def monte_carlo_profiles_remove_planet(
     return background_profile, noise_profile
 
 
-def compute_noise_apertures(img, x, y, aperture_radius, mask=None):
+def compute_noise_apertures(
+    img,
+    x,
+    y,
+    aperture_radius,
+    mask=None,
+    exclude_source=False,
+    exclude_lobes=False,
+    return_apertures=False,
+):
     """Compute noise and bkg value at position x, y.
 
     Using apertures on a disk for the radius.
@@ -399,21 +408,33 @@ def compute_noise_apertures(img, x, y, aperture_radius, mask=None):
     xc = x - center
     yc = y - center
     radius = np.hypot(xc, yc)
-    angle = np.arcsin(aperture_radius / radius) * 2
-    n_aper = int(np.floor(2 * np.pi / angle))
+    aperture_angle = np.arcsin(aperture_radius / radius) * 2
+    n_aper = int(np.floor(2 * np.pi / aperture_angle))
 
-    angles = np.linspace(0, 2 * np.pi, n_aper)
+    angles = np.linspace(0, 2 * np.pi, n_aper, endpoint=False)
     xx = center + np.cos(angles) * xc + np.sin(angles) * yc
     yy = center + np.cos(angles) * yc - np.sin(angles) * xc
 
-    apertures = CircularAperture(list(zip(xx, yy)), r=aperture_radius)
+    pos = np.array([xx, yy]).T
+    # exclude x,y
+    pos = pos[1:]
+    if exclude_lobes:
+        pos = pos[1:-1]
+
+    apertures = CircularAperture(pos, r=aperture_radius)
     fluxes = aperture_photometry(img, apertures, mask=mask)["aperture_sum"]
     # Remove apertures that fall on masked data
     fluxes = fluxes[fluxes != 0]
+
     if fluxes.size == 0:
-        return 0, 0, 0
+        res = 0, 0, 0
     else:
-        return np.mean(fluxes), np.std(fluxes), n_aper
+        res = np.mean(fluxes), np.std(fluxes), n_aper
+
+    if return_apertures:
+        return *res, apertures
+    else:
+        return res
 
 
 def compute_noise_profile_apertures(img, aperture_radius, mask_apertures=None):
