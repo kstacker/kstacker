@@ -16,17 +16,16 @@ x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]
 # expected values with plain summation
 expected = {
     # method  :  signal,       noise,          snr
-    "convolve": [0.000443, 2.796e-05, 15.739],
-    "aperture": [0.000449, 2.796e-05, 15.965],
-    "gradient": [0.000448, 2.837e-05, 15.636],
-    "gradient_exc": [0.000448, 2.837e-05, 15.514],
+    "convolve": [0.000443, 2.811e-05, 15.739],
+    "aperture": [0.000448, 2.863e-05, 15.636],
+    "aperture_exc": [0.000448, 2.837e-05, 15.514],
+    "aperture_interp": [0.000448, 2.811e-05, 15.964],
 }
 # expected values with inverse variance weighting
 expected_invvar = {
     "convolve": [0.000110, 6.91e-06, 15.863],
-    "aperture": [0.000112, 6.91e-06, 16.201],
-    "gradient": [0.000112, 7.02e-06, 15.641],
-    "gradient_exc": [0.000112, 7.02e-06, 15.641],
+    "aperture": [0.000112, 7.08e-06, 15.771],
+    "aperture_exc": [0.000112, 7.02e-06, 15.641],
 }
 
 
@@ -70,26 +69,31 @@ def test_compute_signal_and_noise_grid(params_with_images, method):
     assert_allclose(noise[0], expected[method][1], atol=1e-6, rtol=0)
 
 
-def test_compute_snr_grad(params_with_images):
+def test_compute_snr(params_with_images):
     params = params_with_images
     ts = params.get_ts()
     data = params.load_data(method="aperture")
     args = (x, ts, params.n, params.scale, params.fwhm, data)
 
-    snr = compute_snr(
-        *args, invvar_weighted=False, exclude_source=False, exclude_lobes=False
-    )
-    assert_allclose(snr, expected["gradient"][2], atol=1e-3, rtol=0)
+    snr = compute_snr(*args, exclude_source=False, exclude_lobes=False)
+    assert_allclose(snr, expected["aperture"][2], atol=1e-3, rtol=0)
+
+    snr = compute_snr(*args, exclude_source=True, exclude_lobes=True)
+    assert_allclose(snr, expected["aperture_exc"][2], atol=1e-3, rtol=0)
+
+    snr = compute_snr(*args, exclude_source=False, exclude_lobes=False,
+                      use_interp_bgnoise=True)
+    assert_allclose(snr, expected["aperture_interp"][2], atol=1e-3, rtol=0)
 
     snr = compute_snr(
-        *args, invvar_weighted=False, exclude_source=True, exclude_lobes=True
+        *args, invvar_weighted=True, exclude_source=False, exclude_lobes=False
     )
-    assert_allclose(snr, expected["gradient_exc"][2], atol=1e-3, rtol=0)
+    assert_allclose(snr, expected_invvar["aperture"][2], atol=1e-3, rtol=0)
 
     snr = compute_snr(
         *args, invvar_weighted=True, exclude_source=True, exclude_lobes=True
     )
-    assert_allclose(snr, expected_invvar["gradient"][2], atol=1e-3, rtol=0)
+    assert_allclose(snr, expected_invvar["aperture_exc"][2], atol=1e-3, rtol=0)
 
 
 def test_compute_snr_cython(params_with_images):

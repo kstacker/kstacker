@@ -60,110 +60,55 @@ def compute_signal_and_noise_grid(
     return signal, noise
 
 
-def compute_snr_detailed(params, x, method=None, verbose=False):
+def compute_snr_detailed(
+    params,
+    x,
+    method=None,
+    invvar_weighted=False,
+    exclude_source=False,
+    exclude_lobes=False,
+    use_interp_bgnoise=False,
+    verbose=False,
+):
     """Compute SNR for a set of parameters with detail per image."""
 
     x = np.atleast_2d(np.asarray(x, dtype="float32"))
 
     if x.shape[1] != 7:
         raise ValueError("x should have 7 columns for a,e,t0,m,omega,i,theta0")
-    orbital_grid = x[:, :4]
-    projection_grid = x[:, 4:]
 
-    # load the images and the noise/background profiles
     data = params.load_data(method=method)
-
-    # total time of the observation (years)
     ts = params.get_ts(use_p_prev=True)
-
-    # solve kepler equation on the a/e/t0 grid for all images
-    positions = orbit.positions_at_multiple_times(ts, orbital_grid)
-    # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
-    positions = np.ascontiguousarray(np.transpose(positions))
-
-    # pre-compute the projection matrices
-    omega, i, theta_0 = projection_grid.T
-    proj_matrices = orbit.compute_projection_matrices(omega, i, theta_0)
-    proj_matrices = np.ascontiguousarray(proj_matrices)
-
-    # tables = []
-    # names = "a e t0 omega i theta_0 signal noise snr".split()
     size = params.n
-    nimg = len(data["images"])
     out = []
     method = method or params.method
 
-    for j in range(orbital_grid.shape[0]):
-        signal, noise = [], []
-
-        # project positions -> (Nimages, 2, Nvalid)
-        position = np.dot(proj_matrices[j], positions[j].T).T
-        position *= params.scale
-
-        # distance to the center
-        temp_d = np.hypot(position[:, 0], position[:, 1])
-
-        # convert position into pixel in the image
-        position += size // 2
-
-        for k in range(nimg):
-            # compute the signal by integrating flux on a PSF, and correct it for
-            # background (using pre-computed background profile)
-            if method == "convolve":
-                sig = photometry_preprocessed(
-                    data["images"][k],
-                    position[k, :1],
-                    position[k, 1:],
-                    params.upsampling_factor,
-                )[0]
-            elif method == "aperture":
-                sig = photometry(data["images"][k], position[k], 2 * params.fwhm)
-            else:
-                raise ValueError(f"invalid method {method}")
-
-            if temp_d[k] <= params.r_mask or temp_d[k] >= params.r_mask_ext:
-                sig = 0.0
-            else:
-                sig -= np.interp(temp_d[k], data["x"], data["bkg"][k])
-            signal.append(sig)
-
-            # get noise at position using pre-computed radial noise profil
-            if sig == 0:
-                noise.append(0)
-            else:
-                noise.append(np.interp(temp_d[k], data["x"], data["noise"][k]))
-
-        res = Table(position, names=("xpix", "ypix"))
-        res["signal"] = signal
-        res["noise"] = noise
-        res["xpix"].format = ".2f"
-        res["ypix"].format = ".2f"
-        res.add_column(np.arange(nimg), index=0, name="image")
+    for j in range(len(x)):
+        res = compute_snr(
+            x[j],
+            ts,
+            size,
+            params.scale,
+            params.fwhm,
+            data,
+            invvar_weighted=invvar_weighted,
+            exclude_source=exclude_source,
+            exclude_lobes=exclude_lobes,
+            method=method,
+            upsampling_factor=params.upsampling_factor,
+            use_interp_bgnoise=use_interp_bgnoise,
+            return_all=True,
+        )
         res.add_column([j], index=0, name="orbit")
         res.add_column((res["xpix"] - size // 2) * params.resol, index=4, name="xmas")
         res.add_column((res["ypix"] - size // 2) * params.resol, index=5, name="ymas")
         out.append(res)
 
-        signal = np.nansum(signal, axis=0)
-        noise = np.sqrt(np.nansum(np.array(noise) ** 2, axis=0))
-        res.meta["signal_sum"] = signal
-        res.meta["noise_sum"] = noise
-        res.meta["snr_sum"] = signal / noise
-
-        # With inverse variance weighting
-        signal = np.sum(res["signal"] / res["noise"] ** 2) / np.sum(
-            1 / res["noise"] ** 2
-        )
-        noise = np.sqrt(1 / np.sum(1 / res["noise"] ** 2))
-        res.meta["signal_invvar"] = signal
-        res.meta["noise_invvar"] = noise
-        res.meta["snr_invvar"] = signal / noise
-
         if verbose:
             print(f"\nValues for orbit {j}, x = {x[j]}")
             print("Detail per image:")
             res.pprint(max_lines=-1, max_width=-1)
-            print(f"Total signal={signal}, noise={noise}, SNR={signal / noise}")
+            # print(f"Total signal={signal}, noise={noise}, SNR={signal / noise}")
 
     out = vstack(out)
     return out
@@ -179,42 +124,81 @@ def compute_snr(
     invvar_weighted=False,
     exclude_source=True,
     exclude_lobes=True,
+    method="aperture",
+    upsampling_factor=None,
+    use_interp_bgnoise=False,
+    return_all=False,
 ):
     """Compute theoretical snr in combined image."""
 
-    nimg = len(data["images"])
-    a, e, t0, m0, omega, i, theta_0 = x
+    if method == "convolve" and not use_interp_bgnoise:
+        print("Using interpolated bg/noise with convolve")
+        use_interp_bgnoise = True
 
     # compute position
+    a, e, t0, m0, omega, i, theta_0 = x
     positions = orbit.project_position(
         orbit.position(ts, a, e, t0, m0), omega, i, theta_0
     )
     # convert to pixel in the image
-    positions = positions * scale + size // 2
+    positions *= scale
+    # distance to the center
+    if use_interp_bgnoise:
+        temp_d = np.hypot(positions[:, 0], positions[:, 1])
+    positions += size // 2
 
     signal, noise = [], []
-    for k in range(nimg):
+    images = data["images"]
+    for k in range(len(images)):
         # compute signal by integrating flux on a PSF, and correct it for background
-        img = data["images"][k]
         x, y = positions[k]
-        # grid for photutils is centered on pixels hence the - 0.5
-        bg, std, _ = compute_noise_apertures(
-            img,
-            x - 0.5,
-            y - 0.5,
-            fwhm,
-            exclude_source=exclude_source,
-            exclude_lobes=exclude_lobes,
-        )
-        signal.append(photometry(img, positions[k], 2 * fwhm) - bg)
+
+        # TODO: if temp_d[k] <= r_mask or temp_d[k] >= r_mask_ext:
+
+        if use_interp_bgnoise:
+            bg = np.interp(temp_d[k], data["x"], data["bkg"][k])
+            std = np.interp(temp_d[k], data["x"], data["noise"][k])
+        else:
+            # grid for photutils is centered on pixels hence the - 0.5
+            bg, std, _ = compute_noise_apertures(
+                images[k],
+                x - 0.5,
+                y - 0.5,
+                fwhm,
+                exclude_source=exclude_source,
+                exclude_lobes=exclude_lobes,
+            )
+
+        if method == "convolve":
+            sig = photometry_preprocessed(
+                images[k], positions[k, :1], positions[k, 1:], upsampling_factor
+            )[0]
+        elif method == "aperture":
+            sig = photometry(images[k], positions[k], 2 * fwhm)
+        else:
+            raise ValueError(f"invalid method {method}")
+
+        signal.append(sig - bg)
         noise.append(std)
 
     signal = np.array(signal)
     noise = np.array(noise)
 
+    if return_all:
+        tbl = Table(
+            [np.arange(len(images)), positions[:, 0], positions[:, 1], signal, noise],
+            names=("image", "xpix", "ypix", "signal", "noise"),
+        )
+        tbl["xpix"].format = ".2f"
+        tbl["ypix"].format = ".2f"
+
     null = np.isnan(signal) | np.isclose(signal, 0)
     if np.all(null):
-        return 0
+        if return_all:
+            return tbl
+        else:
+            return 0
+
     if np.any(null):
         noise = noise[~null]
         signal = signal[~null]
@@ -227,4 +211,11 @@ def compute_snr(
         signal = np.sum(signal)
         noise = np.sqrt(np.sum(noise**2))
 
-    return signal / noise
+    if return_all:
+        key = "invvar" if invvar_weighted else "sum"
+        tbl.meta[f"signal_{key}"] = signal
+        tbl.meta[f"noise_{key}"] = noise
+        tbl.meta[f"snr_{key}"] = signal / noise
+        return tbl
+    else:
+        return signal / noise
