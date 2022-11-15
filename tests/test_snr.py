@@ -15,13 +15,13 @@ expected = {
     # method  :  signal,       noise,          snr
     "convolve": [0.000443, 2.796e-05, 15.911],
     "aperture": [0.000449, 2.796e-05, 16.139],
-    "gradient": [0.000448, 2.837e-05, 15.792],
+    "gradient": [0.000448, 2.837e-05, 15.682],
 }
 # expected values with inverse variance weighting
 expected_invvar = {
     "convolve": [0.000110, 6.91e-06, 16.036],
     "aperture": [0.000112, 6.91e-06, 16.201],
-    "gradient": [0.000112, 7.02e-06, 15.906],
+    "gradient": [0.000112, 7.02e-06, 15.811],
 }
 
 
@@ -68,13 +68,17 @@ def test_compute_signal_and_noise_grid(params_with_images, method):
 def test_compute_snr_grad(params_with_images):
     params = params_with_images
     ts = params.get_ts()
-
     data = params.load_data(method="aperture")
     snr = compute_snr(
         x, ts, params.n, params.scale, params.fwhm, data, invvar_weighted=False
     )
     assert_allclose(-snr, expected["gradient"][2], atol=1e-3, rtol=0)
 
+
+def test_compute_snr_grad_invvar(params_with_images):
+    params = params_with_images
+    ts = params.get_ts()
+    data = params.load_data(method="aperture")
     snr = compute_snr(
         x, ts, params.n, params.scale, params.fwhm, data, invvar_weighted=True
     )

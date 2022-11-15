@@ -36,8 +36,9 @@ def get_res(x, ts, size, scale, fwhm, data):
         # background
         img = data["images"][k]
         x, y = positions[k]
+        # grid for photutils is centered on pixels hence the - 0.5
         bg, noise, _ = compute_noise_apertures(
-            img, x, y, fwhm, mask=None, exclude_source=True, exclude_lobes=True
+            img, x - 0.5, y - 0.5, fwhm, exclude_source=True, exclude_lobes=True
         )
         res[0, k] = photometry(img, positions[k], 2 * fwhm) - bg
         res[1, k] = noise

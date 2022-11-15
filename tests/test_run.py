@@ -69,7 +69,7 @@ def test_full_run(params_tmp):
     # Reoptimize -------------------------------------------------------------
     reoptimize_gradient(params_tmp, n_orbits=5)
     res = ascii.read(path / "values" / "results.txt")
-    expected = [-17.236, -17.216, -17.181, -17.151, -17.137]
+    expected = [-15.942, -15.867, -15.801, -15.781, -15.748]
     assert_almost_equal(res["snr_gradient"], expected, decimal=3)
 
     # Plot results -----------------------------------------------------------
