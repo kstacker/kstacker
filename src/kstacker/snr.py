@@ -169,12 +169,21 @@ def compute_snr_detailed(params, x, method=None, verbose=False):
     return out
 
 
-def compute_snr(x, ts, size, scale, fwhm, data, invvar_weighted):
+def compute_snr(
+    x,
+    ts,
+    size,
+    scale,
+    fwhm,
+    data,
+    invvar_weighted=False,
+    exclude_source=True,
+    exclude_lobes=True,
+):
     """Compute theoretical snr in combined image."""
 
     nimg = len(data["images"])
     a, e, t0, m0, omega, i, theta_0 = x
-    signal, noise = [], []
 
     # compute position
     positions = orbit.project_position(
@@ -183,14 +192,19 @@ def compute_snr(x, ts, size, scale, fwhm, data, invvar_weighted):
     # convert to pixel in the image
     positions = positions * scale + size // 2
 
+    signal, noise = [], []
     for k in range(nimg):
-        # compute signal by integrating flux on a PSF, and correct it for
-        # background
+        # compute signal by integrating flux on a PSF, and correct it for background
         img = data["images"][k]
         x, y = positions[k]
         # grid for photutils is centered on pixels hence the - 0.5
         bg, std, _ = compute_noise_apertures(
-            img, x - 0.5, y - 0.5, fwhm, exclude_source=True, exclude_lobes=True
+            img,
+            x - 0.5,
+            y - 0.5,
+            fwhm,
+            exclude_source=exclude_source,
+            exclude_lobes=exclude_lobes,
         )
         signal.append(photometry(img, positions[k], 2 * fwhm) - bg)
         noise.append(std)
@@ -213,4 +227,4 @@ def compute_snr(x, ts, size, scale, fwhm, data, invvar_weighted):
         signal = np.sum(signal)
         noise = np.sqrt(np.sum(noise**2))
 
-    return -signal / noise
+    return signal / noise
