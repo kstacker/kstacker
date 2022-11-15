@@ -128,6 +128,7 @@ def compute_noise_profiles(params):
         fig, ax = plt.subplots()
         ax.plot(noise_prof)
         ax.set(
+            yscale='log',
             title=f"Noise Plot {k}",
             xlabel="radius in pixel",
             ylabel="standart deviation of the noise",

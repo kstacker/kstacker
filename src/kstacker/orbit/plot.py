@@ -178,13 +178,13 @@ def plot_results(params, nimg=None, savefig=None):
     for i, arr in enumerate(data["noise"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
     ax.legend(fontsize="x-small", loc="upper left")
-    ax.set(title="Noise")
+    ax.set(title="Noise", yscale='log')
 
     ax = axes[1, 3]
     for i, arr in enumerate(data["bkg"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
     ax.legend(fontsize="x-small", loc="upper left")
-    ax.set(title="Background")
+    ax.set(title="Background", yscale='log')
 
     if savefig:
         fig.savefig(savefig)
