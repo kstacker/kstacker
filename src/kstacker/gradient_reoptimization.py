@@ -12,61 +12,9 @@ import scipy.optimize
 from astropy.io import ascii, fits
 from joblib import Parallel, delayed
 
-from .imagerie import compute_noise_apertures, photometry, recombine_images
-from .orbit import orbit as orb
-from .orbit import plot_ontop, plot_orbites
-
-
-def get_res(x, ts, size, scale, fwhm, data):
-    """define snr function as a function of the orbit (used for the gradient;
-    we maximise this function)
-    """
-    nimg = len(data["images"])
-    a, e, t0, m0, omega, i, theta_0 = x
-    # res will contain signal and noise for each image (hence the size 2*nimg)
-    res = np.zeros([2, nimg])
-
-    # compute position
-    positions = orb.project_position(orb.position(ts, a, e, t0, m0), omega, i, theta_0)
-    # convert to pixel in the image
-    positions = positions * scale + size // 2
-
-    for k in range(nimg):
-        # compute signal by integrating flux on a PSF, and correct it for
-        # background
-        img = data["images"][k]
-        x, y = positions[k]
-        # grid for photutils is centered on pixels hence the - 0.5
-        bg, noise, _ = compute_noise_apertures(
-            img, x - 0.5, y - 0.5, fwhm, exclude_source=True, exclude_lobes=True
-        )
-        res[0, k] = photometry(img, positions[k], 2 * fwhm) - bg
-        res[1, k] = noise
-
-    return res
-
-
-def compute_snr(x, ts, size, scale, fwhm, data, invvar_weighted):
-    """Compute theoretical snr in combined image."""
-
-    signal, noise = get_res(x, ts, size, scale, fwhm, data)
-
-    null = np.isnan(signal) | np.isclose(signal, 0)
-    if np.all(null):
-        return 0
-    if np.any(null):
-        noise = noise[~null]
-        signal = signal[~null]
-
-    if invvar_weighted:
-        sigma_inv2 = np.sum(1 / noise**2)
-        signal = np.sum(signal / noise**2) / sigma_inv2
-        noise = np.sqrt(1 / sigma_inv2)
-    else:
-        signal = np.sum(signal)
-        noise = np.sqrt(np.sum(noise**2))
-
-    return -signal / noise
+from .imagerie import recombine_images
+from .orbit import orbit, plot_ontop, plot_orbites
+from .snr import compute_snr
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -75,12 +23,7 @@ def plot_coadd(idx, coadded, x, params, outdir):
     plt.figure()
     plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
     plt.colorbar()
-    xa, ya = orb.project_position(
-        orb.position(t0, a, e, t0, m0),
-        omega,
-        i,
-        theta_0,
-    )
+    xa, ya = orbit.project_position(orbit.position(t0, a, e, t0, m0), omega, i, theta_0)
     xpix = params.n // 2 + params.scale * xa
     ypix = params.n // 2 + params.scale * ya
     # comment this line if you don't want to see where the planet is recombined:
@@ -104,11 +47,6 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
     # also save it as a fits file
     # FIXME: also saved in plot_coadd ? (but without transpose...)
     fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
-
-    # save full signal and noise values
-    # TODO: could be saved in a HDF5 table instead
-    # res = get_res(x_best, *args)
-    # np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]

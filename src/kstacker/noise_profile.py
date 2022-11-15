@@ -12,7 +12,8 @@ from astropy.nddata import block_replicate
 from scipy.signal import convolve2d
 
 from .imagerie import compute_noise_profile_apertures
-from .utils import compute_signal_and_noise_grid, create_output_dir
+from .snr import compute_signal_and_noise_grid
+from .utils import create_output_dir
 
 
 def pre_process_image(
