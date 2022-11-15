@@ -11,7 +11,7 @@ from astropy.io import fits
 from astropy.nddata import block_replicate
 from scipy.signal import convolve2d
 
-from .imagerie import monte_carlo_profiles, monte_carlo_profiles_remove_planet
+from .imagerie import compute_noise_profile_apertures
 from .utils import compute_signal_and_noise_grid, create_output_dir
 
 
@@ -19,9 +19,6 @@ def pre_process_image(
     image_filename,
     aperture_radius,
     size=None,
-    r_mask=None,
-    r_mask_ext=None,
-    mask_value=0,
     upsampling_factor=1,
     plot=False,
 ):
@@ -37,14 +34,6 @@ def pre_process_image(
     size : int
         the final size (in pixels) of the pre-process image.
         If not given, initial size is kept.
-    r_mask : int
-        radius (in pixels) of the central internal mask to be applied.
-        If not given, no internal mask is applied.
-    r_mask_ext : int
-        radius (in pixels) of the external mask to be applied.
-        If not given, no external mask is applied.
-    mask_value : float
-        the value to put in pixel masked. Default is 0.0.
     upsampling_factor : int
         upsampling factor to precompute the aperture fluxes.
     plot : bool
@@ -56,6 +45,8 @@ def pre_process_image(
         raise ValueError("Image must be a .fits file!")
 
     image = fits.getdata(image_filename)
+    image[np.isnan(image)] = 0
+
     nx, ny = np.shape(image)
     if nx != ny:
         print("Warning: image is not a square. Will be cut to a square")
@@ -63,25 +54,10 @@ def pre_process_image(
         cx, cy = nx // 2, ny // 2
         image = image[cx - m : cx + m, cy - m : cy + m]
 
-    npix = image.shape[0]
+    fits.writeto(f"{filename}_preprocessed.fits", image, overwrite=True)
 
-    if r_mask < 0 or r_mask > npix / 2:
-        raise ValueError("Internal mask diameter must be > 0 and smaller than image")
-
-    if r_mask_ext < 0 or r_mask_ext > npix / 2:
-        raise ValueError("External mask diameter must be > 0 and smaller than image")
-
-    # In the mask (internal, external), we put the pixel values at 'mask_value'
-    x, y = np.mgrid[:npix, :npix] - npix / 2
-    dist2 = x**2 + y**2
-    mask = (dist2 < r_mask**2) | (dist2 > r_mask_ext**2)
-    image[mask] = mask_value
-
-    image[np.isnan(image)] = 0
-    hdr = fits.Header({"RMASK": r_mask, "RMASKEXT": r_mask_ext})
-    fits.writeto(f"{filename}_preprocessed.fits", image, header=hdr, overwrite=True)
-
-    if size is not None and size != npix:
+    if size is not None and size != image.shape[0]:
+        print(f"Cutting image to {size}x{size} pixels")
         center, rad = size // 2, size // 2
         image = image[center - rad : center + rad, center - rad : center + rad]
 
@@ -96,7 +72,7 @@ def pre_process_image(
     # Convolve by the mask to compute the signal value
     imconv = convolve2d(imrepl, mask, mode="same")
 
-    hdr.update(
+    hdr = fits.Header(
         {"KERNEL": "circle", "RADIUS": aperture_radius, "FACTOR": upsampling_factor}
     )
     fits.writeto(f"{filename}_resampled.fits", imconv, header=hdr, overwrite=True)
@@ -111,25 +87,10 @@ def pre_process_image(
 
 
 def compute_noise_profiles(params):
-    # preparation of the images (cuts, add of masks at zero or mask_value, etc.)
+    # preparation of the images
     t0 = time.time()
     nimg = params.p  # number of images
     size = params.n  # to keep the initial size n
-
-    # This section check if the program must remove the planet from noise and
-    # background (Justin Bec-canet)
-    if params.remove_planet == "yes":
-        # The coordinates of the planet are put into an array
-        remove_box = [float(x) for x in params.remove_box.split("+")]
-        print(params.planet_coord)
-        print(remove_box)
-
-        # planet coordinates is put in a numpy python format (1 Dim array)
-        # splits coordinates, replace ':' by ','
-        planet_coord_elem = [x.split(":") for x in params.planet_coord.split("+")]
-        # for each element, we reassemble and evaluate as tuples the
-        # different coordinates
-        planet_coord = [eval(f"{elem[0]},{elem[1]}") for elem in planet_coord_elem]
 
     images_dir = params.get_path("images_dir")
     for k in range(nimg):
@@ -137,9 +98,6 @@ def compute_noise_profiles(params):
             f"{images_dir}/image_{k}.fits",
             params.fwhm,
             size=size,
-            r_mask=params.r_mask,
-            r_mask_ext=params.r_mask_ext,
-            mask_value=params.mask_value,
             upsampling_factor=params.upsampling_factor,
             plot=True,
         )
@@ -148,40 +106,27 @@ def compute_noise_profiles(params):
 
     # load the images and estimate the noise level assuming a radial profile
     t0 = time.time()
-    img_suffix = params.get_image_suffix()
+    img_suffix = params.get_image_suffix(method="aperture")
     profile_dir = params.get_path("profile_dir", remove_if_exist=True)
     output_snrdir = f"{profile_dir}/snr_plot_steps"
     create_output_dir(output_snrdir)
 
     for k in range(nimg):
         img = fits.getdata(f"{images_dir}/image_{k}{img_suffix}.fits")
-        img = img.astype(float)
-        if params.remove_planet == "yes":
-            # uses a function to remove the planet in background calculations
-            bg_prof, n_prof = monte_carlo_profiles_remove_planet(
-                img,
-                size,
-                planet_coord[k],
-                remove_box,
-                params.fwhm,
-                params.upsampling_factor,
-                method=params.method,
-            )
-        else:
-            bg_prof, n_prof = monte_carlo_profiles(
-                img,
-                size,
-                params.fwhm,
-                params.upsampling_factor,
-                method=params.method,
-            )
 
+        try:
+            mask_apertures = params.remove_planet[k]
+        except (AttributeError, IndexError):
+            mask_apertures = None
+        bg_prof, noise_prof, n_aper = compute_noise_profile_apertures(
+            img, aperture_radius=params.fwhm, mask_apertures=mask_apertures
+        )
         np.save(f"{profile_dir}/background_prof{k}.npy", bg_prof)
-        np.save(f"{profile_dir}/noise_prof{k}.npy", n_prof)
+        np.save(f"{profile_dir}/noise_prof{k}.npy", noise_prof)
         print(f"{k} sur {nimg - 1}")
 
         fig, ax = plt.subplots()
-        ax.plot(n_prof)
+        ax.plot(noise_prof)
         ax.set(
             title=f"Noise Plot {k}",
             xlabel="radius in pixel",

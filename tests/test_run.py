@@ -39,37 +39,37 @@ def test_full_run(params_tmp):
         assert f["Projection grid"].shape == (8862, 3)
         assert f["DATA"].shape == (313000, 10)
 
-        assert np.isclose(f["DATA"][:, 9].min(), -16.74728)
-        assert np.isclose(f["DATA"][:, 9].max(), 0.08774643)
+        assert np.isclose(f["DATA"][:, 9].min(), -17.930368)
+        assert np.isclose(f["DATA"][:, 9].max(), 0.10456886)
 
     with h5py.File(path / "values" / "res_grid.h5") as f:
         best = f["Best solutions"][:]
         assert best.shape == (100, 10)
         # a, e, t0, omega, i, theta_0
-        expected = [53.75, 0.08, -98.257, 1.59, -1.944, 0.523, -2.841]
+        expected = [59.25, 0.24, -42.116, 1.59, 0.598, 0.523, 1.944]
         assert_almost_equal(best[0, :7], expected, decimal=3)
         # signal, noise, snr
-        expected = [4.4286370e-04, 2.6443917e-05, -1.6747280e01]
+        expected = [3.869e-04, 2.158e-05, -17.930368]
         assert_almost_equal(best[0, 7:], expected, decimal=6)
         # 10 best SNRs
         expected = [
-            -16.74728,
-            -16.726263,
-            -16.724823,
-            -16.72005,
-            -16.718771,
-            -16.717426,
-            -16.707235,
-            -16.701384,
-            -16.694956,
-            -16.69361,
+            -17.93036,
+            -17.88916,
+            -17.84964,
+            -17.84623,
+            -17.84569,
+            -17.82160,
+            -17.81928,
+            -17.81572,
+            -17.80969,
+            -17.78008,
         ]
         assert_almost_equal(best[:10, 9], expected, decimal=5)
 
     # Reoptimize -------------------------------------------------------------
     reoptimize_gradient(params_tmp, n_orbits=5)
     res = ascii.read(path / "values" / "results.txt")
-    expected = [-17.0618, -17.0618, -17.0617, -17.0588, -17.0514]
+    expected = [-17.525, -17.524, -17.491, -17.474, -17.471]
     assert_almost_equal(res["snr_gradient"], expected, decimal=3)
 
     # Plot results -----------------------------------------------------------

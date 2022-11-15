@@ -406,7 +406,10 @@ def compute_noise_apertures(img, radius, aperture_radius, mask=None):
     fluxes = aperture_photometry(img, apertures, mask=mask)["aperture_sum"]
     # Remove apertures that fall on masked data
     fluxes = fluxes[fluxes != 0]
-    return np.mean(fluxes), np.std(fluxes), n_aper
+    if fluxes.size == 0:
+        return 0, 0, 0
+    else:
+        return np.mean(fluxes), np.std(fluxes), n_aper
 
 
 def compute_noise_profile_apertures(img, aperture_radius, mask_apertures=None):
@@ -420,8 +423,11 @@ def compute_noise_profile_apertures(img, aperture_radius, mask_apertures=None):
         mask = None
 
     res = []
-    for r in range(2, img.shape[0] // 2):
+    start = int(np.ceil(aperture_radius))
+    for r in range(start, img.shape[0] // 2):
         res.append(compute_noise_apertures(img, r, aperture_radius, mask=mask))
+
+    res = [(np.nan, np.nan, 0)] * start + res
     bg, noise, n_aper = np.array(res).T
     return bg, noise, n_aper
 
