@@ -56,8 +56,8 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     @return float[n, n]: the rotated and translated image where the planet ends up on its perihelion position
     """
     # Compute position at perihelion and position at time t
-    x0, y0 = orb.project_position(orb.position(t0, a, e, t0, m), omega, i, theta_0)
-    x, y = orb.project_position(orb.position(t, a, e, t0, m), omega, i, theta_0)
+    x0, y0 = orb.project_position_full(t0, a, e, t0, m, omega, i, theta_0)
+    x, y = orb.project_position_full(t, a, e, t0, m, omega, i, theta_0)
 
     # Compute angle between perihelion vector and position at time t
     cos_alpha = np.dot([x0, y0], [x, y])

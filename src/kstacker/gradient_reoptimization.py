@@ -23,7 +23,7 @@ def plot_coadd(idx, coadded, x, params, outdir):
     plt.figure()
     plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
     plt.colorbar()
-    xa, ya = orbit.project_position(orbit.position(t0, a, e, t0, m0), omega, i, theta_0)
+    xa, ya = orbit.project_position_full(t0, a, e, t0, m0, omega, i, theta_0)
     xpix = params.n // 2 + params.scale * xa
     ypix = params.n // 2 + params.scale * ya
     # comment this line if you don't want to see where the planet is recombined:

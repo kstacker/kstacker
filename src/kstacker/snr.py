@@ -22,13 +22,10 @@ def compute_signal_and_noise_grid(
 
     # compute position
     for k in range(nimg):
-        position = orbit.position(ts[k], a, e, t0, m0)
-        position = orbit.project_position(position, omega, i, theta_0).T
-        xx, yy = position
-
-        # convert position into pixel in the image
-        position = scale * position + size // 2
-        temp_d = np.sqrt(xx**2 + yy**2) * scale  # get the distance to the center
+        position = orbit.project_position_full(ts[k], a, e, t0, m0, omega, i, theta_0).T
+        position *= scale  # convert position into pixel in the image
+        temp_d = np.hypot(position[0], position[1])  # get the distance to the center
+        position += size // 2
 
         # compute the signal by integrating flux on a PSF, and correct it for
         # background (using pre-computed background profile)
@@ -137,9 +134,7 @@ def compute_snr(
 
     # compute position
     a, e, t0, m0, omega, i, theta_0 = x
-    positions = orbit.project_position(
-        orbit.position(ts, a, e, t0, m0), omega, i, theta_0
-    )
+    positions = orbit.project_position_full(ts, a, e, t0, m0, omega, i, theta_0)
     # convert to pixel in the image
     positions *= scale
     # distance to the center

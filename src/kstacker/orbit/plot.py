@@ -42,9 +42,7 @@ def plot_orbites(ts, x, ax, filename):
     plt.plot([0], [0], "+", color="red")
     plt.axis(ax)
 
-    xp, yp = orbit.project_position(
-        orbit.position(ts, a, e, t0, m0), omega, i, theta_0
-    ).T
+    xp, yp = orbit.project_position_full(ts, a, e, t0, m0, omega, i, theta_0).T
     plt.scatter(yp, xp, marker="+")
     plt.xlabel("Astronomical Units")
     plt.ylabel("Astronomical Units")
@@ -80,9 +78,7 @@ def plot_ontop(x, d, ts, res, back_image, filename):
         npix // 2 + scale * y_proj, npix // 2 + scale * x_proj, color="b", s=0.1
     )
 
-    xp, yp = orbit.project_position(
-        orbit.position(ts, a, e, t0, m0), omega, i, theta_0
-    ).T
+    xp, yp = orbit.project_position_full(ts, a, e, t0, m0, omega, i, theta_0).T
     xpix = npix // 2 + scale * xp
     ypix = npix // 2 + scale * yp
     plt.plot(ypix, xpix, "+", color="r")
