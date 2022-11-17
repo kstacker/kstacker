@@ -1,6 +1,11 @@
 import numpy as np
 
-from kstacker.orbit import position, positions_at_multiple_times, project_position
+from kstacker.orbit import (
+    position,
+    positions_at_multiple_times,
+    project_position,
+    project_position_full,
+)
 
 A = 0.9
 E = 0.55
@@ -46,11 +51,15 @@ def test_project_position_scalar():
 
 
 def test_project_position_array():
-    pos = position(np.array([0.0, 0.3, 0.6]), A, E, T0, M0)
+    ts = np.array([0.0, 0.3, 0.6])
+    pos = position(ts, A, E, T0, M0)
     pos = project_position(pos, OMEGA, I, THETA_0)
     expected = [
         [-1.13492103, -0.22550475],
         [0.16371403, 0.21852599],
         [-1.36238363, 0.08555336],
     ]
+    np.testing.assert_array_almost_equal(pos, expected, decimal=8)
+
+    pos = project_position_full(ts, A, E, T0, M0, OMEGA, I, THETA_0)
     np.testing.assert_array_almost_equal(pos, expected, decimal=8)

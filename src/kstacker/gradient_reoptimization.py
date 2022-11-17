@@ -12,60 +12,9 @@ import scipy.optimize
 from astropy.io import ascii, fits
 from joblib import Parallel, delayed
 
-from .imagerie import photometry, recombine_images
-from .orbit import orbit as orb
-from .orbit import plot_ontop, plot_orbites
-
-
-def get_res(x, ts, size, scale, fwhm, data, r_mask):
-    """define snr function as a function of the orbit (used for the gradient;
-    we maximise this function)
-    """
-    nimg = len(data["images"])
-    a, e, t0, m0, omega, i, theta_0 = x
-    # res will contain signal and noise for each image (hence the size 2*nimg)
-    res = np.zeros([2, nimg])
-
-    # compute position
-    positions = orb.project_position(orb.position(ts, a, e, t0, m0), omega, i, theta_0)
-    xx, yy = positions.T
-    temp_d = np.sqrt(xx**2 + yy**2) * scale  # get distance to center
-    # convert to pixel in the image
-    positions = positions * scale + size // 2
-
-    for k in range(nimg):
-        if temp_d[k] > r_mask:
-            # compute signal by integrating flux on a PSF, and correct it for
-            # background (using pre-computed background profile)
-            bkg = np.interp(temp_d[k], data["x"], data["bkg"][k])
-            res[0, k] = photometry(data["images"][k], positions[k], 2 * fwhm) - bkg
-            # get noise at position using pre-computed radial noise profil
-            res[1, k] = np.interp(temp_d[k], data["x"], data["noise"][k])
-
-    return res
-
-
-def compute_snr(x, ts, size, scale, fwhm, data, r_mask, invvar_weighted):
-    """Compute theoretical snr in combined image."""
-
-    signal, noise = get_res(x, ts, size, scale, fwhm, data, r_mask)
-
-    null = np.isnan(signal) | np.isclose(signal, 0)
-    if np.all(null):
-        return 0
-    if np.any(null):
-        noise = noise[~null]
-        signal = signal[~null]
-
-    if invvar_weighted:
-        sigma_inv2 = np.sum(1 / noise**2)
-        signal = np.sum(signal / noise**2) / sigma_inv2
-        noise = np.sqrt(1 / sigma_inv2)
-    else:
-        signal = np.sum(signal)
-        noise = np.sqrt(np.sum(noise**2))
-
-    return -signal / noise
+from .imagerie import recombine_images
+from .orbit import orbit, plot_ontop, plot_orbites
+from .snr import compute_snr
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -74,12 +23,7 @@ def plot_coadd(idx, coadded, x, params, outdir):
     plt.figure()
     plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
     plt.colorbar()
-    xa, ya = orb.project_position(
-        orb.position(t0, a, e, t0, m0),
-        omega,
-        i,
-        theta_0,
-    )
+    xa, ya = orbit.project_position_full(t0, a, e, t0, m0, omega, i, theta_0)
     xpix = params.n // 2 + params.scale * xa
     ypix = params.n // 2 + params.scale * ya
     # comment this line if you don't want to see where the planet is recombined:
@@ -104,11 +48,6 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
     # FIXME: also saved in plot_coadd ? (but without transpose...)
     fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
 
-    # save full signal and noise values
-    # TODO: could be saved in a HDF5 table instead
-    # res = get_res(x_best, *args)
-    # np.savetxt(f"{values_dir}/summed_snr_{k}.txt", res)
-
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
     plot_orbites(ts, x_best, ax, f"{values_dir}/orbites/orbites{k}")
@@ -127,18 +66,33 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
             )
 
 
+def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted):
+    """Function to minimize, returns -SNR."""
+    return - compute_snr(
+        x,
+        ts,
+        size,
+        scale,
+        fwhm,
+        data,
+        invvar_weighted=invvar_weighted,
+        exclude_source=True,
+        exclude_lobes=True,
+    )
+
+
 def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
-    snr_init = compute_snr(x, *args[:-1], invvar_weighted=args[-1])
+    snr_init = - compute_snr(x, *args[:-1], invvar_weighted=args[-1])
 
     with np.printoptions(precision=3, suppress=True):
         print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")
 
     # Gradient re-optimization:
     opt_result = scipy.optimize.minimize(
-        compute_snr,
+        compute_snr_objfun,
         x,
         args=args,
         method="L-BFGS-B",
@@ -186,7 +140,6 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
         params.scale,
         params.fwhm,
         data,
-        params.r_mask,
         params.invvar_weight,
     )
     reopt = Parallel(n_jobs=n_jobs)(

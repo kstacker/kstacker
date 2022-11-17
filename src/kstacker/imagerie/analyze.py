@@ -40,24 +40,6 @@ def photometry(image, position, diameter):
     return res[0] if res.size == 1 else res
 
 
-def total_photometry(images, positions, diameter):
-    """
-    For each image images[k], a photometric box is placed at position[k], and the total flux in these box is returned. This function is used to compute the "signal" in
-    the recombined image.
-    @param float[n, n, m] images: a serie of k images of size n (intensity values)
-    @param float[2, k] positions: a serie of xy positions (in pixels)
-    @param float diameter: diameter of the circular photometric box
-    @return float: total flux in all box
-    """
-    m = images.shape[2]
-    signal = 0.0
-
-    for k in range(m):
-        signal = signal + photometry(images[:, :, k], positions[:, k], diameter)
-
-    return signal
-
-
 def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     """
     This function is used to de-rotate and translate an image so that the planet is placed over its position at perihelion.
@@ -74,8 +56,8 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     @return float[n, n]: the rotated and translated image where the planet ends up on its perihelion position
     """
     # Compute position at perihelion and position at time t
-    x0, y0 = orb.project_position(orb.position(t0, a, e, t0, m), omega, i, theta_0)
-    x, y = orb.project_position(orb.position(t, a, e, t0, m), omega, i, theta_0)
+    x0, y0 = orb.project_position_full(t0, a, e, t0, m, omega, i, theta_0)
+    x, y = orb.project_position_full(t, a, e, t0, m, omega, i, theta_0)
 
     # Compute angle between perihelion vector and position at time t
     cos_alpha = np.dot([x0, y0], [x, y])
@@ -125,151 +107,6 @@ def recombine_images(images, ts, scale, a, e, t0, m, omega, i, theta_0):
         rot_images.append(im)
 
     return np.nanmean(rot_images, axis=0)
-
-
-def noise(image, r_int, r_ext):
-    """
-    A simple function that computes the standard deviation on n annulus between
-    r_int and r_ext in the image.
-
-    @param float[n, n] image: the image on which the stddev shall be computed
-    @param float r_int: internal radius of the annulus at which the stddev shall be computed
-    @param float r_ext: external radius of the annulus at which the stddev shall be computed
-    @return float: stddev
-    """
-    n = image.shape[0]
-    values = []
-    for k in range(n):
-        for l in range(n):
-            idx = (k - n // 2) ** 2 + (l - n // 2) ** 2
-            if idx < r_ext**2 and idx > r_int**2:
-                values.append(image[k, l])
-    return np.std(values)
-
-
-def snr(image, center, position, fwhm):
-    """
-    A function to compute the snr, define as the ratio between a given pixel
-    value (the signal) to the stadard deviation in the ring of same radius (noise).
-
-    @param float[n,n] image: intensity values of the image
-    @param float[n] position: x, y position of the 'signal' pixel (given in pixel from the center)
-    @return float: snr
-    """
-    x, y = position
-    x0, y0 = center
-    n = image.shape[0]
-
-    signal = photometry(image, [x + n // 2, y + n // 2], 2 * fwhm) / (
-        math.pi * fwhm**2
-    )  # mean value inside the photometric box
-
-    # start by computing noise level in an annulus of width fwhm, excluding the
-    # area where psf is
-    r = math.sqrt(x**2 + y**2)
-    r_int = r - fwhm
-    r_ext = r + fwhm
-    values = []
-
-    for k in range(n):
-        for l in range(n):
-            idx = (k - x0) ** 2 + (l - y0) ** 2
-            if idx < r_ext**2 and idx > r_int**2:
-                if (k - x - x0) ** 2 + (l - y - y0) ** 2 > (2 * fwhm) ** 2:
-                    # exclude area of 2*fwhm around psf central position
-                    values.append(image[k, l])
-
-    #    return image[n/2+x, n/2+y]/np.std(values)
-    return signal / np.std(values)
-
-
-def snr_boite(image, position, size, fwhm):
-    """
-    Function used to compute the Signal to Noise Ratio at a given position,
-    using a box around this position to estimate a local noise level.
-
-    The signal is computed as the mean value inside a disk of radius 2*fwhm.
-    Noise is stddev in the box.
-
-    @param float[n, n]: intensity values of the image
-    @param float[2]: x y position where the snr shall be computed (in pixel, from the center)
-    @param float size: sie of the box to compute the noise (in pixel, typically 3*fwhm)
-    @param float fwhm: fwhm in pixels
-    @return float: snr value
-    """
-    n = image.shape[0]
-    x, y = position
-    x = x + n // 2  # convert from-center-position to real position
-    y = y + n // 2
-
-    # mean value inside the photometric box
-    signal = photometry(image, [x, y], 2 * fwhm) / (math.pi * (fwhm) ** 2)
-
-    values = []  # a list that will contain all the noise pixels
-    for k in range(int(x - size // 2), int(x + size // 2 + 1)):
-        for l in range(int(y - size // 2), int(y + size // 2 + 1)):
-            if (k - x) ** 2 + (l - y) ** 2 > (1.5 * fwhm) ** 2:
-                # for each pixel in the noise box around position, check if
-                # this pixel is inside the photometric box
-                values.append(image[k, l])  # if not, add it to the list
-
-    # noise level is simply the stddev of the list of noise pixels
-    noise = np.std(values)
-    bg = np.mean(values)
-
-    #    plt.hist(values, 15)
-    #    plt.show()
-    return signal - bg, noise, (signal - bg) / noise
-
-
-def snr_tot(image, position, fwhm):
-    """
-    Function used to compute the Signal to Noise Ratio at a given position,
-    using the noise on the total image
-
-    The signal is computed as the mean value inside a disk of radius 2*fwhm.
-    Noise is stddev of image.
-
-    @param float[n, n]: intensity values of the image
-    @param float[2]: x y position where the snr shall be computed (in pixel, from the center)
-    @param float size: sie of the box to compute the noise (in pixel, typically 3*fwhm)
-    @param float fwhm: fwhm in pixels
-    @return float: snr value
-    """
-    n = image.shape[0]
-    [x, y] = position
-    x = x + n // 2  # convert from-center-position to real position
-    y = y + n // 2
-
-    # mean value inside the photometric box
-    signal = photometry(image, [x, y], 2 * fwhm) / (math.pi * (fwhm) ** 2)
-
-    # noise level is simply the stddev of the list of noise pixels
-    noise = np.std(image[np.where(image != 0)])
-
-    return signal / noise
-
-
-def radial_profile(image, fwhm, center=None):
-    n = image.shape[0]
-    if center is None:
-        center = [n // 2, n // 2]
-
-    [x, y] = center
-
-    profile = np.zeros(n // 2)
-    for p in range(n // 2):
-        values = []
-        r_ext = p + fwhm
-        r_int = p - fwhm
-        for k in range(n):
-            for l in range(n):
-                idx = (k - x) ** 2 + (l - y) ** 2
-                if idx < r_ext**2 and idx > r_int**2:
-                    values.append(image[k, l])
-        profile[p] = np.mean(values)
-
-    return profile
 
 
 def monte_carlo_noise(image, npix, radius, fwhm, upsampling_factor, method="convolve"):
@@ -389,65 +226,72 @@ def monte_carlo_profiles_remove_planet(
     return background_profile, noise_profile
 
 
-def gauss_function(x_model, a, x0, sigma):
-    return a * np.exp(-((x_model - x0) ** 2) / (2 * sigma**2))
+def compute_noise_apertures(
+    img,
+    x,
+    y,
+    aperture_radius,
+    mask=None,
+    exclude_source=False,
+    exclude_lobes=False,
+    return_apertures=False,
+):
+    """Compute noise and bkg value at position x, y.
 
-
-def snr_annulus(image, position, fwhm):
-    """
-    A function that computes signal, noise level, and snr in a given image.
-    @param float[n, n] image: array that represents the image
-    @param float[2] position: xy position (in pixels) of the center of the photometry box
-    @param float fwhm: fwhm of the airy disk (photometry box is a disk of radius=fwhm
-    @return float[3]: [signal, noise, signal/noise]. signal is the total flux in the photometry box, minus the continuum level, and divided by nimber of pixel;
-                      noise is computed as the stddev on the annulus.
-    """
-    n = image.shape[0]
-
-    # Start by taking all the pixels in the annulus
-    [x, y] = position
-    d = np.sqrt(x**2 + y**2)
-    r_int = d - fwhm
-    r_ext = d + fwhm
-
-    x = x + n // 2
-    y = y + n // 2
-
-    values = []
-    for k in range(n):
-        for l in range(n):
-            ind = (k - n // 2) ** 2 + (l - n // 2) ** 2
-            if ind < r_ext**2 and ind > r_int**2:
-                if (k - x) ** 2 + (l - y) ** 2 > 2 * fwhm:
-                    values.append(image[k, l])
-
-    # stddev is noise level; mean is background continuum
-    bg = np.mean(values)
-    noise_level = np.std(values)
-
-    # compute photometry and remove background
-    s = photometry(image, [x, y], 2 * fwhm)
-    s = s / (math.pi * fwhm**2)
-    s = s - bg
-
-    return [-s, noise_level, -s / noise_level]
-
-
-def noise_profile(image, fwhm):
-    """
-    A simple function that computes the standard deviation on n annulus between
-    r_int and r_ext in the image
-
-    @param float[n, n] image: the image on which the stddev shall be computed
-    @param float r_int: internal radius of the annulus at which the stddev shall be computed
-    @param float r_ext: external radius of the annulus at which the stddev shall be computed
-    @return float: stddev
+    Using apertures on a disk for the radius.
     """
 
-    n = image.shape[0]
-    noise_levels = np.zeros(n // 2)
+    center = img.shape[0] // 2
+    xc = x - center
+    yc = y - center
+    radius = np.hypot(xc, yc)
+    aperture_angle = np.arcsin(aperture_radius / radius) * 2
+    n_aper = int(np.floor(2 * np.pi / aperture_angle))
 
-    for k in range(n // 2):
-        noise_levels[k] = noise(image, k - fwhm, k + fwhm)
+    angles = np.linspace(0, 2 * np.pi, n_aper, endpoint=False)
+    xx = center + np.cos(angles) * xc + np.sin(angles) * yc
+    yy = center + np.cos(angles) * yc - np.sin(angles) * xc
 
-    return noise_levels
+    pos = np.array([xx, yy]).T
+    # exclude x,y
+    pos = pos[1:]
+    if exclude_lobes:
+        pos = pos[1:-1]
+
+    apertures = CircularAperture(pos, r=aperture_radius)
+    fluxes = aperture_photometry(img, apertures, mask=mask)["aperture_sum"]
+    # Remove apertures that fall on masked data
+    fluxes = fluxes[fluxes != 0]
+
+    if fluxes.size == 0:
+        res = 0, 0, 0
+    else:
+        std = np.std(fluxes, ddof=1) * np.sqrt(1 + (1 / n_aper))
+        res = np.mean(fluxes), std, n_aper
+
+    if return_apertures:
+        return *res, apertures
+    else:
+        return res
+
+
+def compute_noise_profile_apertures(img, aperture_radius, mask_apertures=None):
+    """Compute noise and bkg profiles with apertures on a disk for each radius."""
+    if mask_apertures is not None:
+        mask = np.zeros(img.shape, dtype=bool)
+        for x, y, r in mask_apertures:
+            mask_planet = CircularAperture((y, x), r=r).to_mask(method="center")
+            mask |= mask_planet.to_image(img.shape, dtype=bool)
+    else:
+        mask = None
+
+    res = []
+    center = img.shape[0] // 2
+    start = int(np.ceil(aperture_radius))
+    res = [
+        compute_noise_apertures(img, center, center + r, aperture_radius, mask=mask)
+        for r in range(start, img.shape[0] // 2)
+    ]
+    res = [(np.nan, np.nan, 0)] * start + res
+    bg, noise, n_aper = np.array(res).T
+    return bg, noise, n_aper

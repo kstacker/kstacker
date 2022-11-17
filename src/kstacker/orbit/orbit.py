@@ -135,6 +135,11 @@ def project_position(position, omega, i, theta_0):
         return vector
 
 
+def project_position_full(t, a, e, t0, m, omega, i, theta_0):
+    """Combines position() and project_position()."""
+    return project_position(position(t, a, e, t0, m), omega, i, theta_0)
+
+
 def compute_projection_matrices(omega, i, theta_0):
     """
     Compute the matrices to project the position of the planet initially
