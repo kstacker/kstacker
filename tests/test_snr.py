@@ -81,8 +81,9 @@ def test_compute_snr(params_with_images):
     snr = compute_snr(*args, exclude_source=True, exclude_lobes=True)
     assert_allclose(snr, expected["aperture_exc"][2], atol=1e-3, rtol=0)
 
-    snr = compute_snr(*args, exclude_source=False, exclude_lobes=False,
-                      use_interp_bgnoise=True)
+    snr = compute_snr(
+        *args, exclude_source=False, exclude_lobes=False, use_interp_bgnoise=True
+    )
     assert_allclose(snr, expected["aperture_interp"][2], atol=1e-3, rtol=0)
 
     snr = compute_snr(

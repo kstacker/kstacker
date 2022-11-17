@@ -3,10 +3,9 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from kstacker.imagerie import (
+from kstacker.imagerie import (  # monte_carlo_profiles_remove_planet,
     compute_noise_profile_apertures,
     monte_carlo_profiles,
-    monte_carlo_profiles_remove_planet,
 )
 from kstacker.noise_profile import pre_process_image
 
