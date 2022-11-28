@@ -176,6 +176,10 @@ def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None):
         params.work_dir = path
 
     res = read_results(os.path.join(params.work_dir, "values", "results.txt"), params)
+    if res["snr_gradient"][0] < 0:
+        res["snr_gradient"] *= -1
+        res["snr_brut_force"] *= -1
+
     grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
     grid = grid.view("f8").reshape(grid.shape[0], 7)
 
@@ -284,6 +288,10 @@ def plot_results(params, nimg=None, savefig=None):
         params.work_dir = path
 
     res = read_results(os.path.join(params.work_dir, "values", "results.txt"), params)
+    if res["snr_gradient"][0] < 0:
+        res["snr_gradient"] *= -1
+        res["snr_brut_force"] *= -1
+
     data = params.load_data(method="aperture")
     grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
     grid = grid.view("f8").reshape(grid.shape[0], 7)
