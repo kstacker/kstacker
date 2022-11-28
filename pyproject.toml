@@ -7,10 +7,79 @@ requires = ["setuptools>=42",
             "extension-helpers"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "kstacker"
+description = "TODO"
+readme = "README.rst"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {email = "herve.lecoroller@lam.fr"}, {name = "Hervé Le Coroller"}
+]
+dependencies = [
+  "astropy",
+  "h5py",
+  "joblib",
+  "kepler.py",
+  "matplotlib",
+  "numpy",
+  "photutils",
+  "pyyaml",
+  "scipy",
+  "seaborn",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+docs = ["numpydoc", "pydata-sphinx-theme", "sphinx", "sphinx-automodapi"]
+test = ["coverage[toml]", "pytest", "pytest-cov", "pytest-doctestplus"]
+
+[project.scripts]
+planetpipe = "kstacker.cli:main"
+
+[project.urls]
+docs = "https://kstacker.readthedocs.io"
+repository = "https://gitlab.lam.fr/RHCI/kstacker"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools_scm]
 write_to = "src/kstacker/version.py"
 
 [tool.black]
 line-length = 88
-target-version = ['py37']
+target-version = ['py38']
 preview = true
+
+[tool.coverage]
+[tool.coverage.run]
+source = ["kstacker"]
+omit = [
+  "kstacker/version*",
+  "*/kstacker/version*",
+]
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover", # Have to re-enable the standard pragma
+  "except ImportError", # Don't complain about packages we have installed
+  "raise AssertionError", # Don't complain if tests don't hit assertion code
+  "raise NotImplementedError",
+  "'def main(.*):'", # Don't complain about script hooks
+  "def _ipython_key_completions_", # Don't complain about IPython completion
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "docs"]
+addopts = ["--import-mode=importlib"]
+# addopts = ["--doctest-rst", "--import-mode=importlib"]
+# doctest_plus = enabled
+# text_file_format = rst
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F"]
+ignore = ["E501", "E731", "E741"]
