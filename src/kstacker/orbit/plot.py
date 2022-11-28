@@ -193,9 +193,9 @@ def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None):
         grid[:norbits, 6],
     )
 
-    if omegatheta == True:
-        omega_theta = omega - theta_0
-        omega_p_theta = omega + theta_0
+    # if omegatheta:
+    #     omega_theta = omega - theta_0
+    #     omega_p_theta = omega + theta_0
 
     snr_grad = res["snr_gradient"]
 
