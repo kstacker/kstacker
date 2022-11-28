@@ -39,8 +39,8 @@ def test_full_run(params_tmp):
         assert f["Projection grid"].shape == (8862, 3)
         assert f["DATA"].shape == (313000, 10)
 
-        assert np.isclose(f["DATA"][:, 9].min(), -17.305538)
-        assert np.isclose(f["DATA"][:, 9].max(), 0.12029619)
+        assert np.isclose(f["DATA"][:, 9].max(), 17.305538)
+        assert np.isclose(f["DATA"][:, 9].min(), -0.12029619)
 
     with h5py.File(path / "values" / "res_grid.h5") as f:
         best = f["Best solutions"][:]
@@ -49,27 +49,27 @@ def test_full_run(params_tmp):
         expected = [59.25, 0.28, -49.133, 1.59, 1.046, 0.523, 1.196]
         assert_almost_equal(best[0, :7], expected, decimal=3)
         # signal, noise, snr
-        expected = [3.585e-04, 2.072e-05, -17.305538]
+        expected = [3.585e-04, 2.072e-05, 17.305538]
         assert_almost_equal(best[0, 7:], expected, decimal=5)
         # 10 best SNRs
         expected = [
-            -17.30553,
-            -17.29897,
-            -17.27288,
-            -17.22138,
-            -17.20918,
-            -17.20516,
-            -17.20314,
-            -17.19643,
-            -17.18328,
-            -17.17717,
+            17.30553,
+            17.29897,
+            17.27288,
+            17.22138,
+            17.20918,
+            17.20516,
+            17.20314,
+            17.19643,
+            17.18328,
+            17.17717,
         ]
         assert_almost_equal(best[:10, 9], expected, decimal=4)
 
     # Reoptimize -------------------------------------------------------------
     reoptimize_gradient(params_tmp, n_orbits=2)
     res = ascii.read(path / "values" / "results.txt")
-    expected = [-15.751, -15.613]
+    expected = [15.751, 15.613]
     # Solutions differ on Github CI, so test only onde decimal ...
     assert_almost_equal(res["snr_gradient"][1], expected[1], decimal=1)
 

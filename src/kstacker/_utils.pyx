@@ -150,7 +150,7 @@ def cy_compute_snr(double[:,:,::1] images,
                 noise = 1 / noise
 
             noise = sqrt(noise)
-            snr = - signal / noise
+            snr = signal / noise
 
         out[i, 0] = signal
         out[i, 1] = noise

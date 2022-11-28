@@ -124,7 +124,6 @@ def test_compute_snr_cython(params_with_images):
         1,
         0,
     )
-    out[:, 2] *= -1  # positive SNR
     assert_allclose(out[0][:2], expected["convolve"][:2], atol=1e-6, rtol=0)
     assert_allclose(out[0][2], expected["convolve"][2], atol=1e-3, rtol=0)
 
@@ -145,7 +144,6 @@ def test_compute_snr_cython(params_with_images):
         1,
         1,
     )
-    out[:, 2] *= -1  # positive SNR
     assert_allclose(out[0][:2], expected_invvar["convolve"][:2], atol=1e-6, rtol=0)
     assert_allclose(out[0][2], expected_invvar["convolve"][2], atol=1e-3, rtol=0)
     # res = compute_snr_detailed(params, x, method="convolve", verbose=True)

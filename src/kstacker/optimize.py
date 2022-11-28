@@ -181,7 +181,7 @@ def evaluate(
                 # then keep all results for this orbit
                 ind = np.arange(nkeep)
             else:
-                ind = np.argpartition(out[:, 2], nkeep)[:nkeep]
+                ind = np.argsort(out[:, 2])[-nkeep:]
 
             # Save best results in out_full
             sl = slice(isave, isave + nkeep)
@@ -248,7 +248,7 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     with h5py.File(outfile, "r") as f:
         res = f["DATA"][:]
 
-    ind = np.argsort(res[:, 9])
+    ind = np.argsort(res[:, 9])[::-1]
     res = res[ind]
 
     with h5py.File(f"{values_dir}/res_grid.h5", "w") as f:

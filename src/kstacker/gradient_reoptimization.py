@@ -85,7 +85,7 @@ def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
-    snr_init = -compute_snr(x, *args[:-1], invvar_weighted=args[-1])
+    snr_init = compute_snr(x, *args[:-1], invvar_weighted=args[-1])
 
     with np.printoptions(precision=3, suppress=True):
         print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")
@@ -100,7 +100,7 @@ def optimize_orbit(result, k, args, bounds):
         options={"gtol": 1e-5},
     )
     x_best = opt_result.x
-    snr_best = opt_result.fun
+    snr_best = - opt_result.fun
 
     with np.printoptions(precision=3, suppress=True):
         print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
