@@ -151,11 +151,10 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
     ax.set(title="SNR Curves")
 
 
-def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None):
+def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)):
     from ..utils import Params, read_results
 
-    # creating the figure (36 subplots). Modify figsize if pdf save is too small
-    fig, axes = plt.subplots(ncols=7, nrows=7, figsize=(25, 25))
+    fig, axes = plt.subplots(ncols=7, nrows=7, figsize=figsize)
 
     # fmt: off
     flatui = ["#001EF5", "#002DF5", "#003CF5", "#004CF5", "#005BF5", "#016BF5", "#017AF5", "#0189F5", "#0199F5",
@@ -165,7 +164,7 @@ def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None):
               "#5FF708", "#6EF708", "#7DF808", "#8CF809", "#9BF809", "#AAF809", "#B9F809", "#C8F80A", "#D7F80A",
               "#E6F80A", "#F5F80A", "#F8ED0B", "#F8DE0B", "#F8D00B", "#F8C10B", "#F9B20C", "#F9A40C", "#F9950C",
               "#F9870C", "#F9780D", "#F96A0D", "#F95B0D", "#F94D0D", "#F93E0E", "#F9300E", "#F9210E", "#F9130E",
-              "#F90F18"]  # creation of a color hradient
+              "#F90F18"]  # creation of a color gradient
     # fmt: on
     # creating the colormap
     color_scatter = ListedColormap(sns.color_palette(flatui).as_hex())
@@ -183,17 +182,12 @@ def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None):
     grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
     grid = grid.view("f8").reshape(grid.shape[0], 7)
 
-    norbits = min(norbits or grid.shape[0], grid.shape[0])
+    if norbits is not None:
+        grid = grid[:norbits]
+    else:
+        norbits = grid.shape[0]
 
-    a, e, t0, m0, omega, i, theta_0 = (
-        grid[:norbits, 0],
-        grid[:norbits, 1],
-        grid[:norbits, 2],
-        grid[:norbits, 3],
-        grid[:norbits, 4],
-        grid[:norbits, 5],
-        grid[:norbits, 6],
-    )
+    a, e, t0, m0, omega, i, theta_0 = grid.T
 
     # if omegatheta:
     #     omega_theta = omega - theta_0
