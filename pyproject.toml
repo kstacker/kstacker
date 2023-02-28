@@ -35,7 +35,7 @@ docs = ["numpydoc", "pydata-sphinx-theme", "sphinx", "sphinx-automodapi"]
 test = ["coverage[toml]", "pytest", "pytest-cov", "pytest-doctestplus"]
 
 [project.scripts]
-planetpipe = "kstacker.cli:main"
+kstacker = "kstacker.cli:main"
 
 [project.urls]
 docs = "https://kstacker.readthedocs.io"
