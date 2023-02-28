@@ -21,9 +21,9 @@ if os.getenv("COVERAGE"):
     compiler_directives["profile"] = True
     compiler_directives["linetrace"] = True
     compiler_directives["emit_code_comments"] = True
-    os.environ[
-        "CFLAGS"
-    ] = "-g -DCYTHON_TRACE_NOGIL=1 --coverage -fno-inline-functions -O0"
+    os.environ["CFLAGS"] = (
+        "-g -DCYTHON_TRACE_NOGIL=1 --coverage -fno-inline-functions -O0"
+    )
     gdb_debug = True
 else:
     gdb_debug = False

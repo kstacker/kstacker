@@ -100,7 +100,7 @@ def optimize_orbit(result, k, args, bounds):
         options={"gtol": 1e-5},
     )
     x_best = opt_result.x
-    snr_best = - opt_result.fun
+    snr_best = -opt_result.fun
 
     with np.printoptions(precision=3, suppress=True):
         print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)

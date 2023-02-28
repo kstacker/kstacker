@@ -151,7 +151,9 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
     ax.set(title="SNR Curves")
 
 
-def corner_plots(params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)):
+def corner_plots(
+    params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)
+):
     from ..utils import Params, read_results
 
     fig, axes = plt.subplots(ncols=7, nrows=7, figsize=figsize)
