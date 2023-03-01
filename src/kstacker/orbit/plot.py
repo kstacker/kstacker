@@ -275,7 +275,7 @@ def corner_plots(
         fig.savefig(savefig)
 
 
-def plot_results(params, nimg=None, savefig=None):
+def plot_results(params, nimg=None, savefig=None, snr_grad_limits=None):
     from ..utils import Params, read_results
 
     if isinstance(params, str):
@@ -287,6 +287,12 @@ def plot_results(params, nimg=None, savefig=None):
     if res["snr_gradient"][0] < 0:
         res["snr_gradient"] *= -1
         res["snr_brut_force"] *= -1
+
+    if snr_grad_limits is not None:
+        sel = (res["snr_gradient"] > snr_grad_limits[0]) & (
+            res["snr_gradient"] < snr_grad_limits[1]
+        )
+        res = res[sel]
 
     data = params.load_data(method="aperture")
     grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
@@ -320,7 +326,7 @@ def plot_results(params, nimg=None, savefig=None):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
     ax.legend(fontsize="x-small", loc="upper left")
 
-    arr = data["bkg"][:, params.r_mask - 1 :]
+    arr = data["bkg"][:, int(params.r_mask - 1) :]
     ymin = np.nanmin(arr)
     ymax = np.nanmax(arr)
     ymin = ymin / 2 if ymin > 0 else ymin * 2
