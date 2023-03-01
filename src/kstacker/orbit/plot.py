@@ -75,7 +75,9 @@ def plot_ontop(x, d, ts, res, back_image, filename):
 
     plt.figure(1)
     plt.axis("off")
-    plt.imshow(back_image, origin="lower", interpolation="none", cmap="gray")
+    vmin, vmax = ZScaleInterval().get_limits(back_image)
+    plt.imshow(back_image, origin="lower", interpolation="none", cmap="gray",
+               vmin=vmin, vmax=vmax)
     plt.scatter(
         npix // 2 + scale * y_proj, npix // 2 + scale * x_proj, color="b", s=0.1
     )
@@ -136,7 +138,7 @@ def plot_snr_hist(snr_gradient, snr_brut_force, ax=None):
 
     ax.hist(snr_gradient, bins=bins, histtype="step", label="snr_gradient")
     ax.hist(snr_brut_force, bins=bins, histtype="step", label="snr_brut_force")
-    ax.legend(loc="upper left")
+    ax.legend()
     ax.set(title="SNR Histogram")
 
 
@@ -318,13 +320,13 @@ def plot_results(params, nimg=None, savefig=None, snr_grad_limits=None):
     ax = axes[1, 2]
     for i, arr in enumerate(data["noise"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
-    ax.legend(fontsize="x-small", loc="upper left")
+    ax.legend(fontsize="x-small")
     ax.set(title="Noise", yscale="log")
 
     ax = axes[1, 3]
     for i, arr in enumerate(data["bkg"]):
         ax.plot(arr, lw=1, alpha=0.8, label=str(i) if i < 10 else None)
-    ax.legend(fontsize="x-small", loc="upper left")
+    ax.legend(fontsize="x-small")
 
     arr = data["bkg"][:, int(params.r_mask - 1) :]
     ymin = np.nanmin(arr)
