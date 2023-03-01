@@ -147,7 +147,7 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     )
     # Sort values with the recomputed SNR
     reopt = np.array(reopt)
-    reopt = reopt[np.argsort(reopt[:, 1])]
+    reopt = reopt[np.argsort(reopt[:, 1])[::-1]]
     # Add index column
     reopt = np.concatenate([np.arange(reopt.shape[0])[:, None], reopt], axis=1)
 
