@@ -9,13 +9,6 @@ from .optimize import brute_force
 from .utils import Params
 from .version import version
 
-# to plot in a file without a display screen (cluster)
-# isort: off
-# import matplotlib
-
-# matplotlib.use("Agg")  # noqa
-# isort: on
-
 
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
@@ -45,6 +38,9 @@ def main():
     sub_reopt.add_argument("parameter_file", help="Parameter file (yml)")
     sub_reopt.add_argument(
         "--njobs", type=int, default=1, help="number of processes (-1 to use all CPUs)"
+    )
+    sub_reopt.add_argument(
+        "--norbits", type=int, help="number of orbits (all by default)"
     )
     sub_reopt.set_defaults(func=reoptimize)
 
@@ -79,4 +75,4 @@ def optimize(args):
 
 def reoptimize(args):
     params = Params.read(args.parameter_file)
-    reoptimize_gradient(params, n_jobs=args.njobs)
+    reoptimize_gradient(params, n_jobs=args.njobs, n_orbits=args.norbits)
