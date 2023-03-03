@@ -76,8 +76,14 @@ def plot_ontop(x, d, ts, res, back_image, filename):
     plt.figure(1)
     plt.axis("off")
     vmin, vmax = ZScaleInterval().get_limits(back_image)
-    plt.imshow(back_image, origin="lower", interpolation="none", cmap="gray",
-               vmin=vmin, vmax=vmax)
+    plt.imshow(
+        back_image,
+        origin="lower",
+        interpolation="none",
+        cmap="gray",
+        vmin=vmin,
+        vmax=vmax,
+    )
     plt.scatter(
         npix // 2 + scale * y_proj, npix // 2 + scale * x_proj, color="b", s=0.1
     )

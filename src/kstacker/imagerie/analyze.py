@@ -62,8 +62,7 @@ def derotate(image, t, scale, a, e, t0, m, omega, i, theta_0):
     # Compute angle between perihelion vector and position at time t
     cos_alpha = np.dot([x0, y0], [x, y])
     sin_alpha = np.cross([x0, y0], [x, y])
-    alpha = np.arctan2(sin_alpha, cos_alpha)  # in rad
-    alpha = alpha / (2 * math.pi) * 360  # conversion to degrees
+    alpha = np.rad2deg(np.arctan2(sin_alpha, cos_alpha))
 
     # Rotate the image to align planet with the perihelion vector
     rot_image = ndi.rotate(

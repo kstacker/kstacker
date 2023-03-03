@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize
 from astropy.io import ascii, fits
+from astropy.visualization import ZScaleInterval
 from joblib import Parallel, delayed
 
 from .imagerie import recombine_images
@@ -21,32 +22,28 @@ def plot_coadd(idx, coadded, x, params, outdir):
     a, e, t0, m0, omega, i, theta_0 = x
     # plot the corresponding image and save it as a png (for quick view)
     plt.figure()
-    plt.imshow(coadded.T, origin="lower", interpolation="none", cmap="gray")
+    vmin, vmax = ZScaleInterval().get_limits(coadded)
+    plt.imshow(
+        coadded, origin="lower", interpolation="none", cmap="gray", vmin=vmin, vmax=vmax
+    )
     plt.colorbar()
     xa, ya = orbit.project_position_full(t0, a, e, t0, m0, omega, i, theta_0)
     xpix = params.n // 2 + params.scale * xa
     ypix = params.n // 2 + params.scale * ya
     # comment this line if you don't want to see where the planet is recombined:
     # decalage 2 fwhm Antoine Schneeberger
-    plt.scatter(xpix - 2 * params.fwhm, ypix, color="b", marker=">")
-    # '.png' old format  #New save format: tiff who have deeeper dynamics
-    # to manipulate with imageJ Antoine Schneeberger
-    plt.savefig(f"{outdir}/fin_tiff/fin_{idx}.tiff")
+    plt.scatter(ypix - 2 * params.fwhm, xpix, color="b", marker=">")
+    plt.savefig(f"{outdir}/fin_png/fin_{idx}.png")
     plt.close()
 
-    # fits.writeto(f"{outdir}/pla/pla_extracted_{idx}.fits", coadded, overwrite=True)
+    fits.writeto(f"{outdir}/fin_fits/fin_{idx}.fits", coadded, overwrite=True)
 
 
 def make_plots(x_best, k, params, images, ts, values_dir, args):
     print(f"Make plots for solution {k+1}")
     # create combined images (for the q eme best SNR)
     coadded = recombine_images(images, ts, params.scale, *x_best)
-
     plot_coadd(k, coadded, x_best, params, values_dir)
-
-    # also save it as a fits file
-    # FIXME: also saved in plot_coadd ? (but without transpose...)
-    fits.writeto(f"{values_dir}/fin_fits/fin_{k}.fits", coadded.T, overwrite=True)
 
     # plot the orbits
     ax = [params.xmin, params.xmax, params.ymin, params.ymax]
@@ -112,10 +109,9 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     # We sort the results in several directories
     values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
-    os.makedirs(f"{values_dir}/fin_tiff", exist_ok=True)
+    os.makedirs(f"{values_dir}/fin_png", exist_ok=True)
     os.makedirs(f"{values_dir}/orbites", exist_ok=True)
     os.makedirs(f"{values_dir}/single", exist_ok=True)
-    # os.makedirs(f"{values_dir}/pla", exist_ok=True)
 
     ts = params.get_ts()  # time of observations (years)
     size = params.n  # number of pixels
