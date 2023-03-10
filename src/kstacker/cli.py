@@ -5,7 +5,7 @@ import numpy as np
 
 from .gradient_reoptimization import reoptimize_gradient
 from .noise_profile import compute_noise_profiles, compute_snr_plots
-from .optimize import brute_force
+from .optimize import brute_force, extract_best_solutions
 from .utils import Params
 from .version import version
 
@@ -31,6 +31,19 @@ def main():
         "--dry-run", action="store_true", help="do not run computation"
     )
     sub_opt.set_defaults(func=optimize)
+
+    sub_bestsol = subparsers.add_parser(
+        "extractbest",
+        help=(
+            "Sort on the SNR column and store the q best results "
+            "(already done at the end of optimize)"
+        ),
+    )
+    sub_bestsol.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_bestsol.add_argument(
+        "--nbest", type=int, help="number of orbits (params.q by default)"
+    )
+    sub_bestsol.set_defaults(func=extract_best)
 
     sub_reopt = subparsers.add_parser(
         "reopt", help="re-optimize the best SNR values with a gradient descent"
@@ -76,3 +89,8 @@ def optimize(args):
 def reoptimize(args):
     params = Params.read(args.parameter_file)
     reoptimize_gradient(params, n_jobs=args.njobs, n_orbits=args.norbits)
+
+
+def extract_best(args):
+    params = Params.read(args.parameter_file)
+    extract_best_solutions(params, nbest=args.nbest)

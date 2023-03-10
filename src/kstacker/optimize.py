@@ -211,19 +211,39 @@ def evaluate(
         # resize the dataset to the actual number of results that have been computed
         data.resize((idata, ncols))
 
+    print(f"Optimization is done, results saved in {outfile}")
+
+
+def extract_best_solutions(params, nbest=None):
+    """Sort on the SNR column and store the q best results."""
+
+    grid_dir = params.get_path("grid_dir")
+    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
+        res = f["DATA"][:]
+
+    ind = np.argsort(res[:, 9])[::-1]
+    res = res[ind]
+
+    if nbest is None:
+        nbest = params.q
+
+    values_dir = params.get_path("values_dir", remove_if_exist=True)
+    outfile = f"{values_dir}/res_grid.h5"
+    print(f"Saving {nbest} best solutions in {outfile}")
+    with h5py.File(outfile, "w") as f:
+        f["Best solutions"] = res[:nbest]
+
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     # name of the directory where one loads and saves the images and values
     grid_dir = params.get_path("grid_dir", remove_if_exist=True)
-    values_dir = params.get_path("values_dir", remove_if_exist=True)
 
     # grid on which the brute force algorithm will be computed on one node/core
     print(repr(params.grid))
 
-    if params.adding == "no":
-        outfile = f"{grid_dir}/res.h5"
-    elif params.adding == "yes":
-        outfile = f"{grid_dir}/res_add.h5"
+    outfile = f"{grid_dir}/res.h5"
+    # if params.adding == "yes":
+    #     outfile = f"{grid_dir}/res_add.h5"
 
     # brute force
     evaluate(
@@ -244,12 +264,4 @@ def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
     #     res["snr"] = -res["signal"] / res["noise"]  # recompute SNR
     #     res.write(f"{grid_dir}/res_new.npy", path="Full SNR", append=True)
 
-    # Sort on the SNR column and store the q best results
-    with h5py.File(outfile, "r") as f:
-        res = f["DATA"][:]
-
-    ind = np.argsort(res[:, 9])[::-1]
-    res = res[ind]
-
-    with h5py.File(f"{values_dir}/res_grid.h5", "w") as f:
-        f["Best solutions"] = res[: params.q]
+    extract_best_solutions(params)
