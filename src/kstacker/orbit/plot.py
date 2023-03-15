@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns  # used for the scatterplot colormap
 from astropy.visualization import ZScaleInterval
-from matplotlib.colors import ListedColormap  # used for the scatterplot
 
 from . import orbit
 
@@ -160,7 +159,13 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
 
 
 def corner_plots(
-    params, nbins, norbits=None, omegatheta=False, savefig=None, height=2.5
+    params: str,
+    nbins: int,
+    norbits: int = None,
+    omegatheta: bool = False,
+    savefig: str = None,
+    height: float = 2.5,
+    use_grid_limits: bool = False,
 ):
     from ..utils import Params, read_results
 
@@ -214,18 +219,29 @@ def corner_plots(
 
     # set labels with ax_labels
     for ax in g.axes.flat:
-        if ax is not None:
-            if (label := ax.get_xlabel()) in ax_labels:
-                ax.set_xlabel(ax_labels[label])
-            if (label := ax.get_ylabel()) in ax_labels:
-                ax.set_ylabel(ax_labels[label])
+        if ax is None:
+            continue
+
+        label = ax.get_xlabel()
+        if use_grid_limits and label in params.grid.grid_params:
+            if params[label]["min"] != params[label]["max"]:
+                ax.set_xlim((params[label]["min"], params[label]["max"]))
+        if label in ax_labels:
+            ax.set_xlabel(ax_labels[label])
+
+        label = ax.get_ylabel()
+        if use_grid_limits and label in params.grid.grid_params:
+            if params[label]["min"] != params[label]["max"]:
+                ax.set_ylim((params[label]["min"], params[label]["max"]))
+        if label in ax_labels:
+            ax.set_ylabel(ax_labels[label])
 
     # show y axis for histogram (on the right)
     for ax in g.diag_axes:
         ax.set_axis_on()
         ax.yaxis.label.set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["left"].set_visible(False)
 
     g.figure.suptitle(
         f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
