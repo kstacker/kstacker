@@ -170,6 +170,7 @@ def corner_plots(
         params.work_dir = path
 
     res = read_results(os.path.join(params.work_dir, "values", "results.txt"), params)
+
     if res["snr_gradient"][0] < 0:
         res["snr_gradient"] *= -1
         res["snr_brut_force"] *= -1
@@ -188,16 +189,6 @@ def corner_plots(
     else:
         varnames = ["a", "e", "t0", "m0", "omega", "i", "theta_0"]
 
-    ax_labels = {
-        "a": "a (a.u.)",
-        "e": "e",
-        "t0": "$t_0$ (yrs)",
-        "m0": "$m0$ (solar_mass)",
-        "theta_0": r"$\Omega$ (rad)",
-        "i": "i (rad)",
-        "omega": r"$\omega$ (rad)",
-    }
-
     g = sns.pairplot(
         df,
         corner=True,
@@ -209,22 +200,40 @@ def corner_plots(
         vars=varnames,
     )
 
+    ax_labels = {
+        "a": "a (a.u.)",
+        "e": "e",
+        "t0": "$t_0$ (yrs)",
+        "m0": "$m0$ (solar_mass)",
+        "theta_0": r"$\Omega$ (rad)",
+        "i": "i (rad)",
+        "omega": r"$\omega$ (rad)",
+        "omega_theta": r"$\omega - \Omega$ (rad)",
+        "omega_p_theta": r"$\omega + \Omega$ (rad)",
+    }
+
+    # set labels with ax_labels
     for ax in g.axes.flat:
         if ax is not None:
-            label = ax.get_xlabel()
-            if label in ax_labels:
+            if (label := ax.get_xlabel()) in ax_labels:
                 ax.set_xlabel(ax_labels[label])
-            label = ax.get_ylabel()
-            if label in ax_labels:
+            if (label := ax.get_ylabel()) in ax_labels:
                 ax.set_ylabel(ax_labels[label])
 
-    # Figure Title
+    # show y axis for histogram (on the right)
+    for ax in g.diag_axes:
+        ax.set_axis_on()
+        ax.yaxis.label.set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+
     g.figure.suptitle(
         f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
     )
 
-    # reducing spaces between subplots
-    # fig.subplots_adjust(wspace=0.15, hspace=0.2)
+    # No need for extra space for the legend
+    g._figure.subplots_adjust(right=0.99)
+    g.tight_layout()
 
     if savefig:
         g.figure.savefig(savefig)
