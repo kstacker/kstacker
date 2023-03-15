@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns  # used for the scatterplot colormap
 from astropy.visualization import ZScaleInterval
-from matplotlib.colors import ListedColormap  # used for the scatterplot
 
 from . import orbit
 
@@ -160,24 +159,15 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
 
 
 def corner_plots(
-    params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)
+    params: str,
+    nbins: int,
+    norbits: int = None,
+    omegatheta: bool = False,
+    savefig: str = None,
+    height: float = 2.5,
+    use_grid_limits: bool = False,
 ):
     from ..utils import Params, read_results
-
-    fig, axes = plt.subplots(ncols=7, nrows=7, figsize=figsize)
-
-    # fmt: off
-    flatui = ["#001EF5", "#002DF5", "#003CF5", "#004CF5", "#005BF5", "#016BF5", "#017AF5", "#0189F5", "#0199F5",
-              "#02A8F5", "#02B7F5", "#02C6F5", "#02D6F5", "#03E5F6", "#03F4F6", "#03F6E8", "#03F6D9", "#03F6CA",
-              "#04F6BB", "#04F6AC", "#04F69D", "#04F68E", "#05F680", "#05F671", "#05F662", "#05F653", "#06F744",
-              "#06F735", "#06F727", "#06F718", "#07F709", "#13F707", "#22F707", "#31F707", "#41F708", "#50F708",
-              "#5FF708", "#6EF708", "#7DF808", "#8CF809", "#9BF809", "#AAF809", "#B9F809", "#C8F80A", "#D7F80A",
-              "#E6F80A", "#F5F80A", "#F8ED0B", "#F8DE0B", "#F8D00B", "#F8C10B", "#F9B20C", "#F9A40C", "#F9950C",
-              "#F9870C", "#F9780D", "#F96A0D", "#F95B0D", "#F94D0D", "#F93E0E", "#F9300E", "#F9210E", "#F9130E",
-              "#F90F18"]  # creation of a color gradient
-    # fmt: on
-    # creating the colormap
-    color_scatter = ListedColormap(sns.color_palette(flatui).as_hex())
 
     if isinstance(params, str):
         path = os.path.dirname(params)
@@ -185,102 +175,84 @@ def corner_plots(
         params.work_dir = path
 
     res = read_results(os.path.join(params.work_dir, "values", "results.txt"), params)
+
     if res["snr_gradient"][0] < 0:
         res["snr_gradient"] *= -1
         res["snr_brut_force"] *= -1
 
-    grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
-    grid = grid.view("f8").reshape(grid.shape[0], 7)
+    df = res.to_pandas()
 
     if norbits is not None:
-        grid = grid[:norbits]
+        df = df[:norbits]
     else:
-        norbits = grid.shape[0]
+        norbits = len(df)
 
-    a, e, t0, m0, omega, i, theta_0 = grid.T
+    if omegatheta:
+        df["omega_theta"] = df.omega - df.theta_0
+        df["omega_p_theta"] = df.omega + df.theta_0
+        varnames = ["a", "e", "t0", "m0", "omega_theta", "i", "omega_p_theta"]
+    else:
+        varnames = ["a", "e", "t0", "m0", "omega", "i", "theta_0"]
 
-    # if omegatheta:
-    #     omega_theta = omega - theta_0
-    #     omega_p_theta = omega + theta_0
+    g = sns.pairplot(
+        df,
+        corner=True,
+        diag_kind="hist",
+        height=height,
+        hue="snr_gradient",
+        palette="rainbow",
+        diag_kws=dict(hue=None, palette=None, bins=nbins),
+        vars=varnames,
+    )
 
-    snr_grad = res["snr_gradient"]
+    ax_labels = {
+        "a": "a (a.u.)",
+        "e": "e",
+        "t0": "$t_0$ (yrs)",
+        "m0": "$m0$ (solar_mass)",
+        "theta_0": r"$\Omega$ (rad)",
+        "i": "i (rad)",
+        "omega": r"$\omega$ (rad)",
+        "omega_theta": r"$\omega - \Omega$ (rad)",
+        "omega_p_theta": r"$\omega + \Omega$ (rad)",
+    }
 
-    # 1st row : a as a function of others parameters
-    axes[0, 0].hist(a, bins=nbins, color="darkcyan")
-    # 2nd row : e as a function of others parameters
-    im = axes[1, 0].scatter(a, e, c=snr_grad, cmap=color_scatter)
-    axes[1, 1].hist(e, bins=nbins, color="darkcyan")
-    # 3rd row : t0 as a function of others parameters
-    axes[2, 0].scatter(a, t0, c=snr_grad, cmap=color_scatter)
-    axes[2, 1].scatter(e, t0, c=snr_grad, cmap=color_scatter)
-    axes[2, 2].hist(t0, bins=nbins, color="darkcyan")
-    # 4rd row : m0 as a function of others parameters
-    axes[3, 0].scatter(a, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 1].scatter(e, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 2].scatter(t0, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 3].hist(m0, bins=nbins, color="darkcyan")
-    # 5th row : omega as a function of others parameters
-    axes[4, 0].scatter(a, omega, c=snr_grad, cmap=color_scatter)
-    axes[4, 1].scatter(e, omega, c=snr_grad, cmap=color_scatter)
-    axes[4, 2].scatter(t0, omega, c=snr_grad, cmap=color_scatter)
-    axes[4, 3].scatter(m0, omega, c=snr_grad, cmap=color_scatter)
-    axes[4, 4].hist(omega, bins=nbins, color="darkcyan")
-    # 6th row : i as a function of others parameters
-    axes[5, 0].scatter(a, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 1].scatter(e, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 2].scatter(t0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 3].scatter(m0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 4].scatter(omega, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 5].hist(i, bins=nbins, color="darkcyan")
-    # 7th row : theta0 as a function of others parameters
-    axes[6, 0].scatter(a, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 1].scatter(e, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 2].scatter(t0, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 3].scatter(m0, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 4].scatter(omega, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 5].scatter(i, theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 6].hist(theta_0, bins=nbins, color="darkcyan")
+    # set labels with ax_labels
+    for ax in g.axes.flat:
+        if ax is None:
+            continue
 
-    # Figure Title
-    fig.suptitle(
+        label = ax.get_xlabel()
+        if use_grid_limits and label in params.grid.grid_params:
+            if params[label]["min"] != params[label]["max"]:
+                ax.set_xlim((params[label]["min"], params[label]["max"]))
+        if label in ax_labels:
+            ax.set_xlabel(ax_labels[label])
+
+        label = ax.get_ylabel()
+        if use_grid_limits and label in params.grid.grid_params:
+            if params[label]["min"] != params[label]["max"]:
+                ax.set_ylim((params[label]["min"], params[label]["max"]))
+        if label in ax_labels:
+            ax.set_ylabel(ax_labels[label])
+
+    # show y axis for histogram (on the right)
+    for ax in g.diag_axes:
+        ax.set_axis_on()
+        ax.yaxis.label.set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+
+    g.figure.suptitle(
         f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
     )
 
-    # Axes Labels
-    axes[6, 0].set_xlabel("a (a.u.)")
-    axes[6, 1].set_xlabel("e")
-    axes[6, 2].set_xlabel("$t_0$ (yrs)")
-    axes[6, 3].set_xlabel("$m0$ (solar_mass)")
-    axes[6, 4].set_xlabel(r"$\Omega$ (rad)")
-    axes[6, 5].set_xlabel("i (rad)")
-    axes[6, 6].set_xlabel(r"$\omega$ (rad)")
-    axes[1, 0].set_ylabel("e")
-    axes[2, 0].set_ylabel("$t_0$ (yrs)")
-    axes[3, 0].set_ylabel("$m0$ (solar_mass)")
-    axes[4, 0].set_ylabel(r"$\Omega$ (rad)")
-    axes[5, 0].set_ylabel("i (rad)")
-    axes[6, 0].set_ylabel(r"$\omega$ (rad)")
-    # Remove labels at the middle of the subplots
-    for k in range(1, 6, 1):
-        plt.setp([plot.get_xticklabels() for plot in axes[k, :]], visible=False)
-        plt.setp([plot.get_yticklabels() for plot in axes[:, k]], visible=False)
-    # Graduation on the right for the histograms
-    for k in range(7):
-        axes[k, k].yaxis.tick_right()
-    # reducing spaces between subplots
-    fig.subplots_adjust(wspace=0.15, hspace=0.2)
-    # Remove sub-plots that we don't want to see
-    for i in range(6):
-        for k in range(i + 1, 7):
-            axes[i, k].remove()
-
-    # SNR Color bar
-    cax = plt.axes([0.07, 0.11, 0.01, 0.77])
-    cbar = plt.colorbar(im, cax, ticklocation="left")
-    cbar.ax.set_title("SNR_KS")
+    # No need for extra space for the legend
+    g._tight_layout_rect[2] = 0.99
+    g.tight_layout()
 
     if savefig:
-        fig.savefig(savefig)
+        g.figure.savefig(savefig)
 
 
 def plot_results(params, nimg=None, savefig=None, snr_grad_limits=None):
