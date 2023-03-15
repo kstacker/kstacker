@@ -232,7 +232,7 @@ def corner_plots(
     )
 
     # No need for extra space for the legend
-    g._figure.subplots_adjust(right=0.99)
+    g._tight_layout_rect[2] = 0.99
     g.tight_layout()
 
     if savefig:
