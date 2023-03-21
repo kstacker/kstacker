@@ -244,7 +244,13 @@ def compute_noise_apertures(
     xc = x - center
     yc = y - center
     radius = np.hypot(xc, yc)
-    aperture_angle = np.arcsin(aperture_radius / radius) * 2
+
+    try:
+        aperture_angle = np.arcsin(aperture_radius / radius) * 2
+    except ValueError:
+        # happens e.g. if too close to the center
+        return np.nan, np.nan, 0
+
     n_aper = int(np.floor(2 * np.pi / aperture_angle))
 
     angles = np.linspace(0, 2 * np.pi, n_aper, endpoint=False)

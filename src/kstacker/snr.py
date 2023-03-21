@@ -124,6 +124,8 @@ def compute_snr(
     method="aperture",
     upsampling_factor=None,
     use_interp_bgnoise=False,
+    r_mask=None,
+    r_mask_ext=None,
     return_all=False,
 ):
     """Compute theoretical snr in combined image."""
@@ -138,9 +140,13 @@ def compute_snr(
     # convert to pixel in the image
     positions *= scale
     # distance to the center
-    if use_interp_bgnoise:
-        temp_d = np.hypot(positions[:, 0], positions[:, 1])
+    temp_d = np.hypot(positions[:, 0], positions[:, 1])
     positions += size // 2
+
+    if r_mask is None:
+        r_mask = fwhm
+    if r_mask_ext is None:
+        r_mask_ext = size // 2
 
     signal, noise = [], []
     images = data["images"]
@@ -148,7 +154,10 @@ def compute_snr(
         # compute signal by integrating flux on a PSF, and correct it for background
         x, y = positions[k]
 
-        # TODO: if temp_d[k] <= r_mask or temp_d[k] >= r_mask_ext:
+        if temp_d[k] <= r_mask or temp_d[k] >= r_mask_ext:
+            signal.append(np.nan)
+            noise.append(np.nan)
+            continue
 
         if use_interp_bgnoise:
             bg = np.interp(temp_d[k], data["x"], data["bkg"][k])
