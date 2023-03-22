@@ -14,7 +14,8 @@ readme = "README.rst"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {email = "herve.lecoroller@lam.fr"}, {name = "Hervé Le Coroller"}
+    {name = "Hervé Le Coroller", email = "herve.lecoroller@lam.fr"},
+    {name = "Simon Conseil", email = "simon.conseil@lam.fr"},
 ]
 dependencies = [
   "astropy",
