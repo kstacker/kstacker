@@ -63,7 +63,7 @@ def make_plots(x_best, k, params, images, ts, values_dir, args):
             )
 
 
-def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted):
+def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted, r_mask):
     """Function to minimize, returns -SNR."""
     return -compute_snr(
         x,
@@ -75,6 +75,7 @@ def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted):
         invvar_weighted=invvar_weighted,
         exclude_source=True,
         exclude_lobes=True,
+        r_mask=r_mask,
     )
 
 
@@ -82,7 +83,7 @@ def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
 
-    snr_init = compute_snr(x, *args[:-1], invvar_weighted=args[-1])
+    snr_init = compute_snr(x, *args[:-2], invvar_weighted=args[-2], r_mask=args[-1])
 
     with np.printoptions(precision=3, suppress=True):
         print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")
@@ -137,6 +138,7 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
         params.fwhm,
         data,
         params.invvar_weight,
+        params.r_mask,
     )
     reopt = Parallel(n_jobs=n_jobs)(
         delayed(optimize_orbit)(results[k], k, args, bounds) for k in range(n_orbits)
