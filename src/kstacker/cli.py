@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 
+from .mcmc_reoptimization import reoptimize_mcmc
 from .gradient_reoptimization import reoptimize_gradient
 from .noise_profile import compute_noise_profiles, compute_snr_plots
 from .optimize import brute_force, extract_best_solutions
@@ -57,6 +58,19 @@ def main():
     )
     sub_reopt.set_defaults(func=reoptimize)
 
+    sub_mcmc = subparsers.add_parser(
+        "mcmc", help="re-optimize the best SNR values with mcmc"
+    )
+
+    sub_mcmc.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_mcmc.add_argument(
+        "--njobs", type=int, default=1, help="number of processes (-1 to use all CPUs)"
+    )
+    sub_mcmc.add_argument(
+        "--norbits", type=int, help="number of orbits (all by default)"
+    )
+    sub_mcmc.set_defaults(func=reoptimize_mcmc)
+
     args = parser.parse_args()
     if "func" in args:
         t0 = time.time()
@@ -94,3 +108,7 @@ def reoptimize(args):
 def extract_best(args):
     params = Params.read(args.parameter_file)
     extract_best_solutions(params, nbest=args.nbest)
+
+def reoptimize_mcmc(args):
+    params = Params.read(args.parameter_file)
+    reoptimize_mcmc(params, n_jobs=args.njobs, n_orbits=args.norbits)
