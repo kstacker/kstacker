@@ -124,7 +124,7 @@ def evaluate(
     proj_matrices = np.ascontiguousarray(proj_matrices)
 
     # Results are saved in chuncks of nsave to avoid keeping all results in memory
-    nsave = min(norbits, 1_000) * nbest
+    nsave = 1e8  # 10 * 1e8 * 4 / 1e6 = 4Gb
     isave = 0
     idata = 0
     ncols = 10
