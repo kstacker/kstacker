@@ -211,27 +211,42 @@ def evaluate(
         # resize the dataset to the actual number of results that have been computed
         data.resize((idata, ncols))
 
-    print(f"Optimization is done, results saved in {outfile}")
+    print(f"Optimization is done, results saved in {outfile}", flush=True)
 
 
 def extract_best_solutions(params, nbest=None):
     """Sort on the SNR column and store the q best results."""
 
-    grid_dir = params.get_path("grid_dir")
-    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
-        res = f["DATA"][:]
-
-    ind = np.argsort(res[:, 9])[::-1]
-    res = res[ind]
-
     if nbest is None:
         nbest = params.q
+
+    print("Reading SNR column")
+    grid_dir = params.get_path("grid_dir")
+    # To keep memory usage low we load only the SNR column
+    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
+        snr = f["DATA"][:, 9]
+
+    print("Sorting")
+    ind = np.argsort(snr)  # sort by SNR
+    ind = ind[-nbest:]  # keep nbest solutions
+    ind = ind[::-1]  # reverse (decreasing SNR)
+    snr = None
+
+    print("Loading best solutions")
+    # Now load all columns for the best solutions
+    # H5Py needs a sorted index
+    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
+        res = f["DATA"][np.sort(ind)]
+
+    # Need to sort again by decreasing SNR
+    ind = np.argsort(res[:, 9])[::-1]
+    res = res[ind]
 
     values_dir = params.get_path("values_dir", remove_if_exist=True)
     outfile = f"{values_dir}/res_grid.h5"
     print(f"Saving {nbest} best solutions in {outfile}")
     with h5py.File(outfile, "w") as f:
-        f["Best solutions"] = res[:nbest]
+        f["Best solutions"] = res
 
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
