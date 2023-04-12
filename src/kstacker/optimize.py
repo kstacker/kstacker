@@ -176,19 +176,16 @@ def evaluate(
             )
 
             # Keep the nbest results, based on their SNR
-            nkeep = min(nvalid, nbest)
-            if nkeep == nvalid:
-                # then keep all results for this orbit
-                ind = np.arange(nkeep)
-            else:
-                ind = np.argsort(out[:, 2])[-nkeep:]
+            sel = out[:, 2] >= params.min_snr
+            nkeep = np.count_nonzero(sel)
 
             # Save best results in out_full
-            sl = slice(isave, isave + nkeep)
-            out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
-            out_full[sl, 4:7] = projection_grid[valid][ind]  # omega, i, theta0
-            out_full[sl, 7:] = out[ind]  # signal, noise, snr
-            isave += nkeep
+            if nkeep > 0:
+                sl = slice(isave, isave + nkeep)
+                out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
+                out_full[sl, 4:7] = projection_grid[valid][sel]  # omega, i, theta0
+                out_full[sl, 7:] = out[sel]  # signal, noise, snr
+                isave += nkeep
 
             if isave + nbest > nsave:
                 # write to disk the results that have been computed so far

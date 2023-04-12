@@ -37,6 +37,9 @@ profile_dir: "profiles"   # folder where to save and load the background and noi
 single_plot: 'yes'    # yes or no to display the positions of the planet in each frame for the best solutions
 adding: 'no'   # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
 
+# in brute force, keep solutions with SNR >= min_snr
+min_snr: 5
+
 # number of maxima that will be reoptimized by the gradient descent algorithm
 # (default=100)
 q: 100
