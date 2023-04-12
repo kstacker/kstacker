@@ -1,5 +1,6 @@
 import argparse
 import time
+import sys
 
 import numpy as np
 
@@ -13,6 +14,7 @@ from .version import version
 
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
+    parser.add_argument("--debug", action="store_true", help="debug flag")
     parser.add_argument("--verbose", action="store_true", help="verbose flag")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version}")
     subparsers = parser.add_subparsers(title="subcommands", help="")
@@ -72,6 +74,18 @@ def main():
     sub_mcmc.set_defaults(func=reoptimize_mcmc)
 
     args = parser.parse_args()
+
+    if args.debug:
+
+        def run_pdb(type, value, tb):
+            import pdb
+            import traceback
+
+            traceback.print_exception(type, value, tb)
+            pdb.pm()
+
+        sys.excepthook = run_pdb
+
     if "func" in args:
         t0 = time.time()
         args.func(args)
@@ -108,6 +122,7 @@ def reoptimize(args):
 def extract_best(args):
     params = Params.read(args.parameter_file)
     extract_best_solutions(params, nbest=args.nbest)
+
 
 def reoptimize_mcmc(args):
     params = Params.read(args.parameter_file)
