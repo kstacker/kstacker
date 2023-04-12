@@ -64,10 +64,10 @@ def main():
 
     sub_mcmc.add_argument("parameter_file", help="Parameter file (yml)")
     sub_mcmc.add_argument(
-        "--njobs", type=int, default=1, help="number of processes (-1 to use all CPUs)"
+        "--n_walkers", type=int, default=2, help="n_walkers = njobs = 2 by default"
     )
     sub_mcmc.add_argument(
-        "--norbits", type=int, help="number of orbits (all by default)"
+        "--n_steps", type=int, default=1000, help="number of mcmc steps (1000 by default)"
     )
     sub_mcmc.set_defaults(func=reoptimize_mcmc)
 
@@ -111,4 +111,4 @@ def extract_best(args):
 
 def reoptimize_mcmc(args):
     params = Params.read(args.parameter_file)
-    reoptimize_mcmc(params, n_jobs=args.njobs, n_orbits=args.norbits)
+    reoptimize_mcmc(params, n_walkers=args.n_walkers, n_steps=args.n_steps)
