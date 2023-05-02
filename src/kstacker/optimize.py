@@ -182,15 +182,7 @@ def evaluate(
             sel = out[:, 2] >= params.min_snr
             nkeep = np.count_nonzero(sel)
 
-            # Save best results in out_full
-            if nkeep > 0:
-                sl = slice(isave, isave + nkeep)
-                out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
-                out_full[sl, 4:7] = projection_grid[valid][sel]  # omega, i, theta0
-                out_full[sl, 7:] = out[sel]  # signal, noise, snr
-                isave += nkeep
-
-            if isave + nbest > nsave:
+            if isave + nkeep > nsave:
                 if idata + isave > data.shape[0]:
                     data.resize((1.2 * (idata + isave), ncols))
                 # write to disk the results that have been computed so far
@@ -204,6 +196,14 @@ def evaluate(
                         f"- {j}/{norbits}, {tt:.2f} sec., remains {remaining:.2f} sec.",
                         flush=True,
                     )
+
+            # Save best results in out_full
+            if nkeep > 0:
+                sl = slice(isave, isave + nkeep)
+                out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
+                out_full[sl, 4:7] = projection_grid[valid][sel]  # omega, i, theta0
+                out_full[sl, 7:] = out[sel]  # signal, noise, snr
+                isave += nkeep
 
         if isave > 0:
             if isave > data.shape[0]:
