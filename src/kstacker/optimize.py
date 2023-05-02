@@ -116,12 +116,14 @@ def evaluate(
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.ascontiguousarray(np.transpose(positions))
 
-    norbits = orbital_grid.shape[0]
     e_null = np.isclose(orbital_grid[:, 1], 0)
 
     # pre-compute the projection matrices
     proj_matrices = orbit.compute_projection_matrices(*projection_grid.T)
     proj_matrices = np.ascontiguousarray(proj_matrices)
+
+    norbits = orbital_grid.shape[0]
+    nproj = projection_grid.shape[0]
 
     # Results are saved in chuncks of nsave to avoid keeping all results in memory
     nsave = int(1e8)  # 10 * 1e8 * 4 / 1e6 = 4Gb
@@ -139,6 +141,7 @@ def evaluate(
             dtype=np.float32,
             shape=(norbits * nbest, ncols),
             chunks=(nbest, ncols),
+            maxshape=(norbits * nproj, 10),
         )
 
         # For each iteration:
@@ -188,6 +191,8 @@ def evaluate(
                 isave += nkeep
 
             if isave + nbest > nsave:
+                if idata + isave > data.shape[0]:
+                    data.resize((1.2 * (idata + isave), ncols))
                 # write to disk the results that have been computed so far
                 data[idata : idata + isave] = out_full[:isave]
                 idata += isave
@@ -201,6 +206,9 @@ def evaluate(
                     )
 
         if isave > 0:
+            if isave > data.shape[0]:
+                data.resize((isave, ncols))
+
             # write the remaining orbits (isave < nsave) to disk
             data[idata : idata + isave] = out_full[:isave]
             idata += isave
