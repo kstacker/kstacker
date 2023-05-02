@@ -216,8 +216,8 @@ def corner_plots(
     omega = -omega + np.pi
     theta_0 = theta_0 + np.pi
 
-    #omega = omega % np.pi  # Check that this transformation % pi for omega and theta_0 is ok
-    #theta_0 = theta_0 % np.pi
+    # omega = omega % np.pi  # Check that this transformation % pi for omega and theta_0 is ok
+    # theta_0 = theta_0 % np.pi
 
     i_mean = np.mean(i)
     i_std = np.std(i)
@@ -225,8 +225,8 @@ def corner_plots(
     omega_plus_theta_0 = omega + theta_0
     omega_min_theta_0 = omega - theta_0
 
-    omega_plus_theta_0 = omega_plus_theta_0 %np.pi*2.
-    omega_min_theta_0 = omega_min_theta_0 %np.pi*2.
+    omega_plus_theta_0 = omega_plus_theta_0 % np.pi * 2.0
+    omega_min_theta_0 = omega_min_theta_0 % np.pi * 2.0
 
     omega_plus_theta_0_mean = np.mean(omega_plus_theta_0)
     omega_plus_theta_0_std = np.std(omega_plus_theta_0)
@@ -236,14 +236,18 @@ def corner_plots(
     omega_mean = (omega_plus_theta_0_mean + omega_min_theta_0_mean) / 2
     theta_0_mean = (omega_plus_theta_0_mean - omega_min_theta_0_mean) / 2
 
-    omega_mean_err = math.sqrt(omega_plus_theta_0_std ** 2 + omega_min_theta_0_std ** 2) / 2
-    theta_0_mean_err = math.sqrt(omega_plus_theta_0_std ** 2 + omega_min_theta_0_std ** 2) / 2
+    omega_mean_err = (
+        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+    )
+    theta_0_mean_err = (
+        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+    )
 
-    #omega_mean = np.mean(omega)
-    #omega_std = np.std(omega)
-    #theta_0_mean = np.mean(theta_0)
-    #theta_0_std = np.std(theta_0)
-    #if omegatheta:
+    # omega_mean = np.mean(omega)
+    # omega_std = np.std(omega)
+    # theta_0_mean = np.mean(theta_0)
+    # theta_0_std = np.std(theta_0)
+    # if omegatheta:
     #     omega_theta = omega - theta_0
     #     omega_p_theta = omega + theta_0
 
@@ -255,8 +259,14 @@ def corner_plots(
         f.write(f"t_0 = {t0_mean:.3f} +- {t0_std:.3f}\n")
         f.write(f"i = {math.degrees(i_mean):.3f} +- {math.degrees(i_std):.3f}\n")
         f.write(f"m_star = {m0_mean:.3f} +- {m0_std:.3f}\n")
-        f.write(f"omega = {math.degrees(omega_mean):.3f} +- {math.degrees(omega_mean_err):.3f}\n")
-        f.write(f"theta_0 = {math.degrees(theta_0_mean):.3f} +- {math.degrees(theta_0_mean_err):.3f}\n")
+        f.write(
+            f"omega = {math.degrees(omega_mean):.3f} +-"
+            f" {math.degrees(omega_mean_err):.3f}\n"
+        )
+        f.write(
+            f"theta_0 = {math.degrees(theta_0_mean):.3f} +-"
+            f" {math.degrees(theta_0_mean_err):.3f}\n"
+        )
 
     f.close()
 
@@ -266,57 +276,156 @@ def corner_plots(
     axes[0, 0].hist(a, bins=nbins, color="darkcyan")
     # 2nd row : e as a function of others parameters
     im = axes[1, 0].scatter(a, e, c=snr_grad, cmap=color_scatter)
-    axes[1, 0].errorbar(a_mean, e_mean, yerr=e_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[1, 0].errorbar(
+        a_mean, e_mean, yerr=e_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
     axes[1, 1].hist(e, bins=nbins, color="darkcyan")
     # 3rd row : t0 as a function of others parameters
     axes[2, 0].scatter(a, t0, c=snr_grad, cmap=color_scatter)
-    axes[2, 0].errorbar(a_mean, t0_mean, yerr=t0_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[2, 0].errorbar(
+        a_mean, t0_mean, yerr=t0_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
     axes[2, 1].scatter(e, t0, c=snr_grad, cmap=color_scatter)
-    axes[2, 1].errorbar(e_mean, t0_mean, yerr=t0_std, xerr=e_std, ecolor='black', elinewidth=2.5)
+    axes[2, 1].errorbar(
+        e_mean, t0_mean, yerr=t0_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
     axes[2, 2].hist(t0, bins=nbins, color="darkcyan")
     # 4rd row : m0 as a function of others parameters
     axes[3, 0].scatter(a, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 0].errorbar(a_mean, m0_mean, yerr=m0_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[3, 0].errorbar(
+        a_mean, m0_mean, yerr=m0_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
     axes[3, 1].scatter(e, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 1].errorbar(e_mean, m0_mean, yerr=m0_std, xerr=e_std, ecolor='black', elinewidth=2.5)
+    axes[3, 1].errorbar(
+        e_mean, m0_mean, yerr=m0_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
     axes[3, 2].scatter(t0, m0, c=snr_grad, cmap=color_scatter)
-    axes[3, 2].errorbar(t0_mean, m0_mean, yerr=m0_std, xerr=t0_std, ecolor='black', elinewidth=2.5)
+    axes[3, 2].errorbar(
+        t0_mean, m0_mean, yerr=m0_std, xerr=t0_std, ecolor="black", elinewidth=2.5
+    )
     axes[3, 3].hist(m0, bins=nbins, color="darkcyan")
     # 5th row : omega_plus_theta_0 as a function of others parameters
     axes[4, 0].scatter(a, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 0].errorbar(a_mean, omega_plus_theta_0_mean, yerr=omega_plus_theta_0_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[4, 0].errorbar(
+        a_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=a_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[4, 1].scatter(e, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 1].errorbar(e_mean, omega_plus_theta_0_mean, yerr=omega_plus_theta_0_std, xerr=e_std, ecolor='black', elinewidth=2.5)
+    axes[4, 1].errorbar(
+        e_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=e_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[4, 2].scatter(t0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 2].errorbar(t0_mean, omega_plus_theta_0_mean, yerr=omega_plus_theta_0_std, xerr=t0_std, ecolor='black', elinewidth=2.5)
+    axes[4, 2].errorbar(
+        t0_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=t0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[4, 3].scatter(m0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 3].errorbar(m0_mean, omega_plus_theta_0_mean, yerr=omega_plus_theta_0_std, xerr=m0_std, ecolor='black', elinewidth=2.5)
+    axes[4, 3].errorbar(
+        m0_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=m0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[4, 4].hist(omega_plus_theta_0, bins=nbins, color="darkcyan")
     # 6th row : i as a function of others parameters
     axes[5, 0].scatter(a, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 0].errorbar(a_mean, i_mean, yerr=i_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[5, 0].errorbar(
+        a_mean, i_mean, yerr=i_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
     axes[5, 1].scatter(e, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 1].errorbar(e_mean, i_mean, yerr=i_std, xerr=e_std, ecolor='black', elinewidth=2.5)
+    axes[5, 1].errorbar(
+        e_mean, i_mean, yerr=i_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
     axes[5, 2].scatter(t0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 2].errorbar(t0_mean, i_mean, yerr=i_std, xerr=t0_std, ecolor='black', elinewidth=2.5)
+    axes[5, 2].errorbar(
+        t0_mean, i_mean, yerr=i_std, xerr=t0_std, ecolor="black", elinewidth=2.5
+    )
     axes[5, 3].scatter(m0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 3].errorbar(m0_mean, i_mean, yerr=i_std, xerr=m0_std, ecolor='black', elinewidth=2.5)
+    axes[5, 3].errorbar(
+        m0_mean, i_mean, yerr=i_std, xerr=m0_std, ecolor="black", elinewidth=2.5
+    )
     axes[5, 4].scatter(omega_plus_theta_0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 4].errorbar(omega_plus_theta_0_mean, i_mean, yerr=i_std, xerr=omega_plus_theta_0_std, ecolor='black', elinewidth=2.5)
+    axes[5, 4].errorbar(
+        omega_plus_theta_0_mean,
+        i_mean,
+        yerr=i_std,
+        xerr=omega_plus_theta_0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[5, 5].hist(i, bins=nbins, color="darkcyan")
     # 7th row : theta0 as a function of others parameters
     axes[6, 0].scatter(a, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 0].errorbar(a_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=a_std, ecolor='black', elinewidth=2.5)
+    axes[6, 0].errorbar(
+        a_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=a_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[6, 1].scatter(e, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 1].errorbar(e_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=e_std, ecolor='black', elinewidth=2.5)
+    axes[6, 1].errorbar(
+        e_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=e_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[6, 2].scatter(t0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 2].errorbar(t0_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=t0_std, ecolor='black', elinewidth=2.5)
+    axes[6, 2].errorbar(
+        t0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=t0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[6, 3].scatter(m0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 3].errorbar(m0_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=m0_std, ecolor='black', elinewidth=2.5)
-    axes[6, 4].scatter(omega_plus_theta_0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 4].errorbar(omega_plus_theta_0_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=omega_plus_theta_0_std, ecolor='black', elinewidth=2.5)
+    axes[6, 3].errorbar(
+        m0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=m0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 4].scatter(
+        omega_plus_theta_0, omega_min_theta_0, c=snr_grad, cmap=color_scatter
+    )
+    axes[6, 4].errorbar(
+        omega_plus_theta_0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=omega_plus_theta_0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[6, 5].scatter(i, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 5].errorbar(i_mean, omega_min_theta_0_mean, yerr=omega_min_theta_0_std, xerr=i_std, ecolor='black', elinewidth=2.5)
+    axes[6, 5].errorbar(
+        i_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=i_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
     axes[6, 6].hist(omega_min_theta_0, bins=nbins, color="darkcyan")
 
     # Figure Title

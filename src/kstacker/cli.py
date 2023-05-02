@@ -1,11 +1,11 @@
 import argparse
-import time
 import sys
+import time
 
 import numpy as np
 
-from .mcmc_reoptimization import reoptimize_mcmc
 from .gradient_reoptimization import reoptimize_gradient
+from .mcmc_reoptimization import reoptimize_mcmc
 from .noise_profile import compute_noise_profiles, compute_snr_plots
 from .optimize import brute_force, extract_best_solutions
 from .utils import Params

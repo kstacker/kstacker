@@ -1,21 +1,25 @@
+import os
+
 import h5py
 import numpy as np
-import os
 
 
 def log_prior(params):
     # Define your prior here
     return 0
 
+
 def log_likelihood(params, data):
     # Define your log-likelihood function here
     return 0
+
 
 def log_posterior(params, data):
     lp = log_prior(params)
     if not np.isfinite(lp):
         return -np.inf
     return lp + log_likelihood(params, data)
+
 
 def reoptimize_mcmc(params, n_jobs=1, n_orbits=None, n_walkers=100, n_steps=1000):
     # We sort the results in several directories
@@ -54,6 +58,7 @@ def reoptimize_mcmc(params, n_jobs=1, n_orbits=None, n_walkers=100, n_steps=1000
         p0[:, i] = results
 
     import emcee
+
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_posterior, args=[data])
 
     # Run MCMC
