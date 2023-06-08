@@ -19,11 +19,13 @@ def main():
     parser.add_argument("--version", action="version", version=f"%(prog)s {version}")
     subparsers = parser.add_subparsers(title="subcommands", help="")
 
+    # noise_profiles parser
     sub_prof = subparsers.add_parser("noise_profiles", help="compute noise profiles")
     sub_prof.add_argument("parameter_file", help="Parameter file (yml)")
     sub_prof.add_argument("--seed", type=int, help="seed for random numbers")
     sub_prof.set_defaults(func=noise_profiles)
 
+    # optimize parser
     sub_opt = subparsers.add_parser(
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
@@ -35,6 +37,7 @@ def main():
     )
     sub_opt.set_defaults(func=optimize)
 
+    # extractbest parser
     sub_bestsol = subparsers.add_parser(
         "extractbest",
         help=(
@@ -48,6 +51,7 @@ def main():
     )
     sub_bestsol.set_defaults(func=extract_best)
 
+    # reopt parser
     sub_reopt = subparsers.add_parser(
         "reopt", help="re-optimize the best SNR values with a gradient descent"
     )
@@ -60,6 +64,7 @@ def main():
     )
     sub_reopt.set_defaults(func=reoptimize)
 
+    # mcmc parser
     sub_mcmc = subparsers.add_parser(
         "mcmc", help="re-optimize the best SNR values with mcmc"
     )
@@ -71,7 +76,7 @@ def main():
     sub_mcmc.add_argument(
         "--norbits", type=int, help="number of orbits (all by default)"
     )
-    sub_mcmc.set_defaults(func=reoptimize_mcmc)
+    sub_mcmc.set_defaults(func=reopt_mcmc)
 
     args = parser.parse_args()
 
@@ -124,6 +129,6 @@ def extract_best(args):
     extract_best_solutions(params, nbest=args.nbest)
 
 
-def reoptimize_mcmc(args):
+def reopt_mcmc(args):
     params = Params.read(args.parameter_file)
     reoptimize_mcmc(params, n_jobs=args.njobs, n_orbits=args.norbits)
