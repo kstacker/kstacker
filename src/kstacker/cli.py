@@ -1,10 +1,11 @@
 import argparse
+import sys
 import time
 
 import numpy as np
 
-from .mcmc_reoptimization import reoptimize_mcmc
 from .gradient_reoptimization import reoptimize_gradient
+from .mcmc_reoptimization import reoptimize_mcmc
 from .noise_profile import compute_noise_profiles, compute_snr_plots
 from .optimize import brute_force, extract_best_solutions
 from .utils import Params
@@ -13,15 +14,18 @@ from .version import version
 
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
+    parser.add_argument("--debug", action="store_true", help="debug flag")
     parser.add_argument("--verbose", action="store_true", help="verbose flag")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version}")
     subparsers = parser.add_subparsers(title="subcommands", help="")
 
+    # noise_profiles parser
     sub_prof = subparsers.add_parser("noise_profiles", help="compute noise profiles")
     sub_prof.add_argument("parameter_file", help="Parameter file (yml)")
     sub_prof.add_argument("--seed", type=int, help="seed for random numbers")
     sub_prof.set_defaults(func=noise_profiles)
 
+    # optimize parser
     sub_opt = subparsers.add_parser(
         "optimize", help="compute signal and noise on a grid (brute force)"
     )
@@ -33,6 +37,7 @@ def main():
     )
     sub_opt.set_defaults(func=optimize)
 
+    # extractbest parser
     sub_bestsol = subparsers.add_parser(
         "extractbest",
         help=(
@@ -46,6 +51,7 @@ def main():
     )
     sub_bestsol.set_defaults(func=extract_best)
 
+    # reopt parser
     sub_reopt = subparsers.add_parser(
         "reopt", help="re-optimize the best SNR values with a gradient descent"
     )
@@ -58,6 +64,7 @@ def main():
     )
     sub_reopt.set_defaults(func=reoptimize)
 
+    # mcmc parser
     sub_mcmc = subparsers.add_parser(
         "mcmc", help="re-optimize the best SNR values with mcmc"
     )
@@ -69,9 +76,21 @@ def main():
     sub_mcmc.add_argument(
         "--n_steps", type=int, default=1000, help="number of mcmc steps (1000 by default)"
     )
-    sub_mcmc.set_defaults(func=reoptimize_mcmc)
+    sub_mcmc.set_defaults(func=reopt_mcmc)
 
     args = parser.parse_args()
+
+    if args.debug:
+
+        def run_pdb(type, value, tb):
+            import pdb
+            import traceback
+
+            traceback.print_exception(type, value, tb)
+            pdb.pm()
+
+        sys.excepthook = run_pdb
+
     if "func" in args:
         t0 = time.time()
         args.func(args)
@@ -109,6 +128,7 @@ def extract_best(args):
     params = Params.read(args.parameter_file)
     extract_best_solutions(params, nbest=args.nbest)
 
-def reoptimize_mcmc(args):
+
+def reopt_mcmc(args):
     params = Params.read(args.parameter_file)
     reoptimize_mcmc(params, n_walkers=args.n_walkers, n_steps=args.n_steps)

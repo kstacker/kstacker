@@ -1,5 +1,3 @@
-import h5py
-import numpy as np
 import os
 from .snr import compute_snr
 import emcee

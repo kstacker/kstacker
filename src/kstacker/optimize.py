@@ -116,15 +116,17 @@ def evaluate(
     # (2, Nimages, Norbits) -> (Norbits, Nimages, 2)
     positions = np.ascontiguousarray(np.transpose(positions))
 
-    norbits = orbital_grid.shape[0]
     e_null = np.isclose(orbital_grid[:, 1], 0)
 
     # pre-compute the projection matrices
     proj_matrices = orbit.compute_projection_matrices(*projection_grid.T)
     proj_matrices = np.ascontiguousarray(proj_matrices)
 
+    norbits = orbital_grid.shape[0]
+    nproj = projection_grid.shape[0]
+
     # Results are saved in chuncks of nsave to avoid keeping all results in memory
-    nsave = min(norbits, 1_000) * nbest
+    nsave = int(1e8)  # 10 * 1e8 * 4 / 1e6 = 4Gb
     isave = 0
     idata = 0
     ncols = 10
@@ -139,6 +141,7 @@ def evaluate(
             dtype=np.float32,
             shape=(norbits * nbest, ncols),
             chunks=(nbest, ncols),
+            maxshape=(norbits * nproj, 10),
         )
 
         # For each iteration:
@@ -176,21 +179,12 @@ def evaluate(
             )
 
             # Keep the nbest results, based on their SNR
-            nkeep = min(nvalid, nbest)
-            if nkeep == nvalid:
-                # then keep all results for this orbit
-                ind = np.arange(nkeep)
-            else:
-                ind = np.argsort(out[:, 2])[-nkeep:]
+            sel = out[:, 2] >= params.min_snr
+            nkeep = np.count_nonzero(sel)
 
-            # Save best results in out_full
-            sl = slice(isave, isave + nkeep)
-            out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
-            out_full[sl, 4:7] = projection_grid[valid][ind]  # omega, i, theta0
-            out_full[sl, 7:] = out[ind]  # signal, noise, snr
-            isave += nkeep
-
-            if isave + nbest > nsave:
+            if isave + nkeep > nsave:
+                if idata + isave > data.shape[0]:
+                    data.resize((1.2 * (idata + isave), ncols))
                 # write to disk the results that have been computed so far
                 data[idata : idata + isave] = out_full[:isave]
                 idata += isave
@@ -203,7 +197,18 @@ def evaluate(
                         flush=True,
                     )
 
+            # Save best results in out_full
+            if nkeep > 0:
+                sl = slice(isave, isave + nkeep)
+                out_full[sl, :4] = orbital_grid[j]  # a, e, t0, m0
+                out_full[sl, 4:7] = projection_grid[valid][sel]  # omega, i, theta0
+                out_full[sl, 7:] = out[sel]  # signal, noise, snr
+                isave += nkeep
+
         if isave > 0:
+            if isave > data.shape[0]:
+                data.resize((isave, ncols))
+
             # write the remaining orbits (isave < nsave) to disk
             data[idata : idata + isave] = out_full[:isave]
             idata += isave
@@ -211,27 +216,42 @@ def evaluate(
         # resize the dataset to the actual number of results that have been computed
         data.resize((idata, ncols))
 
-    print(f"Optimization is done, results saved in {outfile}")
+    print(f"Optimization is done, results saved in {outfile}", flush=True)
 
 
 def extract_best_solutions(params, nbest=None):
     """Sort on the SNR column and store the q best results."""
 
-    grid_dir = params.get_path("grid_dir")
-    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
-        res = f["DATA"][:]
-
-    ind = np.argsort(res[:, 9])[::-1]
-    res = res[ind]
-
     if nbest is None:
         nbest = params.q
+
+    print("Reading SNR column")
+    grid_dir = params.get_path("grid_dir")
+    # To keep memory usage low we load only the SNR column
+    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
+        snr = f["DATA"][:, 9]
+
+    print("Sorting")
+    ind = np.argsort(snr)  # sort by SNR
+    ind = ind[-nbest:]  # keep nbest solutions
+    ind = ind[::-1]  # reverse (decreasing SNR)
+    snr = None
+
+    print("Loading best solutions")
+    # Now load all columns for the best solutions
+    # H5Py needs a sorted index
+    with h5py.File(f"{grid_dir}/res.h5", "r") as f:
+        res = f["DATA"][np.sort(ind)]
+
+    # Need to sort again by decreasing SNR
+    ind = np.argsort(res[:, 9])[::-1]
+    res = res[ind]
 
     values_dir = params.get_path("values_dir", remove_if_exist=True)
     outfile = f"{values_dir}/res_grid.h5"
     print(f"Saving {nbest} best solutions in {outfile}")
     with h5py.File(outfile, "w") as f:
-        f["Best solutions"] = res[:nbest]
+        f["Best solutions"] = res
 
 
 def brute_force(params, dry_run=False, num_threads=0, show_progress=False):
