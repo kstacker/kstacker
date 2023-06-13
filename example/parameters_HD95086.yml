@@ -20,6 +20,9 @@ time: "1.322381930184805+2.2642026009582477+2.924024640657084+4.188911704312115"
 method: "convolve"
 upsampling_factor: 5
 
+# Use inverse variance weighting ?
+# signal = ∑(yi/σi²) / ∑(1/σi²)
+# var = 1 / ∑(1/σi²)
 invvar_weight: False
 
 # Remove planet for the noise and background computation
