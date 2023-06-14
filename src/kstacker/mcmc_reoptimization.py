@@ -1,6 +1,5 @@
 import os
 from .snr import compute_snr
-import emcee
 
 def log_prior(pos, params):
     """
@@ -99,6 +98,7 @@ def reoptimize_mcmc(params, n_walkers=2, n_steps=1000):
 
     pos = results[:n_walkers, :ndim]
 
+    import emcee
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_posterior, args=[params], threads=n_walkers)
 
     # Burn-in phase
