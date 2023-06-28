@@ -84,8 +84,7 @@ def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted, r_mask):
 def optimize_orbit(result, k, args, bounds):
     # get orbit and snr value before reoptimization for the k-th best value
     *x, signal, noise, snr_i = result
-
-    snr_init = compute_snr(x, *args[:-2], invvar_weighted=args[-2], r_mask=args[-1])
+    snr_init = -compute_snr_objfun(x, *args)
 
     with np.printoptions(precision=3, suppress=True):
         print(f"init  {k}: {np.array(x)} => {snr_init:.2f} (aper) {snr_i:.2f} (conv)")

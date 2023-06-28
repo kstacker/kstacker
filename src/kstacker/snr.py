@@ -94,6 +94,7 @@ def compute_snr_detailed(
             method=method,
             upsampling_factor=params.upsampling_factor,
             use_interp_bgnoise=use_interp_bgnoise,
+            r_mask=params.r_mask,
             return_all=True,
         )
         res.add_column([j], index=0, name="orbit")
