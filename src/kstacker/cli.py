@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from .gradient_reoptimization import reoptimize_gradient, compute_detailed_positions
+from .gradient_reoptimization import compute_detailed_positions, reoptimize_gradient
 from .mcmc_reoptimization import reoptimize_mcmc
 from .noise_profile import compute_noise_profiles, compute_snr_plots
 from .optimize import brute_force, extract_best_solutions

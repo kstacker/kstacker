@@ -3,12 +3,11 @@ import pathlib
 import h5py
 import numpy as np
 from astropy.io import ascii
-from numpy.testing import assert_almost_equal
-
 from kstacker.gradient_reoptimization import reoptimize_gradient
 from kstacker.noise_profile import compute_noise_profiles, compute_snr_plots
 from kstacker.optimize import brute_force
 from kstacker.orbit import plot_results
+from numpy.testing import assert_almost_equal
 
 
 def test_full_run(params_tmp):
