@@ -1,3 +1,4 @@
+import pdb
 import numpy as np
 from astropy.table import Table, vstack
 
@@ -99,6 +100,11 @@ def compute_snr_detailed(
         res.add_column([j], index=0, name="orbit")
         res.add_column((res["xpix"] - size // 2) * params.resol, index=4, name="xmas")
         res.add_column((res["ypix"] - size // 2) * params.resol, index=5, name="ymas")
+
+        # store the computed signal,noise,snr as columns
+        for key, val in res.meta.items():
+            res[key] = val
+        res.meta.clear()
         out.append(res)
 
         if verbose:

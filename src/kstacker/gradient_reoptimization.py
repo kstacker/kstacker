@@ -15,7 +15,8 @@ from joblib import Parallel, delayed
 
 from .imagerie import recombine_images
 from .orbit import orbit, plot_ontop, plot_orbites
-from .snr import compute_snr
+from .snr import compute_snr, compute_snr_detailed
+from .utils import read_results
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -75,6 +76,7 @@ def compute_snr_objfun(x, ts, size, scale, fwhm, data, invvar_weighted, r_mask):
         invvar_weighted=invvar_weighted,
         exclude_source=True,
         exclude_lobes=True,
+        use_interp_bgnoise=False,
         r_mask=r_mask,
     )
 
@@ -167,3 +169,34 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     )
 
     print("Done!")
+
+
+def compute_detailed_positions(
+    params,
+    method=None,
+    invvar_weighted=False,
+    exclude_source=True,
+    exclude_lobes=True,
+    use_interp_bgnoise=False,
+    verbose=False,
+):
+    """Recompute the positions,signal,noise in each image."""
+    values_dir = params.get_path("values_dir")
+    tbl = read_results(f"{values_dir}/results.txt", params)
+    x = tbl[["a", "e", "t0", "m0", "omega", "i", "theta_0"]].as_array()
+    x = x.view((float, len(x.dtype.names)))
+    res = compute_snr_detailed(
+        params,
+        x,
+        method=method,
+        invvar_weighted=invvar_weighted,
+        exclude_source=exclude_source,
+        exclude_lobes=exclude_lobes,
+        use_interp_bgnoise=use_interp_bgnoise,
+        verbose=verbose,
+    )
+    res.write(
+        f"{values_dir}/results_detailed.txt",
+        format="ascii.fixed_width_two_line",
+        overwrite=True,
+    )
