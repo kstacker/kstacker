@@ -1,7 +1,5 @@
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
-
 from kstacker._utils import cy_compute_snr
 from kstacker.noise_profile import compute_noise_profiles
 from kstacker.orbit import orbit
@@ -10,6 +8,7 @@ from kstacker.snr import (
     compute_snr,
     compute_snr_detailed,
 )
+from numpy.testing import assert_allclose
 
 # orbit parameters: a, e, t0, m, omega, i theta_0
 x = [53.75, 0.08, -98.2575, 1.59, -1.9438095, 0.5233333, -2.8409524]

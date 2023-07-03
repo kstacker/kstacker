@@ -2,7 +2,6 @@ import pathlib
 import shutil
 
 import pytest
-
 from kstacker.utils import Params
 
 CURRENT_PATH = pathlib.Path(__file__).absolute().parent

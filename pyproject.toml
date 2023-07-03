@@ -70,9 +70,6 @@ exclude_lines = [
   "def _ipython_key_completions_", # Don't complain about IPython completion
 ]
 
-[tool.isort]
-profile = "black"
-
 [tool.pytest.ini_options]
 testpaths = ["tests", "docs"]
 addopts = ["--import-mode=importlib"]
@@ -82,5 +79,13 @@ addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 88
-select = ["E", "F"]
+target-version = "py38"
+select = [
+  "E", "F", "W", # flake8
+  "I",           # isort
+  "UP",          # pyupgrade
+]
 ignore = ["E501", "E731", "E741"]
+unfixable = [
+  "F841", # Removes unused variables
+]

@@ -1,5 +1,4 @@
 import numpy as np
-
 from kstacker.orbit import (
     position,
     positions_at_multiple_times,

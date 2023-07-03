@@ -256,7 +256,7 @@ def compute_noise_apertures(
     angles = np.linspace(0, 2 * np.pi, n_aper, endpoint=False)
     xx = center + np.cos(angles) * xc + np.sin(angles) * yc
     yy = center + np.cos(angles) * yc - np.sin(angles) * xc
-
+    # pos is the positions for computation of noise and bkg at each radius (see VIP)
     pos = np.array([xx, yy]).T
     # exclude x,y
     pos = pos[1:]
@@ -271,6 +271,7 @@ def compute_noise_apertures(
     if fluxes.size == 0:
         res = 0, 0, 0
     else:
+        #std with Student correction
         std = np.std(fluxes, ddof=1) * np.sqrt(1 + (1 / n_aper))
         res = np.mean(fluxes), std, n_aper
 
