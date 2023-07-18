@@ -1,4 +1,4 @@
-# cython: language_level=3
+# cython: language_level=3, cdivision=True, boundscheck=False, wraparound=False
 
 import numpy as np
 
@@ -11,8 +11,6 @@ from libc.stdio cimport printf
 np.import_array()
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def photometry_preprocessed(double[:,:] image, double[:] x, double[:] y,
                             int upsampling_factor):
     """
@@ -67,8 +65,6 @@ cdef inline double interp(double arr[], double x, size_t size) nogil:
         return  arr[x1] + (arr[x2] - arr[x1]) * (x - x1)
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def cy_compute_snr(double[:,:,::1] images,
                    double[:,::1] positions,
                    double[:,::1] bkg_profiles,

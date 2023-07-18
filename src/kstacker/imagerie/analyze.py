@@ -271,7 +271,7 @@ def compute_noise_apertures(
     if fluxes.size == 0:
         res = 0, 0, 0
     else:
-        #std with Student correction
+        # std with Student correction
         std = np.std(fluxes, ddof=1) * np.sqrt(1 + (1 / n_aper))
         res = np.mean(fluxes), std, n_aper
 
