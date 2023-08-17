@@ -98,8 +98,10 @@ def compute_snr_detailed(
             return_all=True,
         )
         res.add_column([j], index=0, name="orbit")
-        res.add_column((res["xpix"] - size // 2) * params.resol, index=4, name="xmas")
-        res.add_column((res["ypix"] - size // 2) * params.resol, index=5, name="ymas")
+       # Conversion of xpix and ypix (K-Stacker reference frame) to ΔRA, ΔDEC
+        res.add_column(-(res["ypix"] - size // 2) * params.resol, index=4, name="ΔRA (mas)")
+        res.add_column((res["xpix"] - size // 2) * params.resol, index=5, name="ΔDEC (mas)")
+        res.add_column((res["signal"]/res["noise"]), index=8, name="snr")
 
         # store the computed signal,noise,snr as columns
         for key, val in res.meta.items():
