@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "kstacker"
 description = "TODO"
 readme = "README.rst"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "Hervé Le Coroller", email = "herve.lecoroller@lam.fr"},
@@ -49,7 +49,7 @@ write_to = "src/kstacker/version.py"
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py39']
 preview = true
 
 [tool.coverage]
@@ -78,7 +78,7 @@ addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py38"
+target-version = "py39"
 select = [
   "E", "F", "W", # flake8
   "I",           # isort
