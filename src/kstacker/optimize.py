@@ -153,6 +153,7 @@ def evaluate(
         #   avoid to many small writes
         # - every 'nsave' iterations, save 'out_full' to the HDF5 file
 
+        print("Looping on orbits", flush=True)
         for j in range(norbits):
             # reject more invalid orbits for the e=0 case
             valid = valid_proj if e_null[j] else slice(None)
@@ -189,13 +190,7 @@ def evaluate(
                 data[idata : idata + isave] = out_full[:isave]
                 idata += isave
                 isave = 0
-                if show_progress:
-                    tt = time.time() - t0
-                    remaining = tt * (norbits / j - 1)
-                    print(
-                        f"- {j}/{norbits}, {tt:.2f} sec., remains {remaining:.2f} sec.",
-                        flush=True,
-                    )
+                print(f"Saved intermediate results ({idata} solutions)", flush=True)
 
             # Save best results in out_full
             if nkeep > 0:
@@ -205,9 +200,16 @@ def evaluate(
                 out_full[sl, 7:] = out[sel]  # signal, noise, snr
                 isave += nkeep
 
+            if show_progress and j > 0 and j % 1000 == 0:
+                tt = time.time() - t0
+                remaining = tt * (norbits / j - 1)
+                print(
+                    f"- {j}/{norbits}, {tt:.2f} sec., remains {remaining:.2f} sec.",
+                    flush=True,
+                )
         if isave > 0:
-            if isave > data.shape[0]:
-                data.resize((isave, ncols))
+            if idata + isave > data.shape[0]:
+                data.resize((idata + isave, ncols))
 
             # write the remaining orbits (isave < nsave) to disk
             data[idata : idata + isave] = out_full[:isave]
@@ -225,19 +227,19 @@ def extract_best_solutions(params, nbest=None):
     if nbest is None:
         nbest = params.q
 
-    print("Reading SNR column")
+    print("Reading SNR column", flush=True)
     grid_dir = params.get_path("grid_dir")
     # To keep memory usage low we load only the SNR column
     with h5py.File(f"{grid_dir}/res.h5", "r") as f:
         snr = f["DATA"][:, 9]
 
-    print("Sorting")
+    print("Sorting", flush=True)
     ind = np.argsort(snr)  # sort by SNR
     ind = ind[-nbest:]  # keep nbest solutions
     ind = ind[::-1]  # reverse (decreasing SNR)
     snr = None
 
-    print("Loading best solutions")
+    print("Loading best solutions", flush=True)
     # Now load all columns for the best solutions
     # H5Py needs a sorted index
     with h5py.File(f"{grid_dir}/res.h5", "r") as f:
@@ -249,7 +251,7 @@ def extract_best_solutions(params, nbest=None):
 
     values_dir = params.get_path("values_dir", remove_if_exist=True)
     outfile = f"{values_dir}/res_grid.h5"
-    print(f"Saving {nbest} best solutions in {outfile}")
+    print(f"Saving {nbest} best solutions in {outfile}", flush=True)
     with h5py.File(outfile, "w") as f:
         f["Best solutions"] = res
 
