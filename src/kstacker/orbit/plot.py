@@ -222,34 +222,44 @@ def corner_plots(
     i_mean = np.mean(i)
     i_std = np.std(i)
 
-    omega_plus_theta_0 = omega + theta_0
-    omega_min_theta_0 = omega - theta_0
+    if omegatheta:
+        omega_plus_theta_0 = omega + theta_0
+        omega_min_theta_0 = omega - theta_0
 
-    omega_plus_theta_0 = omega_plus_theta_0 % np.pi * 2.0
-    omega_min_theta_0 = omega_min_theta_0 % np.pi * 2.0
+        omega_plus_theta_0 = omega_plus_theta_0 % np.pi * 2.0
+        omega_min_theta_0 = omega_min_theta_0 % np.pi * 2.0
 
-    omega_plus_theta_0_mean = np.mean(omega_plus_theta_0)
-    omega_plus_theta_0_std = np.std(omega_plus_theta_0)
-    omega_min_theta_0_mean = np.mean(omega_min_theta_0)
-    omega_min_theta_0_std = np.std(omega_min_theta_0)
+        omega_plus_theta_0_mean = np.mean(omega_plus_theta_0)
+        omega_plus_theta_0_std = np.std(omega_plus_theta_0)
+        omega_min_theta_0_mean = np.mean(omega_min_theta_0)
+        omega_min_theta_0_std = np.std(omega_min_theta_0)
 
-    omega_mean = (omega_plus_theta_0_mean + omega_min_theta_0_mean) / 2
-    theta_0_mean = (omega_plus_theta_0_mean - omega_min_theta_0_mean) / 2
+        omega_mean = (omega_plus_theta_0_mean + omega_min_theta_0_mean) / 2
+        theta_0_mean = (omega_plus_theta_0_mean - omega_min_theta_0_mean) / 2
 
-    omega_mean_err = (
-        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
-    )
-    theta_0_mean_err = (
-        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
-    )
+        omega_mean_err = (
+            math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+        )
+        theta_0_mean_err = (
+            math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+        )
 
-    # omega_mean = np.mean(omega)
-    # omega_std = np.std(omega)
-    # theta_0_mean = np.mean(theta_0)
-    # theta_0_std = np.std(theta_0)
-    # if omegatheta:
-    #     omega_theta = omega - theta_0
-    #     omega_p_theta = omega + theta_0
+    else:
+
+        omega = omega % np.pi * 2.0
+        theta_0 = theta_0 % np.pi * 2.0
+
+        # Adjust this line for your particular case
+        theta_0 = [theta - 2 * math.pi if theta > 3 else theta for theta in theta_0]
+
+        omega_mean = np.mean(omega)
+        omega_std = np.std(omega)
+        omega_mean_err = np.std(omega)
+
+        theta_0_mean = np.mean(theta_0)
+        theta_0_std = np.std(theta_0)
+        theta_0_mean_err = np.std(theta_0)
+
 
     with open("orbite_moyenne.txt", "w") as f:
         # écriture des paramètres dans le fichier
@@ -270,7 +280,7 @@ def corner_plots(
 
     f.close()
 
-    snr_grad = res["snr_gradient"]
+    snr_grad = res["snr_gradient"][:norbits]
 
     # 1st row : a as a function of others parameters
     axes[0, 0].hist(a, bins=nbins, color="darkcyan")
@@ -304,44 +314,85 @@ def corner_plots(
         t0_mean, m0_mean, yerr=m0_std, xerr=t0_std, ecolor="black", elinewidth=2.5
     )
     axes[3, 3].hist(m0, bins=nbins, color="darkcyan")
+
     # 5th row : omega_plus_theta_0 as a function of others parameters
-    axes[4, 0].scatter(a, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 0].errorbar(
-        a_mean,
-        omega_plus_theta_0_mean,
-        yerr=omega_plus_theta_0_std,
-        xerr=a_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[4, 1].scatter(e, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 1].errorbar(
-        e_mean,
-        omega_plus_theta_0_mean,
-        yerr=omega_plus_theta_0_std,
-        xerr=e_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[4, 2].scatter(t0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 2].errorbar(
-        t0_mean,
-        omega_plus_theta_0_mean,
-        yerr=omega_plus_theta_0_std,
-        xerr=t0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[4, 3].scatter(m0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[4, 3].errorbar(
-        m0_mean,
-        omega_plus_theta_0_mean,
-        yerr=omega_plus_theta_0_std,
-        xerr=m0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[4, 4].hist(omega_plus_theta_0, bins=nbins, color="darkcyan")
+    if omegatheta:
+        axes[4, 0].scatter(a, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[4, 0].errorbar(
+            a_mean,
+            omega_plus_theta_0_mean,
+            yerr=omega_plus_theta_0_std,
+            xerr=a_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 1].scatter(e, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[4, 1].errorbar(
+            e_mean,
+            omega_plus_theta_0_mean,
+            yerr=omega_plus_theta_0_std,
+            xerr=e_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 2].scatter(t0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[4, 2].errorbar(
+            t0_mean,
+            omega_plus_theta_0_mean,
+            yerr=omega_plus_theta_0_std,
+            xerr=t0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 3].scatter(m0, omega_plus_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[4, 3].errorbar(
+            m0_mean,
+            omega_plus_theta_0_mean,
+            yerr=omega_plus_theta_0_std,
+            xerr=m0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 4].hist(omega_plus_theta_0, bins=nbins, color="darkcyan")
+    else:
+        axes[4, 0].scatter(a, omega, c=snr_grad, cmap=color_scatter)
+        axes[4, 0].errorbar(
+            a_mean,
+            omega_mean,
+            yerr=omega_std,
+            xerr=a_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 1].scatter(e, omega, c=snr_grad, cmap=color_scatter)
+        axes[4, 1].errorbar(
+            e_mean,
+            omega_mean,
+            yerr=omega_std,
+            xerr=e_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 2].scatter(t0, omega, c=snr_grad, cmap=color_scatter)
+        axes[4, 2].errorbar(
+            t0_mean,
+            omega_mean,
+            yerr=omega_std,
+            xerr=t0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 3].scatter(m0, omega, c=snr_grad, cmap=color_scatter)
+        axes[4, 3].errorbar(
+            m0_mean,
+            omega_mean,
+            yerr=omega_std,
+            xerr=m0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[4, 4].hist(omega, bins=nbins, color="darkcyan")
+
     # 6th row : i as a function of others parameters
     axes[5, 0].scatter(a, i, c=snr_grad, cmap=color_scatter)
     axes[5, 0].errorbar(
@@ -359,94 +410,182 @@ def corner_plots(
     axes[5, 3].errorbar(
         m0_mean, i_mean, yerr=i_std, xerr=m0_std, ecolor="black", elinewidth=2.5
     )
-    axes[5, 4].scatter(omega_plus_theta_0, i, c=snr_grad, cmap=color_scatter)
-    axes[5, 4].errorbar(
-        omega_plus_theta_0_mean,
-        i_mean,
-        yerr=i_std,
-        xerr=omega_plus_theta_0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
+    if omegatheta:
+        axes[5, 4].scatter(omega_plus_theta_0, i, c=snr_grad, cmap=color_scatter)
+        axes[5, 4].errorbar(
+            omega_plus_theta_0_mean,
+            i_mean,
+            yerr=i_std,
+            xerr=omega_plus_theta_0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+    else:
+        axes[5, 4].scatter(omega, i, c=snr_grad, cmap=color_scatter)
+        axes[5, 4].errorbar(
+            omega_mean,
+            i_mean,
+            yerr=i_std,
+            xerr=omega_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
     axes[5, 5].hist(i, bins=nbins, color="darkcyan")
-    # 7th row : theta0 as a function of others parameters
-    axes[6, 0].scatter(a, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 0].errorbar(
-        a_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=a_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 1].scatter(e, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 1].errorbar(
-        e_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=e_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 2].scatter(t0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 2].errorbar(
-        t0_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=t0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 3].scatter(m0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 3].errorbar(
-        m0_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=m0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 4].scatter(
-        omega_plus_theta_0, omega_min_theta_0, c=snr_grad, cmap=color_scatter
-    )
-    axes[6, 4].errorbar(
-        omega_plus_theta_0_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=omega_plus_theta_0_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 5].scatter(i, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
-    axes[6, 5].errorbar(
-        i_mean,
-        omega_min_theta_0_mean,
-        yerr=omega_min_theta_0_std,
-        xerr=i_std,
-        ecolor="black",
-        elinewidth=2.5,
-    )
-    axes[6, 6].hist(omega_min_theta_0, bins=nbins, color="darkcyan")
 
-    # Figure Title
-    fig.suptitle(
-        f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
-    )
+    # 7th row : theta0 as a function of others parameters
+    if omegatheta:
+        axes[6, 0].scatter(a, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 0].errorbar(
+            a_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=a_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 1].scatter(e, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 1].errorbar(
+            e_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=e_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 2].scatter(t0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 2].errorbar(
+            t0_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=t0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 3].scatter(m0, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 3].errorbar(
+            m0_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=m0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 4].scatter(
+            omega_plus_theta_0, omega_min_theta_0, c=snr_grad, cmap=color_scatter
+        )
+        axes[6, 4].errorbar(
+            omega_plus_theta_0_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=omega_plus_theta_0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 5].scatter(i, omega_min_theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 5].errorbar(
+            i_mean,
+            omega_min_theta_0_mean,
+            yerr=omega_min_theta_0_std,
+            xerr=i_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 6].hist(omega_min_theta_0, bins=nbins, color="darkcyan")
+
+        # Figure Title
+        fig.suptitle(
+            f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
+        )
+    else:
+        axes[6, 0].scatter(a, theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 0].errorbar(
+            a_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=a_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 1].scatter(e, theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 1].errorbar(
+            e_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=e_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 2].scatter(t0, theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 2].errorbar(
+            t0_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=t0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 3].scatter(m0, theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 3].errorbar(
+            m0_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=m0_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 4].scatter(
+            omega, theta_0, c=snr_grad, cmap=color_scatter
+        )
+        axes[6, 4].errorbar(
+            omega_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=omega_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 5].scatter(i, theta_0, c=snr_grad, cmap=color_scatter)
+        axes[6, 5].errorbar(
+            i_mean,
+            theta_0_mean,
+            yerr=theta_0_std,
+            xerr=i_std,
+            ecolor="black",
+            elinewidth=2.5,
+        )
+        axes[6, 6].hist(theta_0, bins=nbins, color="darkcyan")
+
+        # Figure Title
+        fig.suptitle(
+            f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
+        )
 
     # Axes Labels
     axes[6, 0].set_xlabel("a (a.u.)")
     axes[6, 1].set_xlabel("e")
     axes[6, 2].set_xlabel("$t_0$ (yrs)")
     axes[6, 3].set_xlabel("$m0$ (solar_mass)")
-    axes[6, 4].set_xlabel(r"$\Omega$ + $\omega$ (rad)")
+    if omegatheta:
+        axes[6, 4].set_xlabel(r"$\Omega$ + $\omega$ (rad)")
+    else:
+        axes[6, 4].set_xlabel(r"$\Omega$ (rad)")
     axes[6, 5].set_xlabel("i (rad)")
-    axes[6, 6].set_xlabel(r"$\Omega$ - $\omega$ (rad)")
+    if omegatheta:
+        axes[6, 6].set_xlabel(r"$\Omega$ - $\omega$ (rad)")
+    else:
+        axes[6, 6].set_xlabel(r"$\omega$ (rad)")
     axes[1, 0].set_ylabel("e")
     axes[2, 0].set_ylabel("$t_0$ (yrs)")
     axes[3, 0].set_ylabel("$m0$ (solar_mass)")
-    axes[4, 0].set_ylabel(r"$\Omega$ + $\omega$ (rad)")
+    if omegatheta:
+        axes[4, 0].set_ylabel(r"$\Omega$ + $\omega$ (rad)")
+    else:
+        axes[4, 0].set_ylabel(r"$\Omega$ (rad)")
     axes[5, 0].set_ylabel("i (rad)")
-    axes[6, 0].set_ylabel(r"$\Omega$ - $\omega$ (rad)")
+    if omegatheta:
+        axes[6, 0].set_ylabel(r"$\Omega$ - $\omega$ (rad)")
+    else:
+        axes[6, 0].set_ylabel(r"$\omega$ (rad)")
     # Remove labels at the middle of the subplots
     for k in range(1, 6, 1):
         plt.setp([plot.get_xticklabels() for plot in axes[k, :]], visible=False)
