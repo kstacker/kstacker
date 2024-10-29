@@ -11,7 +11,6 @@ from .optimize import brute_force, extract_best_solutions
 from .utils import Params
 from .version import version
 
-
 def main():
     parser = argparse.ArgumentParser(description="K-Stacker")
     parser.add_argument("--debug", action="store_true", help="debug flag")

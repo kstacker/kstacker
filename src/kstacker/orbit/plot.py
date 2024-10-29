@@ -2,13 +2,15 @@
 Functions used to represent the orbit of the planet
 """
 
-
 import math
 import os
+import h5py
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from photutils import CircularAperture, aperture_photometry
+
 import seaborn as sns  # used for the scatterplot colormap
 from astropy.visualization import ZScaleInterval
 from matplotlib.colors import ListedColormap  # used for the scatterplot
@@ -271,6 +273,7 @@ def corner_plots(
     f.close()
 
     snr_grad = res["snr_gradient"]
+    snr_grad = snr_grad[:norbits] # verifier cette ligne
 
     # 1st row : a as a function of others parameters
     axes[0, 0].hist(a, bins=nbins, color="darkcyan")
@@ -530,3 +533,204 @@ def plot_results(params, nimg=None, savefig=None, snr_grad_limits=None):
 
     if savefig:
         fig.savefig(savefig)
+
+
+def create_masked_image(N, r_mask, r_mask_ext):
+    """
+    Create an NxN image with zeros for r <= r_mask and r >= r_mask_ext, and ones elsewhere.
+    """
+    image = np.zeros((N, N))
+    center = N // 2
+    for x in range(N):
+        for y in range(N):
+            r = np.sqrt((x - center)**2 + (y - center)**2)
+            if r_mask < r < r_mask_ext:
+                image[x, y] = 1
+    return image
+
+def calculate_unmasked_light_percentage(fwhm, image, center, dist):
+    """
+    Calculate the percentage of unmasked light for each position in `dist` using an image.
+    """
+    N = image.shape[0]
+    radius = fwhm
+    percentages = []
+
+    for d in dist:
+        mask = np.zeros_like(image)
+        x0, y0 = center[0] + d, center[1]
+
+        # Create a mask for the integration circle
+        for x in range(N):
+            for y in range(N):
+                if np.sqrt((x - x0)**2 + (y - y0)**2) <= radius:
+                    mask[x, y] = 1
+
+        # Calculate the unmasked area
+        unmasked_area = np.sum(image * mask)
+        total_area = np.pi * radius**2
+
+        # Calculate percentage of unmasked area
+        percentage = unmasked_area / total_area
+        percentages.append(percentage)
+
+    return percentages
+
+def calculate_unmasked_light_percentage_photutils(r_mask, r_mask_ext, fwhm, image, center, dist):
+    """
+    Calculate the percentage of unmasked light using photutils for sub-pixel integration.
+    """
+
+    radius = fwhm
+    percentages = []
+
+    for d in dist:
+
+        if d + radius <= r_mask or d - radius >= r_mask_ext:
+            # Entire circle is masked
+            percentages.append(0)
+        elif d - radius >= r_mask and d + radius <= r_mask_ext:
+            # Entire circle is unmasked
+            percentages.append(1)
+        else:
+            # Define the position of the aperture
+            x0, y0 = center[0] + d, center[1]
+            aperture = CircularAperture((x0, y0), r=radius)
+
+            # Perform aperture photometry
+            phot_table = aperture_photometry(image, aperture)
+
+            # Calculate the unmasked area
+            unmasked_area = phot_table['aperture_sum'][0]
+            total_area = np.pi * radius**2
+
+            # Calculate percentage of unmasked area
+            percentage = unmasked_area / total_area
+            percentages.append(percentage)
+
+    return percentages
+
+
+def percent_light_unmasked(orbital_parameters, ts, size_image, scale, fwhm, r_mask, r_mask_ext):
+
+    # Compute image with 0 for r<r_mask and r>r_mask_ext and one elsewhere
+    image_masked = create_masked_image(size_image, r_mask, r_mask_ext)
+    center = (size_image // 2, size_image // 2)
+
+    percentages_lum_unmasked = []
+
+    for j in range(orbital_parameters.shape[0]):
+        a, e, t0, m0, omega, i, theta_0 = orbital_parameters[j]
+        xp, yp = orbit.project_position_full(ts, a, e, t0, m0, omega, i, theta_0).T # Check .T is required !!!
+        xpix = scale * xp
+        ypix = scale * yp
+        dist = [math.sqrt(x ** 2 + y ** 2) for x, y in zip(xpix, ypix)]
+
+        # Calculate the percentage of unmasked light
+        # Calculate at each epoch (i.e. for n dist)
+        percentages = calculate_unmasked_light_percentage_photutils(r_mask, r_mask_ext, fwhm, image_masked, center, dist)
+        percentages_lum_unmasked.append(sum(percentages) / len(dist))
+
+    return percentages_lum_unmasked
+
+
+def proba_detection_file(path, params, snr_ks_seuil):
+    """
+    Process each row in the 'DATA' dataset of an H5 file, compute DeltaS for each row,
+    and save the results in a .npy file.
+
+    Parameters:
+    h5_file_path (str): Path to the H5 file.
+    snr_ks_seuil (float): The SNR KS threshold value.
+
+    Output:
+    A .npy file named 'proba_detection_file.npy' containing the processed data.
+    """
+    from ..utils import Params
+
+    if isinstance(path + params, str):
+        params = Params.read(path + params)
+
+
+    time = params.time
+    time_parts = time.split("+")
+    epochs = [float(part) for part in time_parts]
+
+    # Open the H5 file for reading
+    with h5py.File(path + '/brute_grid/res.h5', 'r') as h5_file:
+        # Extract the entire 'DATA' dataset
+        data = h5_file['DATA'][:]
+
+        # Computation of the percentage behind masks for each orbit (with a mean on the epochs)
+
+        orbital_parameters = data[:, 0:7]
+        percentages_lum_unmasked = percent_light_unmasked(orbital_parameters, epochs, params.n, params.scale, params.fwhm, params.r_mask, params.r_mask_ext)
+
+        # Initialize an empty array for the output data
+        output_data = np.zeros((data.shape[0], 10), dtype=np.float32)
+
+        # Columns: DeltaS, contrast, mass_planet, a, e, t0, m0, omega, i, theta0
+        # a, e, t0, m0, omega, i, theta0 are columns 0 to 6 in the 'DATA' dataset
+        output_data[:, 3:10] = orbital_parameters
+
+        # Calculate DeltaS for each row
+        output_data[:, 0] = snr_ks_seuil * data[:, 8] - data[:, 7]  # DeltaS = SNR_KS_seuil * noise - signal
+
+        # contrast (column 1) and mass_planet (column 2) are set to zero for now
+        output_data[:, 1:3] = 0
+
+    # Save the output data to a .npy file
+    np.save(path + '/proba_detection_file.npy', output_data)
+
+
+#def create_proba_detection_file(path, starAge, starAppMag, filter, model_mag_mass, size_images, N_file, numCore, maxSnrKS, kContrast, starMass, starDist, nbIm, epochs):
+    """
+    Create a numpy array file for a given core containing, for each (non redundant) orbit, the signal difference to
+    reach maxSnrKS (1st column), the contrast (2nd column), the mass (3rd column) and the orbital parameters
+
+    :param path: Path to the directory where signal, noise and grid files are for one core (same as numpy array saving directory)
+    :param images_cube: cube of images. Used only in the simplified version (I=0 => in mask; I !=0 => out of mask)
+    :param size_images: integer of the size of the square image
+    :param N_file: Number of files per core
+    :param numCore: Core number
+    :param maxSnrKS: Snr to reach
+    :param kContrast: Correcting coefficient due to images normalization
+
+    res=np.array([[]]*9).transpose()
+
+    for k in range(N_file):
+        sub_s_values = np.load(path+'/s_values'+str(numCore)+'_'+str(k)+'.npy', allow_pickle=True)
+        sub_n_values = np.load(path+'/n_values' + str(numCore) + '_' + str(k) + '.npy', allow_pickle=True)
+        sub_grid = np.load(path+'/grid'+str(numCore)+'_'+str(k)+'.npy', allow_pickle=True)
+
+        #read each orbit in grid files
+        for xInd in [np.array([aInd,eInd,t0Ind,omegaInd,iInd,theta0Ind]) for aInd in range(int(sub_grid.shape[1])) for eInd in range(int(sub_grid.shape[2])) for t0Ind in range(int(sub_grid.shape[3])) for omegaInd in range(int(sub_grid.shape[4])) for iInd in range(int(sub_grid.shape[5])) for theta0Ind in range(int(sub_grid.shape[6]))]:
+            x = sub_grid[:,xInd[0],xInd[1],xInd[2],xInd[3],xInd[4],xInd[5]] #orbital parameters
+            s = sub_s_values[xInd[0],xInd[1],xInd[2],xInd[3],xInd[4],xInd[5]] #signal
+            n = sub_n_values[xInd[0],xInd[1],xInd[2],xInd[3],xInd[4],xInd[5]] #noise
+
+
+
+            DeltaS = maxSnrKS * n - s #compute signal to reach maxSnrKS
+
+
+            # nb_epochs_out_mask = numb_epochs_out_mask_proportion(x, size_images, starMass, nbIm, epochs)
+            #print ('nb_epochs_out_mask = ', nb_epochs_out_mask)
+
+            if DeltaS < 0:
+                print ('Warning: One DeltaS value < 0 and not taken into account in the statistic = ', str(DeltaS))
+
+            #if nb_epochs_out_mask > 0.01:
+
+                #if DeltaS > 0:
+                #    contrast = DeltaS * kContrast / nb_epochs_out_mask  # compute contrast from DeltaS
+                #    mass = mag_to_mass(starAge, starDist, starAppMag, -2.5 * np.log10(contrast), filter, model=model_mag_mass)[0]  # convert contrast in mass, the vigan function takes as argument the apparent magnitude relative to the star
+                #    res = np.insert(res, 0, np.array([DeltaS, contrast, mass, x[0], x[1], x[2], x[3], x[4], x[5]]),
+                #                    axis=0)
+
+                #elif nb_epochs_out_mask <= 0.01 :
+                #    res = np.insert(res, 0, np.array([DeltaS, 999., 999., x[0], x[1], x[2], x[3], x[4], x[5]]),
+                #                    axis=0)
+
+    #np.save(path + '/mess_'+ str(numCore)+ '.npy', res)
+    """

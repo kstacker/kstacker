@@ -3,6 +3,8 @@ import os
 import h5py
 import numpy as np
 
+import emcee
+
 
 def log_prior(params):
     # Define your prior here
@@ -56,8 +58,6 @@ def reoptimize_mcmc(params, n_jobs=1, n_orbits=None, n_walkers=100, n_steps=1000
     p0 = np.zeros((n_walkers, ndim))
     for i in range(ndim):
         p0[:, i] = results
-
-    import emcee
 
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_posterior, args=[data])
 
