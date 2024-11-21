@@ -76,6 +76,11 @@ Running |kstacker|
 
     kstacker reopt parameters.yml
 
+  or the mcmc by launching
+  in a terminal::
+
+    kstacker mcmc parameters.yml
+
 Running on a Slurm cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
