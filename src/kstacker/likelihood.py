@@ -105,42 +105,13 @@ def compute_log_likelihood(
     if np.any(np.isnan(noise)):
         return -np.inf
 
-    #sigma_inv2 = np.sum(1 / noise ** 2)
-    #loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2 - 0.5 * np.sum(signal **2 / noise ** 2)
-
-    #loglikelihood = np.log10(1 - 10**(-0.5*np.sum(signal ** 2 / noise ** 2)))
-    # Set high precision
-    mp.dps = 200
-    signal = [mp.mpf(x) for x in signal]
-
-    if len(noise) == 0:
-        print("Error: noise array is empty; loglikelihood = -np.inf")
-        return -np.inf
-
-    if np.any(np.isclose(noise, 0)):
-        print("Error: noise contains values close to zero; loglikelihood = -np.inf")
-        return -np.inf
+    # loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2 - 0.5 * np.sum(signal **2 / noise ** 2)
 
     try:
-        # Convert all values in noise to mpf
-        noise = [mp.mpf(x) for x in noise]
-    except (ValueError, TypeError) as e:
-        print(f"Error converting noise values to mpf: {e}; loglikelihood = -np.inf")
-        return -np.inf
-
-    signal_squared = [s ** 2 for s in signal]
-    noise_squared = [n ** 2 for n in noise]
-
-    try:
-        sum_ratio_s_n_square = sum(s / n for s, n in zip(signal_squared, noise_squared))
-        x = -0.5 * sum_ratio_s_n_square
-        loglikelihood = float(mp.log10(1 - mp.power(10, x)))
+        sigma_inv2 = np.sum(1 / noise ** 2)
+        loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
         if np.isnan(loglikelihood):
             return -np.inf
         return loglikelihood
     except ZeroDivisionError:
-        return 0.
-    except Exception as e:
-        # Catch other exceptions for debugging
-        print(f"An unexpected error occurred: {e}")
         return -np.inf

@@ -105,7 +105,7 @@ def log_posterior(orbital_params, args):
     return lp + log_likelihood(orbital_params, ts, size, scale, fwhm, data)
 
 
-def reoptimize_mcmc(params, n_jobs=1, n_walkers=14, n_steps=150000, n_orbits=1000):
+def reoptimize_mcmc(params, n_jobs=1, n_walkers=14, n_steps=80000, n_orbits=1000):
     # We sort the results in several directories
     values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
@@ -128,7 +128,7 @@ def reoptimize_mcmc(params, n_jobs=1, n_walkers=14, n_steps=150000, n_orbits=100
     ndim = p0.shape[1]
 
     # Define search range
-    nbr_psf = 3.
+    nbr_psf = 1.
     delta_a = nbr_psf * (bounds[0][1]-bounds[0][0]) / params.grid.limits('a')[2]
     delta_e = nbr_psf * (bounds[1][1]-bounds[1][0]) / params.grid.limits('e')[2]
     delta_t0 = nbr_psf * (bounds[2][1] - bounds[2][0]) / params.grid.limits('t0')[2]
