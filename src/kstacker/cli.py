@@ -70,14 +70,20 @@ def main():
     # ---------------------------------------------------------------
     # mcmc parser
     sub_mcmc = subparsers.add_parser(
-        "mcmc", help="re-optimize the best SNR values with mcmc"
+        "mcmc", help="Search for the best K-stacker solutions by optimizing a likelihood function using the emcee sampler."
     )
     sub_mcmc.add_argument("parameter_file", help="Parameter file (yml)")
     sub_mcmc.add_argument(
-        "--njobs", type=int, default=1, help="number of processes (-1 to use all CPUs)"
+        "--njobs", type=int, default=1, help="number of processes (default=1; -1 to use all CPUs)"
     )
     sub_mcmc.add_argument(
-        "--norbits", type=int, help="number of orbits (all by default)"
+        "--nwalkers", type=int, default=14, help="number of walkers (default=14)"
+    )
+    sub_mcmc.add_argument(
+        "--nsteps", type=int, default=150000, help="number of max mcmc steps (default 150 000)"
+    )
+    sub_mcmc.add_argument(
+        "--norbits", type=int, default=1000, help="number of mcmc orbits saved (default 1000)"
     )
     sub_mcmc.set_defaults(func=reopt_mcmc)
 
@@ -161,8 +167,7 @@ def extract_best(args):
 
 def reopt_mcmc(args):
     params = Params.read(args.parameter_file)
-    reoptimize_mcmc(params, n_jobs=args.njobs, n_orbits=args.norbits)
-
+    reoptimize_mcmc(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps,  n_orbits=args.norbits)
 
 def recompute_positions(args):
     params = Params.read(args.parameter_file)
