@@ -1175,3 +1175,5 @@ def plot_converge_points_map(images, ts, scale, N, M, log_probabilities, samples
     mpl.pyplot.tight_layout()
     mpl.pyplot.show()
     mpl.pyplot.close()
+
+
