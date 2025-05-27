@@ -160,6 +160,306 @@ def plot_snr_curve(snr_gradient, snr_brut_force, ax=None):
     ax.legend()
     ax.set(title="SNR Curves")
 
+def corner_plots_mcmc(
+    params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)
+):
+    from ..utils import Params, read_results
+
+    fig, axes = mpl.pyplot.subplots(ncols=7, nrows=7, figsize=figsize)
+
+    # fmt: off
+    flatui = ["#001EF5", "#002DF5", "#003CF5", "#004CF5", "#005BF5", "#016BF5", "#017AF5", "#0189F5", "#0199F5",
+              "#02A8F5", "#02B7F5", "#02C6F5", "#02D6F5", "#03E5F6", "#03F4F6", "#03F6E8", "#03F6D9", "#03F6CA",
+              "#04F6BB", "#04F6AC", "#04F69D", "#04F68E", "#05F680", "#05F671", "#05F662", "#05F653", "#06F744",
+              "#06F735", "#06F727", "#06F718", "#07F709", "#13F707", "#22F707", "#31F707", "#41F708", "#50F708",
+              "#5FF708", "#6EF708", "#7DF808", "#8CF809", "#9BF809", "#AAF809", "#B9F809", "#C8F80A", "#D7F80A",
+              "#E6F80A", "#F5F80A", "#F8ED0B", "#F8DE0B", "#F8D00B", "#F8C10B", "#F9B20C", "#F9A40C", "#F9950C",
+              "#F9870C", "#F9780D", "#F96A0D", "#F95B0D", "#F94D0D", "#F93E0E", "#F9300E", "#F9210E", "#F9130E",
+              "#F90F18"]  # creation of a color gradient
+    # fmt: on
+    # creating the colormap
+    color_scatter = ListedColormap(sns.color_palette(flatui).as_hex())
+    
+    if isinstance(params, str):
+        path = os.path.dirname(params)
+        params = Params.read(params)
+        params.work_dir = path
+
+    res = read_results(os.path.join(params.work_dir, "values", "results_mcmc.txt"), params)
+
+    grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
+    grid = grid.view("f8").reshape(grid.shape[0], 7)
+
+    if norbits is not None:
+        grid = grid[:norbits]
+    else:
+        norbits = grid.shape[0]
+
+    a, e, t0, m0, omega, i, theta_0 = grid.T
+
+    a_mean = np.mean(a)
+    a_std = np.std(a)
+    m0_mean = np.mean(m0)
+    m0_std = np.std(m0)
+    e_mean = np.mean(e)
+    e_std = np.std(e)
+
+    period_mean = np.sqrt(a_mean**3 / m0_mean)
+    t0 = t0 % period_mean
+    t0_mean = np.mean(t0)
+    t0_std = np.std(t0)
+
+    # Transformation in the classical reference frame (ex: ORBITIZE):
+    i = -i + np.pi
+    omega = -omega + np.pi
+    theta_0 = theta_0 + np.pi
+
+    # omega = omega % np.pi  # Check that this transformation % pi for omega and theta_0 is ok
+    # theta_0 = theta_0 % np.pi
+
+    i_mean = np.mean(i)
+    i_std = np.std(i)
+
+    omega_plus_theta_0 = omega + theta_0
+    omega_min_theta_0 = omega - theta_0
+
+    omega_plus_theta_0 = omega_plus_theta_0 % np.pi * 2.0
+    omega_min_theta_0 = omega_min_theta_0 % np.pi * 2.0
+
+    omega_plus_theta_0_mean = np.mean(omega_plus_theta_0)
+    omega_plus_theta_0_std = np.std(omega_plus_theta_0)
+    omega_min_theta_0_mean = np.mean(omega_min_theta_0)
+    omega_min_theta_0_std = np.std(omega_min_theta_0)
+
+    omega_mean = (omega_plus_theta_0_mean + omega_min_theta_0_mean) / 2
+    theta_0_mean = (omega_plus_theta_0_mean - omega_min_theta_0_mean) / 2
+
+    omega_mean_err = (
+        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+    )
+    theta_0_mean_err = (
+        math.sqrt(omega_plus_theta_0_std**2 + omega_min_theta_0_std**2) / 2
+    )
+
+    with open("orbite_moyenne.txt", "w") as f:
+        # écriture des paramètres dans le fichier
+        f.write("Mean Orbital parameters in a reference frame similar to orbitize\n")
+        f.write(f"a = {a_mean:.3f} +- {a_std:.3f}\n")
+        f.write(f"e = {e_mean:.3f} +- {e_std:.3f}\n")
+        f.write(f"t_0 = {t0_mean:.3f} +- {t0_std:.3f}\n")
+        f.write(f"i = {math.degrees(i_mean):.3f} +- {math.degrees(i_std):.3f}\n")
+        f.write(f"m_star = {m0_mean:.3f} +- {m0_std:.3f}\n")
+        f.write(
+            f"omega = {math.degrees(omega_mean):.3f} +-"
+            f" {math.degrees(omega_mean_err):.3f}\n"
+        )
+        f.write(
+            f"theta_0 = {math.degrees(theta_0_mean):.3f} +-"
+            f" {math.degrees(theta_0_mean_err):.3f}\n"
+        )
+
+    f.close()
+
+    log_prob = res["log_prob"]
+    log_prob = log_prob[:norbits] # verifier cette ligne
+
+    # 1st row : a as a function of others parameters
+    axes[0, 0].hist(a, bins=nbins, color="darkcyan")
+    # 2nd row : e as a function of others parameters
+    im = axes[1, 0].scatter(a, e, c=log_prob, cmap=color_scatter)
+    axes[1, 0].errorbar(
+        a_mean, e_mean, yerr=e_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
+    axes[1, 1].hist(e, bins=nbins, color="darkcyan")
+    # 3rd row : t0 as a function of others parameters
+    axes[2, 0].scatter(a, t0, c=log_prob, cmap=color_scatter)
+    axes[2, 0].errorbar(
+        a_mean, t0_mean, yerr=t0_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
+    axes[2, 1].scatter(e, t0, c=log_prob, cmap=color_scatter)
+    axes[2, 1].errorbar(
+        e_mean, t0_mean, yerr=t0_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
+    axes[2, 2].hist(t0, bins=nbins, color="darkcyan")
+    # 4rd row : m0 as a function of others parameters
+    axes[3, 0].scatter(a, m0, c=log_prob, cmap=color_scatter)
+    axes[3, 0].errorbar(
+        a_mean, m0_mean, yerr=m0_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
+    axes[3, 1].scatter(e, m0, c=log_prob, cmap=color_scatter)
+    axes[3, 1].errorbar(
+        e_mean, m0_mean, yerr=m0_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
+    axes[3, 2].scatter(t0, m0, c=log_prob, cmap=color_scatter)
+    axes[3, 2].errorbar(
+        t0_mean, m0_mean, yerr=m0_std, xerr=t0_std, ecolor="black", elinewidth=2.5
+    )
+    axes[3, 3].hist(m0, bins=nbins, color="darkcyan")
+    # 5th row : omega_plus_theta_0 as a function of others parameters
+    axes[4, 0].scatter(a, omega_plus_theta_0, c=log_prob, cmap=color_scatter)
+    axes[4, 0].errorbar(
+        a_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=a_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[4, 1].scatter(e, omega_plus_theta_0, c=log_prob, cmap=color_scatter)
+    axes[4, 1].errorbar(
+        e_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=e_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[4, 2].scatter(t0, omega_plus_theta_0, c=log_prob, cmap=color_scatter)
+    axes[4, 2].errorbar(
+        t0_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=t0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[4, 3].scatter(m0, omega_plus_theta_0, c=log_prob, cmap=color_scatter)
+    axes[4, 3].errorbar(
+        m0_mean,
+        omega_plus_theta_0_mean,
+        yerr=omega_plus_theta_0_std,
+        xerr=m0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[4, 4].hist(omega_plus_theta_0, bins=nbins, color="darkcyan")
+    # 6th row : i as a function of others parameters
+    axes[5, 0].scatter(a, i, c=log_prob, cmap=color_scatter)
+    axes[5, 0].errorbar(
+        a_mean, i_mean, yerr=i_std, xerr=a_std, ecolor="black", elinewidth=2.5
+    )
+    axes[5, 1].scatter(e, i, c=log_prob, cmap=color_scatter)
+    axes[5, 1].errorbar(
+        e_mean, i_mean, yerr=i_std, xerr=e_std, ecolor="black", elinewidth=2.5
+    )
+    axes[5, 2].scatter(t0, i, c=log_prob, cmap=color_scatter)
+    axes[5, 2].errorbar(
+        t0_mean, i_mean, yerr=i_std, xerr=t0_std, ecolor="black", elinewidth=2.5
+    )
+    axes[5, 3].scatter(m0, i, c=log_prob, cmap=color_scatter)
+    axes[5, 3].errorbar(
+        m0_mean, i_mean, yerr=i_std, xerr=m0_std, ecolor="black", elinewidth=2.5
+    )
+    axes[5, 4].scatter(omega_plus_theta_0, i, c=log_prob, cmap=color_scatter)
+    axes[5, 4].errorbar(
+        omega_plus_theta_0_mean,
+        i_mean,
+        yerr=i_std,
+        xerr=omega_plus_theta_0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[5, 5].hist(i, bins=nbins, color="darkcyan")
+    # 7th row : theta0 as a function of others parameters
+    axes[6, 0].scatter(a, omega_min_theta_0, c=log_prob, cmap=color_scatter)
+    axes[6, 0].errorbar(
+        a_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=a_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 1].scatter(e, omega_min_theta_0, c=log_prob, cmap=color_scatter)
+    axes[6, 1].errorbar(
+        e_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=e_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 2].scatter(t0, omega_min_theta_0, c=log_prob, cmap=color_scatter)
+    axes[6, 2].errorbar(
+        t0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=t0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 3].scatter(m0, omega_min_theta_0, c=log_prob, cmap=color_scatter)
+    axes[6, 3].errorbar(
+        m0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=m0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 4].scatter(
+        omega_plus_theta_0, omega_min_theta_0, c=log_prob, cmap=color_scatter
+    )
+    axes[6, 4].errorbar(
+        omega_plus_theta_0_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=omega_plus_theta_0_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 5].scatter(i, omega_min_theta_0, c=log_prob, cmap=color_scatter)
+    axes[6, 5].errorbar(
+        i_mean,
+        omega_min_theta_0_mean,
+        yerr=omega_min_theta_0_std,
+        xerr=i_std,
+        ecolor="black",
+        elinewidth=2.5,
+    )
+    axes[6, 6].hist(omega_min_theta_0, bins=nbins, color="darkcyan")
+
+    # Figure Title
+    fig.suptitle(
+        f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
+    )
+
+    # Axes Labels
+    axes[6, 0].set_xlabel("a (a.u.)")
+    axes[6, 1].set_xlabel("e")
+    axes[6, 2].set_xlabel("$t_0$ (yrs)")
+    axes[6, 3].set_xlabel("$m0$ (solar_mass)")
+    axes[6, 4].set_xlabel(r"$\Omega$ + $\omega$ (rad)")
+    axes[6, 5].set_xlabel("i (rad)")
+    axes[6, 6].set_xlabel(r"$\Omega$ - $\omega$ (rad)")
+    axes[1, 0].set_ylabel("e")
+    axes[2, 0].set_ylabel("$t_0$ (yrs)")
+    axes[3, 0].set_ylabel("$m0$ (solar_mass)")
+    axes[4, 0].set_ylabel(r"$\Omega$ + $\omega$ (rad)")
+    axes[5, 0].set_ylabel("i (rad)")
+    axes[6, 0].set_ylabel(r"$\Omega$ - $\omega$ (rad)")
+    # Remove labels at the middle of the subplots
+    for k in range(1, 6, 1):
+        mpl.pyplot.setp([plot.get_xticklabels() for plot in axes[k, :]], visible=False)
+        mpl.pyplot.setp([plot.get_yticklabels() for plot in axes[:, k]], visible=False)
+    # Graduation on the right for the histograms
+    for k in range(7):
+        axes[k, k].yaxis.tick_right()
+    # reducing spaces between subplots
+    fig.subplots_adjust(wspace=0.15, hspace=0.2)
+    # Remove sub-plots that we don't want to see
+    for i in range(6):
+        for k in range(i + 1, 7):
+            axes[i, k].remove()
+
+    # SNR Color bar
+    cax = mpl.pyplot.axes([0.07, 0.11, 0.01, 0.77])
+    cbar = mpl.pyplot.colorbar(im, cax, ticklocation="left")
+    cbar.ax.set_title("Log Likelihood")
+
+    if savefig:
+        fig.savefig(savefig)
+
 
 def corner_plots(
     params, nbins, norbits=None, omegatheta=None, savefig=None, figsize=(25, 25)
@@ -471,6 +771,54 @@ def corner_plots(
 
     if savefig:
         fig.savefig(savefig)
+        
+        
+def plot_results_mcmc(params, nimg=None, savefig=None):
+    """
+
+    Parameters
+    ----------
+    params : Params
+        the yamel doc for this simulation
+    nimg : int, optional
+        number of time step ploted
+    savefig : string, optional
+        path location to save the plot
+
+    Returns
+    -------
+    None.
+
+    """
+    from ..utils import Params, read_results
+
+    if isinstance(params, str):
+        path = os.path.dirname(params)
+        params = Params.read(params)
+        params.work_dir = path
+
+    res = read_results(os.path.join(params.work_dir, "values", "results_mcmc.txt"), params)
+
+    data = params.load_data(method="aperture")
+    grid = res.as_array(names=("a", "e", "t0", "m0", "omega", "i", "theta_0"))
+    grid = grid.view("f8").reshape(grid.shape[0], 7)
+
+    nimg = nimg or len(data["images"])
+    ncols = max(4, nimg)
+    fig, axes = mpl.pyplot.subplots(1, ncols, figsize=(ncols * 3, 6), layout="constrained")
+
+    for i in range(ncols):
+        ax = axes[i]
+        if i < nimg:
+            plot_orbits(
+                grid, res["log_prob"], data["images"][i], params.scale, ax=ax
+            )
+            ax.set(title=f"Image {i}")
+        else:
+            ax.axis("off")
+
+    if savefig:
+        fig.savefig(savefig)
 
 
 def plot_results(params, nimg=None, savefig=None, snr_grad_limits=None):
@@ -734,3 +1082,96 @@ def proba_detection_file(path, params, snr_ks_seuil):
 
     #np.save(path + '/mess_'+ str(numCore)+ '.npy', res)
     """
+
+
+def plot_converge_points_map(images, ts, scale, N, M, log_probabilities, samples, values_dir):
+    """
+    Displays the projected positions of orbital samples on images,
+    colored by their posterior log-probabilities.
+    
+    Parameters:
+    -----------
+    log_probabilities : array-like
+        Log-posterior probabilities associated with each sample.
+    samples : array-like
+        Orbital parameter samples (N x 7).
+    """
+
+    # Spatial grid of the image
+    image_size = M
+    X, Y = np.meshgrid(np.arange(image_size), np.arange(image_size))
+    distances = np.hypot(X - image_size // 2 + 0.5, Y - image_size // 2 + 0.5)
+    
+    # Spatial mask (excludes the center and edges)
+    
+    mask = (distances > 20) & (distances < image_size // 2)
+
+    # Storage of coordinates and log-probabilities for each image
+    x_coords, y_coords, color_values = [[], [], [], []], [[], [], [], []], [[], [], [], []]
+
+    for i, sample in enumerate(samples):
+        # Orbital projection of positions
+        projected_positions = orbit.project_position_full(
+            ts, *sample[:7]
+        )
+        projected_positions += scale
+        projected_positions += image_size // 2  # Centering on the image
+
+        for j in range(N):
+            x_coords[j].append(projected_positions[j][0])
+            y_coords[j].append(projected_positions[j][1])
+            color_values[j].append(log_probabilities[i])
+    
+    best_shape = None
+    min_max_dim = float('inf')
+    
+    # Determine the best subplot grid layout (rows, cols)
+    for rows in range(1, N + 1):
+        cols = -(-N // rows)  # ceil division
+        max_dim = max(rows, cols)
+        if max_dim < min_max_dim:
+            min_max_dim = max_dim
+            best_shape = (rows, cols)
+        elif max_dim == min_max_dim:
+            if abs(rows - cols) < abs(best_shape[0] - best_shape[1]):
+                best_shape = (rows, cols)
+
+    
+    rows, cols = best_shape
+    fig, axs = mpl.pyplot.subplots(rows, cols, figsize=(10 * cols, 10 * rows))
+
+    # Ensure axs is 2D for consistent access
+    if rows == 1 and cols == 1:
+        axs = np.array([[axs]])
+    elif rows == 1:
+        axs = axs[np.newaxis, :]
+    elif cols == 1:
+        axs = axs[:, np.newaxis]
+
+
+    # Display the N subplots, hide the unused ones
+    for k in range(rows * cols):
+        r, c = divmod(k, cols)
+        ax = axs[r][c]
+        if k < N:
+            # Apply the mask to the image
+            masked_image = np.where(mask, images[k], np.nan)
+
+            # Display the image in grayscale
+            ax.imshow(masked_image, origin='lower', cmap='gray')
+
+            # Display the projected positions
+            scatter = ax.scatter(
+                y_coords[k], x_coords[k], c=color_values[k], cmap='coolwarm',
+                s=20, alpha=0.8
+            )
+
+            # Add a colorbar
+            mpl.pyplot.colorbar(scatter, ax=ax, label="Log Posterior Probability")
+            ax.set_title(f"Time step number {k+1}", fontsize=25)
+        else:
+            ax.axis('off')  # Hide empty subplot
+
+    mpl.pyplot.tight_layout()
+    mpl.pyplot.show()
+    mpl.pyplot.close()
