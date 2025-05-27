@@ -195,3 +195,109 @@ def compute_snr_plots(params):
         plt.close()
 
         print(f"compute snr: took {time.time() - tstart:.2f} sec.")
+
+def compute_mcmc_noise_signal_profil (params):
+    """
+
+    Parameters
+    ----------
+    params : kstacker.utils.Params
+        point to the destination.
+        
+    Create an image of the 1/variance, log(sigma), (Signal-background)^2/variance, (Signal-background)/variance and Signal-background
+    
+    """
+    def pixel_circle_std(N,M,images):
+        """
+
+        Parameters
+        ----------
+        N : float
+            number of time step.
+        M : float
+            image length.
+        images : numpy.ndarray
+            all the images for every time step.
+
+        Returns
+        -------
+        std : numpy.ndarray
+            standard deviation for every time step.
+        image : numpy.ndarray
+            Signal-background for every time step.
+    
+        """
+        radii = np.hypot(*np.meshgrid(np.arange(M)-M//2+0.5, np.arange(M)-M//2+0.5))
+        # build an image of every radii value for every pixele
+        
+        std = np.empty((N,M,M,))
+        std[:] = np.nan
+        image = np.empty((N,M,M,))
+        image[:] = np.nan
+        # initialise the output image.
+        
+        for k in range(N):
+            interp = RectBivariateSpline(np.arange(M), np.arange(M), images[k], kx=3, ky=3)
+            # initialize the interpolation method for the k image
+            for x in range(M):
+                for y in range(M):
+                    r = radii[x, y]
+                    x0 = M / 2 + 0.5
+                    y0 = M / 2 + 0.5
+                    dx = x - x0
+                    dy = y - y0
+                    angle_theta_pixel = np.arctan2(dy, dx)
+                    # acces to the theta angle of the point studied
+                    
+                    theta = np.random.uniform(angle_theta_pixel-np.pi/4, angle_theta_pixel+np.pi/4, 10000)
+                    # generat 10000 random angles value on one quarter of a circle centered on the studied point on k,x,y value
+                    
+                    x_c = M//2 +0.5 + r * np.cos(theta)
+                    y_c = M//2 +0.5 + r * np.sin(theta)
+                    value = interp(x_c,y_c, grid=False)
+                    # for every theta angles interpol the value of the hypothetical pixel on the quarter circle studied
+                    
+                    std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (2*np.pi*r/4)))
+                    # build the standard deviation value has the the median absolute deviation correction with student over the quarter circle
+                    
+                    bg = np.mean(value)
+                    image[k,x,y] = images[k,x,y] - bg
+                    # build the background value and substract it to the signal value
+            print(f"Time step number {k+1} done")
+        return std, image
+    
+    data = params.load_data(method="aperture")
+    images = data['images']
+    N, M, _ = np.shape(data['images'])
+    profile_dir = params.get_path("profile_dir")
+    
+    one_over_var = np.empty((N,M,M,))
+    one_over_var[:] = np.nan
+    Signal = np.empty((N,M,M,))
+    Signal[:] = np.nan
+    Signal_over_var = np.empty((N,M,M,))
+    Signal_over_var[:] = np.nan
+    Signal_2_over_var = np.empty((N,M,M,))
+    Signal_2_over_var[:] = np.nan
+    log_sigma = np.empty((N,M,M,))
+    log_sigma[:] = np.nan
+    # initialise the output image.
+        
+    std, image = pixel_circle_std(N,M,images)
+    # build the std and signal images
+    
+    for k in range(N):
+        for x in range(M):
+            for y in range(M):
+                one_over_var[k][x][y] = 1/std[k][y][x]**2
+                Signal[k][x][y] = image[k][y][x]
+                Signal_over_var[k][x][y] = image[k][y][x]/std[k][y][x]**2
+                Signal_2_over_var[k][x][y] = image[k][y][x]**2/std[k][y][x]**2
+                log_sigma[k][x][y] = np.log(std[k][y][x])
+    
+    for k in range(N):
+        fits.writeto(f"{profile_dir}/one_over_var_{k}.fits", one_over_var[k], overwrite=True)
+        fits.writeto(f"{profile_dir}/Signal_prof_{k}.fits", Signal[k], overwrite=True)
+        fits.writeto(f"{profile_dir}/Signal_over_variance_prof_{k}.fits", Signal_over_var[k], overwrite=True)
+        fits.writeto(f"{profile_dir}/Signal_square_over_variance_prof_{k}.fits", Signal_2_over_var[k], overwrite=True)
+        fits.writeto(f"{profile_dir}/log_sigma_prof_{k}.fits", log_sigma[k], overwrite=True)
