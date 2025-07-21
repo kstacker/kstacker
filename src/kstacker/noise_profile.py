@@ -10,8 +10,10 @@ import numpy as np
 from astropy.io import fits
 from astropy.nddata import block_replicate
 from scipy.signal import convolve2d
+from joblib import Parallel, delayed, cpu_count
+from scipy.interpolate import RectBivariateSpline
 
-from .imagerie import compute_noise_profile_apertures
+from .imagerie import compute_noise_profile_apertures, compute_noise_apertures, photometry
 from .snr import compute_signal_and_noise_grid
 from .utils import create_output_dir
 
@@ -194,9 +196,9 @@ def compute_snr_plots(params):
         plt.savefig(f"{outdir}/steps_{name}_{param_vect.min()}-{param_vect.max()}.pdf")
         plt.close()
 
-        print(f"compute snr: took {time.time() - tstart:.2f} sec.")
+        print(f"compute snr: took {time.time() - tstart:.2f}from joblib import Parallel, delayed sec.")
 
-def compute_mcmc_noise_signal_profil (params):
+def compute_mcmc_noise_signal_profil (params,angle=1):
     """
 
     Parameters
@@ -207,7 +209,7 @@ def compute_mcmc_noise_signal_profil (params):
     Create an image of the 1/variance, log(sigma), (Signal-background)^2/variance, (Signal-background)/variance and Signal-background
     
     """
-    def pixel_circle_std(N,M,images):
+    def pixel_circle_std(N,M,images,angle):
         """
 
         Parameters
@@ -227,7 +229,7 @@ def compute_mcmc_noise_signal_profil (params):
             Signal-background for every time step.
     
         """
-        radii = np.hypot(*np.meshgrid(np.arange(M)-M//2+0.5, np.arange(M)-M//2+0.5))
+        radii = np.hypot(*np.meshgrid(np.arange(M)-M/2+0.5, np.arange(M)-M/2+0.5))
         # build an image of every radii value for every pixele
         
         std = np.empty((N,M,M,))
@@ -246,18 +248,23 @@ def compute_mcmc_noise_signal_profil (params):
                     y0 = M / 2 + 0.5
                     dx = x - x0
                     dy = y - y0
+                    tour = (2*np.pi*r)*angle
+                    
                     angle_theta_pixel = np.arctan2(dy, dx)
+                    # angle_theta_pixel = np.arctan2(dy, dx)
                     # acces to the theta angle of the point studied
                     
-                    theta = np.random.uniform(angle_theta_pixel-np.pi/4, angle_theta_pixel+np.pi/4, 10000)
+                    theta = np.random.uniform(angle_theta_pixel-np.pi*angle, angle_theta_pixel+np.pi*angle, int(tour/np.sqrt(2)))
+                    # theta = np.random.uniform(angle_theta_pixel-np.pi*angle, angle_theta_pixel+np.pi*angle, 10000)
                     # generat 10000 random angles value on one quarter of a circle centered on the studied point on k,x,y value
-                    
-                    x_c = M//2 +0.5 + r * np.cos(theta)
-                    y_c = M//2 +0.5 + r * np.sin(theta)
+
+                    x_c = M/2 -0.5 + r * np.cos(theta)
+                    y_c = M/2 -0.5 + r * np.sin(theta)
                     value = interp(x_c,y_c, grid=False)
                     # for every theta angles interpol the value of the hypothetical pixel on the quarter circle studied
                     
-                    std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (2*np.pi*r/4)))
+                    std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (len(theta))))
+                    # std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (2*np.pi*r*angle)))
                     # build the standard deviation value has the the median absolute deviation correction with student over the quarter circle
                     
                     bg = np.mean(value)
@@ -283,17 +290,17 @@ def compute_mcmc_noise_signal_profil (params):
     log_sigma[:] = np.nan
     # initialise the output image.
         
-    std, image = pixel_circle_std(N,M,images)
+    std, image = pixel_circle_std(N,M,images,angle)
     # build the std and signal images
     
     for k in range(N):
         for x in range(M):
             for y in range(M):
-                one_over_var[k][x][y] = 1/std[k][y][x]**2
-                Signal[k][x][y] = image[k][y][x]
-                Signal_over_var[k][x][y] = image[k][y][x]/std[k][y][x]**2
-                Signal_2_over_var[k][x][y] = image[k][y][x]**2/std[k][y][x]**2
-                log_sigma[k][x][y] = np.log(std[k][y][x])
+                one_over_var[k][x][y] = 1/std[k][x][y]**2
+                Signal[k][x][y] = image[k][x][y]
+                Signal_over_var[k][x][y] = image[k][x][y]/std[k][x][y]**2
+                Signal_2_over_var[k][x][y] = image[k][x][y]**2/std[k][x][y]**2
+                log_sigma[k][x][y] = np.log(std[k][x][y])
     
     for k in range(N):
         fits.writeto(f"{profile_dir}/one_over_var_{k}.fits", one_over_var[k], overwrite=True)

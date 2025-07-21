@@ -13,10 +13,10 @@ from astropy.io import ascii, fits
 from astropy.visualization import ZScaleInterval
 from joblib import Parallel, delayed
 
-from .imagerie import recombine_images
-from .orbit import orbit, plot_ontop, plot_orbites
-from .snr import compute_snr, compute_snr_detailed
-from .utils import read_results
+from kstacker.imagerie import recombine_images
+from kstacker.orbit import orbit, plot_ontop, plot_orbites
+from kstacker.snr import compute_snr, compute_snr_detailed
+from kstacker.utils import read_results
 
 
 def plot_coadd(idx, coadded, x, params, outdir):
@@ -103,11 +103,13 @@ def optimize_orbit(result, k, args, bounds):
 
     with np.printoptions(precision=3, suppress=True):
         print(f"reopt {k}: {x_best} => {snr_best:.2f}", flush=True)
-
+        
+    print(snr_i, snr_best, *x_best)
     return snr_i, snr_best, *x_best
 
 
 def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
+    print("gradient")
     # We sort the results in several directories
     values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
@@ -118,6 +120,17 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
     ts = params.get_ts()  # time of observations (years)
     size = params.n  # number of pixels
     data = params.load_data(method="aperture")
+    
+    bounds = params.grid.bounds()
+    
+    nbr_psf = 1.
+    delta_a = nbr_psf * (bounds[0][1]-bounds[0][0]) / params.grid.limits('a')[2]
+    delta_e = nbr_psf * (bounds[1][1]-bounds[1][0]) / params.grid.limits('e')[2]
+    delta_t0 = nbr_psf * (bounds[2][1] - bounds[2][0]) / params.grid.limits('t0')[2]
+    delta_m0 = (bounds[3][1] - bounds[3][0]) / params.grid.limits('m0')[2]
+    delta_omega = nbr_psf * (bounds[4][1] - bounds[4][0]) / params.grid.limits('omega')[2]
+    delta_i = nbr_psf * (bounds[5][1] - bounds[5][0]) / params.grid.limits('i')[2]
+    delta_theta0 = nbr_psf * (bounds[6][1] - bounds[6][0]) / params.grid.limits('theta_0')[2]
 
     with h5py.File(f"{values_dir}/res_grid.h5") as f:
         # note: results are already sorted by decreasing SNR
@@ -127,6 +140,32 @@ def reoptimize_gradient(params, n_jobs=1, n_orbits=None):
         results = results[:n_orbits]
     else:
         n_orbits = params.q
+    
+    p0 = results
+    
+    for pin in range(len(p0)):
+        for param_index, (delta, bound) in enumerate(zip(
+                [delta_a, delta_e, delta_t0, delta_m0, delta_omega, delta_i, delta_theta0], bounds)):
+            
+            # Set up the initial flag for checking bounds
+            in_bounds = False
+    
+            # Loop until the random perturbation is within the bounds
+            while not in_bounds:
+                # Generate random factor in range [-1, 1]
+                random_factor = (np.random.rand() - 0.5) * 2
+                perturbation = random_factor * delta
+    
+                # Add the perturbation to the parameter
+                new_value = p0[5, param_index] + perturbation # This line use only one of the best output of  brute-force+gradiant (line 5)
+    
+                # new_value = p0[walker, param_index] + perturbation # This line use all the outputs of brute-force+gradiant (Doesn't work! before using this line, take into account modulos pi on Omega and omega)
+    
+                # Check if new values are in the bounds
+                if bound[0] <= new_value <= bound[1]:
+                    p0[pin, param_index] = new_value
+                    in_bounds = True
+    results = p0
 
     # define bounds
     bounds = params.grid.bounds()

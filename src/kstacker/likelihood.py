@@ -5,6 +5,9 @@ from .imagerie import compute_noise_apertures, photometry, photometry_preprocess
 from .orbit import orbit
 from mpmath import mp
 
+from kstacker.PSF_shape_mcmc import aperture, PSF
+from kstacker.run_matrix_mcmc import MCMCCstData
+
 
 def compute_log_likelihood(
     x,
@@ -13,6 +16,8 @@ def compute_log_likelihood(
     scale,
     fwhm,
     data,
+    r_vals, 
+    j0_vals,
     exclude_source=True,
     exclude_lobes=True,
     method="aperture",
@@ -36,13 +41,23 @@ def compute_log_likelihood(
     # distance to the center
     temp_d = np.hypot(positions[:, 0], positions[:, 1])
     positions += size // 2
+    N,M,_ = np.shape(data['images'])
+    
+    CstData = MCMCCstData()
+    CstData.fwhm = fwhm
+    CstData.PSF_shape = "Bessel"
+    CstData.j0_vals = j0_vals
+    CstData.r_vals = r_vals
+    
+    all_mask, all_pixel_indices = aperture(positions,N,M,CstData.fwhm,CstData.PSF_shape)
+    g_values = PSF(positions,N,M,CstData,all_pixel_indices,all_mask)
 
     if r_mask is None:
         r_mask = fwhm
     if r_mask_ext is None:
         r_mask_ext = size // 2
 
-    signal, noise = [], []
+    signal, noise, background, A = [], [], [], []
     images = data["images"]
     for k in range(len(images)):
         # compute signal by integrating flux on a PSF, and correct it for background
@@ -51,6 +66,8 @@ def compute_log_likelihood(
         if temp_d[k] <= r_mask or temp_d[k] >= r_mask_ext:
             signal.append(np.nan)
             noise.append(np.nan)
+            background.append(np.nan)
+            A.append(np.nan)
             continue
 
         if use_interp_bgnoise:
@@ -73,14 +90,22 @@ def compute_log_likelihood(
             )[0]
         elif method == "aperture":
             sig = photometry(images[k], positions[k], 2 * fwhm)
+            a = photometry(np.ones((124,124)), positions[k], 2 * fwhm)
         else:
             raise ValueError(f"invalid method {method}")
 
         signal.append(sig - bg)
         noise.append(std)
+        background.append(bg)
+        A.append(a)
 
     signal = np.array(signal)
     noise = np.array(noise)
+    background = np.array(background)
+    A = np.array(A)
+    
+    if (np.sum(signal/noise**2)/np.sum(1/noise**2)) <0:
+        return -np.inf
 
     if return_all:
         tbl = Table(
@@ -101,6 +126,8 @@ def compute_log_likelihood(
     if np.any(null):
         noise = noise[~null]
         signal = signal[~null]
+        background = background[~null]
+        A = A[~null]
 
     if np.any(np.isnan(noise)):
         return -np.inf
@@ -108,8 +135,25 @@ def compute_log_likelihood(
     # loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2 - 0.5 * np.sum(signal **2 / noise ** 2)
 
     try:
-        sigma_inv2 = np.sum(1 / noise ** 2)
-        loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
+        # sigma_inv2 = np.sum(A**2 / noise ** 2)
+        # L = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
+        
+        n = 0
+        d = 0
+        cpt = 0
+        for k in range(N):
+            if not null[k]:
+                image_size_y, image_size_x = all_pixel_indices[k][0]
+                resize_y, resize_x = all_pixel_indices[k][1]
+                S = images[k][image_size_y, image_size_x]
+                G = g_values[k][resize_y, resize_x]
+                Mask = all_mask[k][resize_y, resize_x]
+                n += (np.sum(S*G*Mask)-background[cpt])/noise[cpt]**2
+                d += (np.sum(G*Mask)**2/noise[cpt]**2)
+                cpt+=1
+                
+        loglikelihood = 0.5*n**2/d
+        
         if np.isnan(loglikelihood):
             return -np.inf
         return loglikelihood
