@@ -1,22 +1,22 @@
 import os
-
 import h5py
 import numpy as np
 import emcee
 import matplotlib.pyplot as plt
+import time
+
 from astropy.io import ascii, fits
 from astropy.visualization import ZScaleInterval
 from joblib import Parallel, delayed
 from pathlib import Path
 from multiprocessing import Pool
 
-from .imagerie import recombine_images
-from .orbit import orbit, plot_ontop, plot_orbites
-from .likelihood import compute_log_likelihood
-from .mcmc_starting_pos import read_starting_file
-import time
-from kstacker.orbit import plot_converge_points_map
+from kstacker.imagerie import recombine_images
+from kstacker.orbit import orbit, plot_ontop, plot_orbites
+from kstacker.likelihood import compute_log_likelihood
+from kstacker.mcmc_starting_pos import read_starting_file
 from kstacker.PSF_shape_mcmc import precompute_bessel_lookup
+from kstacker.Constante_Data_MCMC import MCMCCstData
 
 def plot_coadd(idx, coadded, x, params, outdir):
     a, e, t0, m0, omega, i, theta_0 = x
@@ -79,69 +79,47 @@ def log_prior(orbital_params, bounds, prior_info=None):
     return log_prior_value
 
 
-def log_likelihood(x, ts, size, scale, fwhm, data):
+def log_likelihood(x, CstData):
     # log-likelihood function
     param_names = ["a", "e", "t0", "m0", "omega", "i", "theta_0"] # all the name of the parameters
     x_complete = [0] * 7 # initialise the final paramters variable
     
-    if fixed_params is None: # all the parameters are free
+    if CstData.fixed_params is None: # all the parameters are free
         unfixed_param_indices = range(7)
         x_complete = list(x)
     else:
-        unfixed_param_indices = [i for i, name in enumerate(param_names) if name not in fixed_params] # get the indices of the unfixed variables
+        unfixed_param_indices = [i for i, name in enumerate(param_names) if name not in CstData.fixed_params] # get the indices of the unfixed variables
         for x_val, i in zip(x, unfixed_param_indices): # save the unfixed variable into the final orbital parameters variable
             x_complete[i] = x_val
-        for name, val in fixed_params.items(): # save the fixed variable into the final orbital parameters variable
+        for name, val in CstData.fixed_params.items(): # save the fixed variable into the final orbital parameters variable
             x_complete[param_names.index(name)] = val
             
     global r_vals, j0_vals
             
     loglikelihood = compute_log_likelihood(x_complete,
-    ts,
-    size,
-    scale,
-    fwhm,
-    data,
-    r_vals, 
-    j0_vals,
+    CstData,
     exclude_source=True,
     exclude_lobes=True,
     method="aperture",
     upsampling_factor=None,
     use_interp_bgnoise=False,
-    r_mask=r_mask,
-    r_mask_ext=r_mask_ext,
     return_all=False)
 
     return loglikelihood
 
 
 def log_posterior(orbital_params):
-    global ts, size, scale, fwhm, data, bounds
+    global CstData
     # Check if parameters are within bounds
-    if not all(bound[0] <= param <= bound[1] for param, bound in zip(orbital_params, bounds)):
+    if not all(bound[0] <= param <= bound[1] for param, bound in zip(orbital_params, CstData.bounds)):
         return -np.inf
     #lp = log_prior(orbital_params, bounds)
     #if not np.isfinite(lp):
     #    return -np.inf
     lp = 0.
-    return lp + log_likelihood(orbital_params, ts, size, scale, fwhm, data)
+    return lp + log_likelihood(orbital_params, CstData)
 
-def set_globals(ts_, size_, scale_, fwhm_, data_, bounds_, fixed_params_, r_vals_, j0_vals_, r_mask_=None, r_mask_ext_=None):
-    global ts, size, scale, fwhm, data, bounds, fixed_params, r_mask, r_mask_ext, r_vals, j0_vals
-    ts = ts_
-    size = size_
-    scale = scale_
-    fwhm = fwhm_
-    data = data_
-    bounds = bounds_
-    fixed_params = fixed_params_
-    r_mask=r_mask_
-    r_mask_ext=r_mask_ext_
-    r_vals = r_vals_
-    j0_vals = j0_vals_
-
-def reoptimize_mcmc(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits=1000, n_check=1000, fixed_params=None, nbr_psf=1., init_pos_precomputed=False):
+def reoptimize_mcmc(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits=1000, n_check=1000, fixed_params=None, nbr_psf=1., init_pos_precomputed=False, PSF_shape="Circle"):
     # We sort the results in several directories
     values_dir = params.get_path("values_dir")
     os.makedirs(f"{values_dir}/fin_fits", exist_ok=True)
@@ -219,134 +197,133 @@ def reoptimize_mcmc(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits=100
     pos = np.array(p0)
     ndim = len(bounds)
     
-    r_mask = 30
-    r_mask_ext = size//2
+    # pre run the PSF shape (bessel) to note get to run it every time and just interpolate value
     r_vals, j0_vals = precompute_bessel_lookup()
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_posterior)
-    set_globals(ts, size, params.scale, params.fwhm, data, bounds, fixed_params, r_vals, j0_vals, r_mask_=r_mask, r_mask_ext_=r_mask_ext)
+    r_mask = 30
+    r_mask_ext = size//2
     
-    log_path = Path(f"{values_dir}/mcmc_log.txt")
-    log_path.write_text("")
+    # initialize the globals value passed to emcee (global values are necessary to allow multiprocessing)
+    global CstData
+    
+    CstData = MCMCCstData()
+    CstData.ts = ts
+    CstData.size = size
+    CstData.scale = params.scale
+    CstData.fwhm = params.fwhm
+    CstData.bounds = bounds
+    CstData.r_mask = r_mask
+    CstData.r_mask_ext = r_mask_ext
+    CstData.r_vals = r_vals
+    CstData.j0_vals = j0_vals
+    CstData.fixed_params = fixed_params
+    CstData.PSF_shape = PSF_shape
+    CstData.data = data
+    
+    written = False
     
     start = time.time()
     
+    # log file to get evolution of the autocorrelation time trough execution
+    log_path = Path(f"{values_dir}/mcmc_log.txt")
+    log_path.write_text("")
+    
     with Pool(processes=n_jobs) as pool:
         sampler.pool = pool
-        sampler.run_mcmc(pos, n_check, progress=True)
-        
-    samples = sampler.get_chain(flat=True)  # shape: (n_steps * n_walkers, n_params)
-    log_probs = sampler.get_log_prob(flat=True)  # shape: (n_steps * n_walkers,)
+        try:
+            for i in range(0, n_steps, n_check):
+                pos, _, _ = sampler.run_mcmc(pos, n_check, progress=True)
 
-    unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
-    unique_log_probs = log_probs[unique_indices]
-
-    # Remove invalid values from log_probs
-    valid_indices = np.isfinite(unique_log_probs)  # True for finite values, False for -inf
-    if not np.any(valid_indices):
-        raise ValueError("All values in log_probs are invalid (e.g., -inf or NaN)")
-
-    filtered_log_probs = unique_log_probs[valid_indices]
-    filtered_samples = unique_samples[valid_indices]
-    
-    plot_converge_points_map(data["images"],ts,scale,4,124,filtered_log_probs,filtered_samples,values_dir)
-    
-    plt.hist(filtered_samples.T[0])
-    
-    # plot_converge_points_map(data["images"],ts,scale,4,124,filtered_log_probs,filtered_samples,values_dir)
-    #     try:
-    #         for i in range(0, n_steps, n_check):
-    #             pos, _, _ = sampler.run_mcmc(pos, n_check, progress=True)
-
-    #             if sampler.iteration > 1:#6*n_check:
-    #                 tau = sampler.get_autocorr_time(tol=0)
-    #                 with open(log_path, "a") as f:
-    #                     f.write(f"Step {sampler.iteration}: Autocorrelation time = {tau}")
-    #                     f.write(f"Step {sampler.iteration}: tau*50/iter = {(tau * 50)/sampler.iteration}\n")
-    #                     f.write(f"Step {sampler.iteration}: mean acceptance = {np.mean(sampler.acceptance_fraction)}\n")
+                if sampler.iteration > 1:#6*n_check:
+                    tau = sampler.get_autocorr_time(tol=0)
+                    with open(log_path, "a") as f:
+                        f.write(f"Step {sampler.iteration}: Autocorrelation time = {tau}")
+                        f.write(f"Step {sampler.iteration}: tau*50/iter = {(tau * 50)/sampler.iteration}\n")
+                        f.write(f"Step {sampler.iteration}: mean acceptance = {np.mean(sampler.acceptance_fraction)}\n")
                         
-    #                     if np.all((tau * 50)/sampler.iteration < 1):
-    #                         end = time.time()
-    #                         written = True
-    #                         f.write("Convergence criteria met\n")
-    #                         f.write(f"Time taken : {end-start}\n")
-    #                         break
+                        if np.all((tau * 50)/sampler.iteration < 1):
+                            end = time.time()
+                            written = True
+                            f.write("Convergence criteria met\n")
+                            f.write(f"Time taken : {end-start}\n")
+                            break
                         
-    #         with open(log_path, "a") as f:
-    #             if not written:
-    #                 end = time.time()
-    #                 f.write("Convergence criteria not met\n")
-    #                 f.write(f"Time taken : {end-start}\n")
+            with open(log_path, "a") as f:
+                if not written:
+                    end = time.time()
+                    f.write("Convergence criteria not met\n")
+                    f.write(f"Time taken : {end-start}\n")
 
-    #     except Exception as e:
-    #         with open(log_path, "a") as f:
-    #             f.write(f"An error occurred during MCMC execution: {e}\n")
+        except Exception as e:
+            with open(log_path, "a") as f:
+                f.write(f"An error occurred during MCMC execution: {e}\n")
 
-    # try:
-    #     # Get the final chain of parameters
-    #     samples = sampler.get_chain(flat=True)  # shape: (n_steps * n_walkers, n_params)
-    #     log_probs = sampler.get_log_prob(flat=True)  # shape: (n_steps * n_walkers,)
+    try:
+        # Get the final chain of parameters
+        samples = sampler.get_chain(flat=True)  # shape: (n_steps * n_walkers, n_params)
+        log_probs = sampler.get_log_prob(flat=True)  # shape: (n_steps * n_walkers,)
 
-    #     unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
-    #     unique_log_probs = log_probs[unique_indices]
+        unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
+        unique_log_probs = log_probs[unique_indices]
 
-    #     # Remove invalid values from log_probs
-    #     valid_indices = np.isfinite(unique_log_probs)  # True for finite values, False for -inf
-    #     if not np.any(valid_indices):
-    #         raise ValueError("All values in log_probs are invalid (e.g., -inf or NaN)")
+        # Remove invalid values from log_probs
+        valid_indices = np.isfinite(unique_log_probs)  # True for finite values, False for -inf
+        if not np.any(valid_indices):
+            raise ValueError("All values in log_probs are invalid (e.g., -inf or NaN)")
 
-    #     filtered_log_probs = unique_log_probs[valid_indices]
-    #     filtered_samples = unique_samples[valid_indices]
+        filtered_log_probs = unique_log_probs[valid_indices]
+        filtered_samples = unique_samples[valid_indices]
 
-    #     #print(f"Debug: n_orbits={n_orbits} (type={type(n_orbits)}), len(filtered_log_probs)={len(filtered_log_probs)}")
+        #print(f"Debug: n_orbits={n_orbits} (type={type(n_orbits)}), len(filtered_log_probs)={len(filtered_log_probs)}")
 
-    #     n_orbits = int(n_orbits)
+        n_orbits = int(n_orbits)
 
-    #     if len(filtered_log_probs) < n_orbits:
-    #         print(
-    #             f"Warning: n_orbits ({n_orbits}) exceeds the number of valid samples ({len(filtered_log_probs)}). Adjusting n_orbits to {len(filtered_log_probs)}.")
-    #         n_orbits = len(filtered_log_probs)
+        if len(filtered_log_probs) < n_orbits:
+            print(
+                f"Warning: n_orbits ({n_orbits}) exceeds the number of valid samples ({len(filtered_log_probs)}). Adjusting n_orbits to {len(filtered_log_probs)}.")
+            n_orbits = len(filtered_log_probs)
 
 
-    #     # Sort valid log_probs and get best indices
-    #     best_indices = np.argsort(filtered_log_probs)[-int(n_orbits):][::-1]
+        # Sort valid log_probs and get best indices
+        best_indices = np.argsort(filtered_log_probs)[-int(n_orbits):][::-1]
 
-    #     # Prepare an array to store the top 100 results
-    #     reopt_mcmc = []
-    #     for idx in best_indices:
-    #         # Extract parameter values for each of the top 100 samples
-    #         a, e, t0, m0, omega, i, theta_0 = filtered_samples[idx]
-    #         log_prob = filtered_log_probs[idx]
-    #         reopt_mcmc.append([idx, log_prob, a, e, t0, m0, omega, i, theta_0])
+        # Prepare an array to store the top 100 results
+        reopt_mcmc = []
+        for idx in best_indices:
+            # Extract parameter values for each of the top 100 samples
+            a, e, t0, m0, omega, i, theta_0 = filtered_samples[idx]
+            log_prob = filtered_log_probs[idx]
+            reopt_mcmc.append([idx, log_prob, a, e, t0, m0, omega, i, theta_0])
 
-    #     reopt_mcmc = np.array(reopt_mcmc)
-    #     # Add index column
-    #     reopt_mcmc = np.concatenate([np.arange(reopt_mcmc.shape[0])[:, None], reopt_mcmc], axis=1)
-    #     # Save results
-    #     names = ("image_number", "best_indice", "log_prob", "a", "e", "t0", "m0", "omega", "i", "theta_0")
-    #     ascii.write(
-    #         reopt_mcmc,
-    #         f"{values_dir}/results_mcmc.txt",
-    #         names=names,
-    #         format="fixed_width_two_line",
-    #         formats={"image_number": "%d"},
-    #         overwrite=True,
-    #     )
+        reopt_mcmc = np.array(reopt_mcmc)
+        # Add index column
+        reopt_mcmc = np.concatenate([np.arange(reopt_mcmc.shape[0])[:, None], reopt_mcmc], axis=1)
+        # Save results
+        names = ("image_number", "best_indice", "log_prob", "a", "e", "t0", "m0", "omega", "i", "theta_0")
+        ascii.write(
+            reopt_mcmc,
+            f"{values_dir}/results_mcmc.txt",
+            names=names,
+            format="fixed_width_two_line",
+            formats={"image_number": "%d"},
+            overwrite=True,
+        )
      
-    #     # Plots results
-    #     Parallel(n_jobs=n_jobs)(
-    #         delayed(make_plots)(
-    #             reopt_mcmc[k, 3:], k, params, data["images"], ts, values_dir)        
-    #         for k in range(min(n_orbits, 100))
-    #     )
+        # Plots results
+        Parallel(n_jobs=n_jobs)(
+            delayed(make_plots)(
+                reopt_mcmc[k, 3:], k, params, data["images"], ts, values_dir)        
+            for k in range(min(n_orbits, 100))
+        )
 
-    #     print("Done!")
+        print("Done!")
         
 
-    # except ValueError as e:
-    #     with open(log_path, "a") as f: f.write(f"ValueError: {e}\n")
+    except ValueError as e:
+        with open(log_path, "a") as f: f.write(f"ValueError: {e}\n")
     
-    # except IOError as e:
-    #     with open(log_path, "a") as f: f.write(f"File error: {e}\n")
+    except IOError as e:
+        with open(log_path, "a") as f: f.write(f"File error: {e}\n")
     
-    # except Exception as e:
-    #     with open(log_path, "a") as f: f.write(f"Unexpected error: {e}\n")
+    except Exception as e:
+        with open(log_path, "a") as f: f.write(f"Unexpected error: {e}\n")

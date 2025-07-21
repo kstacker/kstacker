@@ -107,6 +107,9 @@ def main():
     sub_mcmc.add_argument(
         "--initposprecomputed", type=bool, default=False, help="define if the initial postion are precompute or not (default False)"
     )
+    sub_mcmc.add_argument(
+        "--PSFshape", type=str, default='Circle', help="name of the used PSF, possible value 'Bessel', 'Circle'. (default 'Circle')."
+    )
     sub_mcmc.set_defaults(func=reopt_mcmc)
 
     # ---------------------------------------------------------------
@@ -138,6 +141,9 @@ def main():
     )
     sub_mcmc_matrix.add_argument(
         "--initposprecomputed", type=bool, default=False, help="define if the initial postion are precompute or not (default False)"
+    )
+    sub_mcmc_matrix.add_argument(
+        "--PSFshape", type=str, default='Bessel', help="name of the used PSF, possible value 'Bessel', 'Circle'. (default 'Bessel')."
     )
     sub_mcmc_matrix.set_defaults(func=reopt_mcmc_matrix)
 
@@ -254,7 +260,7 @@ def reopt_mcmc(args):
     else:
         fixedparams = None
     params = Params.read(args.parameter_file)
-    reoptimize_mcmc(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed)
+    reoptimize_mcmc(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed,PSF_shape=args.PSFshape)
 
 
 def reopt_mcmc_matrix(args):
@@ -263,7 +269,7 @@ def reopt_mcmc_matrix(args):
     else:
         fixedparams = None
     params = Params.read(args.parameter_file)
-    compute_mcmc_matrix(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed)
+    compute_mcmc_matrix(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed,PSF_shape=args.PSFshape)
 
 
 def mcmc_starting_pos(args):

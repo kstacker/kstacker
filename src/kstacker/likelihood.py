@@ -6,18 +6,12 @@ from .orbit import orbit
 from mpmath import mp
 
 from kstacker.PSF_shape_mcmc import aperture, PSF
-from kstacker.run_matrix_mcmc import MCMCCstData
+# from kstacker.run_matrix_mcmc import MCMCCstData
 
 
 def compute_log_likelihood(
     x,
-    ts,
-    size,
-    scale,
-    fwhm,
-    data,
-    r_vals, 
-    j0_vals,
+    CstData,
     exclude_source=True,
     exclude_lobes=True,
     method="aperture",
@@ -35,30 +29,24 @@ def compute_log_likelihood(
 
     # compute position
     a, e, t0, m0, omega, i, theta_0 = x
-    positions = orbit.project_position_full(ts, a, e, t0, m0, omega, i, theta_0)
+    positions = orbit.project_position_full(CstData.ts, a, e, t0, m0, omega, i, theta_0)
     # convert to pixel in the image
-    positions *= scale
+    positions *= CstData.scale
     # distance to the center
     temp_d = np.hypot(positions[:, 0], positions[:, 1])
-    positions += size // 2
-    N,M,_ = np.shape(data['images'])
-    
-    CstData = MCMCCstData()
-    CstData.fwhm = fwhm
-    CstData.PSF_shape = "Bessel"
-    CstData.j0_vals = j0_vals
-    CstData.r_vals = r_vals
+    positions += CstData.size // 2
+    N,M,_ = np.shape(CstData.data['images'])
     
     all_mask, all_pixel_indices = aperture(positions,N,M,CstData.fwhm,CstData.PSF_shape)
     g_values = PSF(positions,N,M,CstData,all_pixel_indices,all_mask)
 
     if r_mask is None:
-        r_mask = fwhm
+        r_mask = CstData.fwhm
     if r_mask_ext is None:
-        r_mask_ext = size // 2
+        r_mask_ext = CstData.size // 2
 
-    signal, noise, background, A = [], [], [], []
-    images = data["images"]
+    signal, noise, background = [], [], []
+    images = CstData.data["images"]
     for k in range(len(images)):
         # compute signal by integrating flux on a PSF, and correct it for background
         x, y = positions[k]
@@ -67,19 +55,18 @@ def compute_log_likelihood(
             signal.append(np.nan)
             noise.append(np.nan)
             background.append(np.nan)
-            A.append(np.nan)
             continue
 
         if use_interp_bgnoise:
-            bg = np.interp(temp_d[k], data["x"], data["bkg"][k])
-            std = np.interp(temp_d[k], data["x"], data["noise"][k])
+            bg = np.interp(temp_d[k], CstData.data["x"], CstData.data["bkg"][k])
+            std = np.interp(temp_d[k], CstData.data["x"], CstData.data["noise"][k])
         else:
             # grid for photutils is centered on pixels hence the - 0.5
             bg, std, _ = compute_noise_apertures(
                 images[k],
                 x - 0.5,
                 y - 0.5,
-                fwhm,
+                CstData.fwhm,
                 exclude_source=exclude_source,
                 exclude_lobes=exclude_lobes,
             )
@@ -89,20 +76,17 @@ def compute_log_likelihood(
                 images[k], positions[k, :1], positions[k, 1:], upsampling_factor
             )[0]
         elif method == "aperture":
-            sig = photometry(images[k], positions[k], 2 * fwhm)
-            a = photometry(np.ones((124,124)), positions[k], 2 * fwhm)
+            sig = photometry(images[k], positions[k], 2 * CstData.fwhm)
         else:
             raise ValueError(f"invalid method {method}")
 
         signal.append(sig - bg)
         noise.append(std)
         background.append(bg)
-        A.append(a)
 
     signal = np.array(signal)
     noise = np.array(noise)
     background = np.array(background)
-    A = np.array(A)
     
     if (np.sum(signal/noise**2)/np.sum(1/noise**2)) <0:
         return -np.inf
@@ -127,7 +111,6 @@ def compute_log_likelihood(
         noise = noise[~null]
         signal = signal[~null]
         background = background[~null]
-        A = A[~null]
 
     if np.any(np.isnan(noise)):
         return -np.inf
@@ -135,24 +118,29 @@ def compute_log_likelihood(
     # loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2 - 0.5 * np.sum(signal **2 / noise ** 2)
 
     try:
-        # sigma_inv2 = np.sum(A**2 / noise ** 2)
-        # L = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
+        if CstData.PSF_shape == "Circle":
+            print(1)
+            sigma_inv2 = np.sum(1 / noise ** 2)
+            loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
         
-        n = 0
-        d = 0
-        cpt = 0
-        for k in range(N):
-            if not null[k]:
-                image_size_y, image_size_x = all_pixel_indices[k][0]
-                resize_y, resize_x = all_pixel_indices[k][1]
-                S = images[k][image_size_y, image_size_x]
-                G = g_values[k][resize_y, resize_x]
-                Mask = all_mask[k][resize_y, resize_x]
-                n += (np.sum(S*G*Mask)-background[cpt])/noise[cpt]**2
-                d += (np.sum(G*Mask)**2/noise[cpt]**2)
-                cpt+=1
-                
-        loglikelihood = 0.5*n**2/d
+        
+        if CstData.PSF_shape == "Bessel":
+            print(2)
+            n = 0
+            d = 0
+            cpt = 0
+            for k in range(N):
+                if not null[k]:
+                    image_size_y, image_size_x = all_pixel_indices[k][0]
+                    resize_y, resize_x = all_pixel_indices[k][1]
+                    S = images[k][image_size_y, image_size_x]
+                    G = g_values[k][resize_y, resize_x]
+                    Mask = all_mask[k][resize_y, resize_x]
+                    n += (np.sum(S*G*Mask)-background[cpt])/noise[cpt]**2
+                    d += (np.sum(G*Mask)**2/noise[cpt]**2)
+                    cpt+=1
+                    
+            loglikelihood = 0.5*n**2/d
         
         if np.isnan(loglikelihood):
             return -np.inf

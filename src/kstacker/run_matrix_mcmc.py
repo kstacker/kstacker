@@ -13,55 +13,8 @@ from kstacker.orbit import corner_plots_mcmc
 from kstacker.mcmc_reoptimization import make_plots
 from kstacker.mcmc_starting_pos import read_starting_file
 from kstacker.PSF_shape_mcmc import precompute_bessel_lookup
-from kstacker.Matrix_Likelihood import log_likelihood, compute_log_likelihood
-from kstacker.orbit import plot_converge_points_map
-
-class MCMCCstData:
-    """
-    Class to manage the constante parameters used in the MCMC.
-    ts : list
-        the 
-    size : int
-        numbers of images in the data set
-    scale : float
-        scale of one pixel
-    fwhm : float
-        radius of the aperture studied
-    bounds : list
-        searching bounds define on all 7 orbital param
-    treated_image : numpy.ndarray
-        all 5 pretreated images
-    r_mask : float
-        value of the inner radius of the mask 
-    r_mask_ext: float
-        value of the outer radius of the mask 
-    r_vals : list
-        x value for the bessel shape.
-    j0_vals : list
-        y value for the bessel shape.
-    fixed_params : dict 
-        fixe some orbital params, typical shape is {"a":50,"e":0.1}, the orbital param names must be : ["a", "e", "t0", "m0", "omega", "i", "theta_0"]. The default is None.
-    cste_part_Likelihood : float
-        store the constant component of the likelihood.
-    
-    Attributes
-    ----------
-    """
-    def __init__(self):
-        self.ts = None
-        self.size = None
-        self.scale = None
-        self.fwhm = None
-        self.bounds = None
-        self.treated_image = None
-        self.r_mask = None
-        self.r_mask_ext = None
-        self.r_vals = None
-        self.j0_vals = None
-        self.fixed_params = None
-        self.PSF_shape = None
-        self.cste_part_Likelihood = None
-        self.images = None
+from kstacker.Matrix_Likelihood import log_likelihood
+from kstacker.Constante_Data_MCMC import MCMCCstData
         
 def extract_preteated_image(profile_dir, N, M):
     """
@@ -290,7 +243,6 @@ def compute_mcmc_matrix(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits
     CstData.j0_vals = j0_vals
     CstData.fixed_params = fixed_params
     CstData.PSF_shape = PSF_shape
-    CstData.images = images
     
     written = False
     
@@ -303,106 +255,89 @@ def compute_mcmc_matrix(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits
     # execution of the mcmc with multiprocessing method
     with Pool(processes=n_jobs) as pool:
         sampler.pool = pool
-        sampler.run_mcmc(pos, n_check, progress=True)
-        
-    samples = sampler.get_chain(flat=True)  # shape: (n_steps * n_walkers, n_params)
-    log_probs = sampler.get_log_prob(flat=True)  # shape: (n_steps * n_walkers,)
+        try:
+            for i in range(0, n_steps, n_check):
+                pos, _, _ = sampler.run_mcmc(pos, n_check, progress=True)
 
-    unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
-    unique_log_probs = log_probs[unique_indices]
-
-    # Remove invalid values from log_probs
-    valid_indices = np.isfinite(unique_log_probs)  # True for finite values, False for -inf
-    if not np.any(valid_indices):
-        raise ValueError("All values in log_probs are invalid (e.g., -inf or NaN)")
-
-    filtered_log_probs = unique_log_probs[valid_indices]
-    filtered_samples = unique_samples[valid_indices]
-    
-    plot_converge_points_map(data["images"],ts,scale,4,124,filtered_log_probs,filtered_samples,values_dir)
-        # try:
-        #     for i in range(0, n_steps, n_check):
-        #         pos, _, _ = sampler.run_mcmc(pos, n_check, progress=True)
-
-        #         if sampler.iteration > 6*n_check:
-        #             tau = sampler.get_autocorr_time(tol=0)
-        #             with open(log_path, "a") as f:
-        #                 f.write(f"Step {sampler.iteration}: Autocorrelation time = {tau}")
-        #                 f.write(f"Step {sampler.iteration}: tau*50/iter = {(tau * 50)/sampler.iteration}\n")
-        #                 f.write(f"Step {sampler.iteration}: mean acceptance = {np.mean(sampler.acceptance_fraction)}\n")
+                if sampler.iteration > 6*n_check:
+                    tau = sampler.get_autocorr_time(tol=0)
+                    with open(log_path, "a") as f:
+                        f.write(f"Step {sampler.iteration}: Autocorrelation time = {tau}")
+                        f.write(f"Step {sampler.iteration}: tau*50/iter = {(tau * 50)/sampler.iteration}\n")
+                        f.write(f"Step {sampler.iteration}: mean acceptance = {np.mean(sampler.acceptance_fraction)}\n")
                         
-        #                 if np.all((tau * 50)/sampler.iteration < 1):
-        #                     end = time.time()
-        #                     written = True
-        #                     f.write("Convergence criteria met\n")
-        #                     f.write(f"Time taken : {end-start}\n")
-        #                     break
+                        if np.all((tau * 50)/sampler.iteration < 1):
+                            end = time.time()
+                            written = True
+                            f.write("Convergence criteria met\n")
+                            f.write(f"Time taken : {end-start}\n")
+                            break
                         
-        #     with open(log_path, "a") as f:
-        #         if not written:
-        #             end = time.time()
-        #             f.write("Convergence criteria not met\n")
-        #             f.write(f"Time taken : {end-start}\n")
+            with open(log_path, "a") as f:
+                if not written:
+                    end = time.time()
+                    f.write("Convergence criteria not met\n")
+                    f.write(f"Time taken : {end-start}\n")
 
-        # except Exception as e:
-        #     with open(log_path, "a") as f:
-        #         f.write(f"An error occurred during MCMC execution: {e}\n")
+        except Exception as e:
+            with open(log_path, "a") as f:
+                f.write(f"An error occurred during MCMC execution: {e}\n")
         
-        # try:
-        #     # Get the final chain of parameters
-        #     samples = sampler.get_chain(flat=True)
-        #     log_probs = sampler.get_log_prob(flat=True)
+        try:
+            # Get the final chain of parameters
+            samples = sampler.get_chain(flat=True)
+            log_probs = sampler.get_log_prob(flat=True)
         
-        #     # Remove invalid values from log_probs, get only the unique values
-        #     unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
-        #     unique_log_probs = log_probs[unique_indices]
+            # Remove invalid values from log_probs, get only the unique values
+            unique_samples, unique_indices = np.unique(samples, axis=0, return_index=True)
+            unique_log_probs = log_probs[unique_indices]
             
-        #     # Remove invalid values from log_probs, delete the non finite result values 
-        #     valid_indices = np.isfinite(unique_log_probs)
-        #     filtered_samples = unique_samples[valid_indices]
-        #     filtered_log_probs = unique_log_probs[valid_indices]
+            # Remove invalid values from log_probs, delete the non finite result values 
+            valid_indices = np.isfinite(unique_log_probs)
+            filtered_samples = unique_samples[valid_indices]
+            filtered_log_probs = unique_log_probs[valid_indices]
             
-        #     # sort the results by Likelihood values
-        #     sorted_indices = np.argsort(-filtered_log_probs)
-        #     final_samples = filtered_samples[sorted_indices]
-        #     final_log_probs = filtered_log_probs[sorted_indices]
+            # sort the results by Likelihood values
+            sorted_indices = np.argsort(-filtered_log_probs)
+            final_samples = filtered_samples[sorted_indices]
+            final_log_probs = filtered_log_probs[sorted_indices]
             
-        #     # Prepare an array to store the top 1000 results
-        #     reopt_mcmc = []
-        #     for idx in sorted_indices:
-        #         # Extract parameter values for each of the top 1000 samples
-        #         a, e, t0, m0, omega, i, theta_0 = final_samples[idx]
-        #         log_prob = final_log_probs[idx]
-        #         reopt_mcmc.append([idx, log_prob, a, e, t0, m0, omega, i, theta_0])
+            # Prepare an array to store the top 1000 results
+            reopt_mcmc = []
+            for idx in sorted_indices:
+                # Extract parameter values for each of the top 1000 samples
+                a, e, t0, m0, omega, i, theta_0 = final_samples[idx]
+                log_prob = final_log_probs[idx]
+                reopt_mcmc.append([idx, log_prob, a, e, t0, m0, omega, i, theta_0])
             
-        #     reopt_mcmc = np.array(reopt_mcmc[:n_orbits])
-        #     # Add index column
-        #     reopt_mcmc = np.concatenate([np.arange(reopt_mcmc.shape[0])[:, None], reopt_mcmc], axis=1)
-        #     # Save results
-        #     names = ("image_number", "best_indice", "log_prob", "a", "e", "t0", "m0", "omega", "i", "theta_0")
-        #     ascii.write(
-        #         reopt_mcmc,
-        #         f"{values_dir}/results_mcmc.txt",
-        #         names=names,
-        #         format="fixed_width_two_line",
-        #         formats={"image_number": "%d"},
-        #         overwrite=True,
-        #     )
+            reopt_mcmc = np.array(reopt_mcmc[:n_orbits])
+            # Add index column
+            reopt_mcmc = np.concatenate([np.arange(reopt_mcmc.shape[0])[:, None], reopt_mcmc], axis=1)
+            # Save results
+            names = ("image_number", "best_indice", "log_prob", "a", "e", "t0", "m0", "omega", "i", "theta_0")
+            ascii.write(
+                reopt_mcmc,
+                f"{values_dir}/results_mcmc.txt",
+                names=names,
+                format="fixed_width_two_line",
+                formats={"image_number": "%d"},
+                overwrite=True,
+            )
          
-        #     # Plots results
-        #     Parallel(n_jobs=n_jobs)(
-        #         delayed(make_plots)(
-        #             reopt_mcmc[k, 3:], k, params, data["images"], ts, values_dir)        
-        #         for k in range(min(n_orbits, 100))
-        #     )
+            # Plots results
+            Parallel(n_jobs=n_jobs)(
+                delayed(make_plots)(
+                    reopt_mcmc[k, 3:], k, params, data["images"], ts, values_dir)        
+                for k in range(min(n_orbits, 100))
+            )
             
-        #     corner_plots_mcmc(params, nbins=5)
+            corner_plots_mcmc(params, nbins=5)
         
-        # except ValueError as e:
-        #     with open(log_path, "a") as f: f.write(f"ValueError: {e}\n")
+        except ValueError as e:
+            with open(log_path, "a") as f: f.write(f"ValueError: {e}\n")
         
-        # except IOError as e:
-        #     with open(log_path, "a") as f: f.write(f"File error: {e}\n")
+        except IOError as e:
+            with open(log_path, "a") as f: f.write(f"File error: {e}\n")
         
-        # except Exception as e:
-        #     with open(log_path, "a") as f: f.write(f"Unexpected error: {e}\n")
+        except Exception as e:
+            with open(log_path, "a") as f: f.write(f"Unexpected error: {e}\n")
