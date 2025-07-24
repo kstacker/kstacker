@@ -8,7 +8,7 @@ import math
 
 import numpy as np
 import scipy.ndimage as ndi
-from photutils import CircularAperture, aperture_photometry
+from photutils.aperture import CircularAperture, aperture_photometry
 
 from .._utils import photometry_preprocessed
 from ..orbit import orbit as orb

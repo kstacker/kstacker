@@ -198,7 +198,7 @@ def compute_snr_plots(params):
 
         print(f"compute snr: took {time.time() - tstart:.2f}from joblib import Parallel, delayed sec.")
 
-def compute_mcmc_noise_signal_profil (params,angle=1):
+def compute_mcmc_noise_signal_profil (params):
     """
 
     Parameters
@@ -209,7 +209,7 @@ def compute_mcmc_noise_signal_profil (params,angle=1):
     Create an image of the 1/variance, log(sigma), (Signal-background)^2/variance, (Signal-background)/variance and Signal-background
     
     """
-    def pixel_circle_std(N,M,images,angle):
+    def pixel_circle_std(N,M,images):
         """
 
         Parameters
@@ -248,14 +248,12 @@ def compute_mcmc_noise_signal_profil (params,angle=1):
                     y0 = M / 2 + 0.5
                     dx = x - x0
                     dy = y - y0
-                    tour = (2*np.pi*r)*angle
+                    tour = (2*np.pi*r)
                     
                     angle_theta_pixel = np.arctan2(dy, dx)
-                    # angle_theta_pixel = np.arctan2(dy, dx)
                     # acces to the theta angle of the point studied
                     
-                    theta = np.random.uniform(angle_theta_pixel-np.pi*angle, angle_theta_pixel+np.pi*angle, int(tour/np.sqrt(2)))
-                    # theta = np.random.uniform(angle_theta_pixel-np.pi*angle, angle_theta_pixel+np.pi*angle, 10000)
+                    theta = np.random.uniform(angle_theta_pixel-np.pi, angle_theta_pixel+np.pi, int(tour/np.sqrt(2)))
                     # generat 10000 random angles value on one quarter of a circle centered on the studied point on k,x,y value
 
                     x_c = M/2 -0.5 + r * np.cos(theta)
@@ -264,7 +262,6 @@ def compute_mcmc_noise_signal_profil (params,angle=1):
                     # for every theta angles interpol the value of the hypothetical pixel on the quarter circle studied
                     
                     std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (len(theta))))
-                    # std[k,x,y] = 1.4826*np.median(abs(value-np.median(value)))* np.sqrt(1 + (1 / (2*np.pi*r*angle)))
                     # build the standard deviation value has the the median absolute deviation correction with student over the quarter circle
                     
                     bg = np.mean(value)
@@ -290,7 +287,7 @@ def compute_mcmc_noise_signal_profil (params,angle=1):
     log_sigma[:] = np.nan
     # initialise the output image.
         
-    std, image = pixel_circle_std(N,M,images,angle)
+    std, image = pixel_circle_std(N,M,images)
     # build the std and signal images
     
     for k in range(N):

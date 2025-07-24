@@ -2,7 +2,7 @@ import numpy as np
 from .orbit import orbit
 from kstacker.PSF_shape_mcmc import aperture, PSF
 
-def planet_flux_and_model(N, Signal_over_var, one_over_var, g_values, all_pixel_indices, all_mask):
+def planet_flux(N, Signal_over_var, one_over_var, g_values, all_pixel_indices, all_apperture_mask):
     """
 
     Parameters
@@ -15,16 +15,16 @@ def planet_flux_and_model(N, Signal_over_var, one_over_var, g_values, all_pixel_
         an array of shape (N,M,M), precomputed images for each N time step of 1/sigma².
     g_values : list
         an N sized list of array, each array is a 2D zero order bessel function, centered, with the border values
-        close to zero, the value is computed for all the non zero value in the all_mask variable.
+        close to zero, the value is computed for all the non zero value in the all_apperture_mask variable.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
         y and x coordinates in the M sized image and, the two last y and x coordinates in the aperture matrice.
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
         
     Description
     -----------
-    compute a bessel shapped matrixs, on non zeros values of the aperture mask contained in all_mask variable
+    compute a bessel shapped matrixs, on non zeros values of the aperture mask contained in all_apperture_mask variable
     for each N time step.
     
     Returns
@@ -38,15 +38,17 @@ def planet_flux_and_model(N, Signal_over_var, one_over_var, g_values, all_pixel_
 
     for k in range(N):
         if not all_pixel_indices[k] is None:
-            (y_im, x_im), (y_ap, x_ap) = all_pixel_indices[k]
+            image_y, image_x = all_pixel_indices[k][0]
+            apperture_y, apperture_x = all_pixel_indices[k][1]
     
-            S_over_var = Signal_over_var[k][y_im, x_im]
-            G = g_values[k][y_ap, x_ap]
-            W = one_over_var[k][y_im, x_im]
-            M = all_mask[k][y_ap, x_ap]
+            S_over_var = Signal_over_var[k][image_y, image_x]
+            G = g_values[k][apperture_y, apperture_x]
+            inv_var = one_over_var[k][image_y, image_x]
+            apperture_mask = all_apperture_mask[k][apperture_y, apperture_x]
+            # apperture_mask is photutils mask, it is needed to extract the flux
     
-            numerator += np.sum(S_over_var * G * M)
-            denominator += np.sum(G**2 * W * M)
+            numerator += np.sum(S_over_var * G * apperture_mask)
+            denominator += np.sum(G**2 * inv_var * apperture_mask)
     
     if numerator / denominator < 0:
         return -np.inf
@@ -82,42 +84,47 @@ def compute_log_likelihood(x, CstData):
     # orbitals parameter are translated to cartesians coordinates and translate to suite the matrix formatilsm
     
     one_over_var, Signal, Signal_over_var, Signal_2_over_var, log_sigma = CstData.treated_image
-    all_mask, all_pixel_indices = aperture(x_kepler,N,M,CstData.fwhm,CstData.PSF_shape)
-    g_values = PSF(x_kepler,N,M,CstData,all_pixel_indices,all_mask)
+    all_apperture_mask, all_pixel_indices = aperture(x_kepler,N,M,CstData.fwhm,CstData.PSF_shape)
+    g_values = PSF(x_kepler,N,M,CstData,all_pixel_indices,all_apperture_mask)
     # function named g(x_j - x_kepler) in the mathematical formalis
-    planet_flux_value = planet_flux_and_model(N,Signal_over_var,one_over_var,g_values,all_pixel_indices,all_mask)
+    planet_flux_value = planet_flux(N,Signal_over_var,one_over_var,g_values,all_pixel_indices,all_apperture_mask)
     # variable named f_p in the mathematical formalism
     
-    if (np.any(np.array(temp_d) <= CstData.r_mask)) or (np.any(np.array(temp_d) >= CstData.r_mask_ext) or np.isinf(planet_flux_value)):
+    if (np.any(np.array(temp_d) <= CstData.r_mask)) or (np.any(np.array(temp_d) >= CstData.r_mask_ext)):
+        return -np.inf
+        # can't mesure into the mask
+    
+    if  np.isinf(planet_flux_value):
         return -np.inf
         # negative flux can't relate to the presence of a planet = no planet here
-        # can't mesure into the mask
+    # T_1 is the constant term, T_2 is the non-constant term
     else:
-        som = 0
+        T_2 = 0
         for k in range(N):
-            if all_mask[k] is None:
-                som += 0
+            if all_apperture_mask[k] is None:
+                T_2 += 0
             else:
                 # Extract the indices for optimization
-                image_size_y, image_size_x = all_pixel_indices[k][0]
-                resize_y, resize_x = all_pixel_indices[k][1]
+                image_y, image_x = all_pixel_indices[k][0]
+                apperture_y, apperture_x = all_pixel_indices[k][1]
                 
-                S = Signal[k][image_size_y, image_size_x]
-                G = g_values[k][resize_y, resize_x]
-                Mask = all_mask[k][resize_y, resize_x]
-                W = one_over_var[k][image_size_y, image_size_x]
+                S = Signal[k][image_y, image_x]
+                G = g_values[k][apperture_y, apperture_x]
+                apperture_mask = all_apperture_mask[k][apperture_y, apperture_x]
+                # apperture_mask is photutils mask, it is needed to extract the flux
+                inv_var = one_over_var[k][image_y, image_x]
             
                 # Calculate som (the sum of squared differences)
                 numerator = (planet_flux_value * G)**2 - 2 * S * planet_flux_value * G
-                som += np.sum(numerator * W * Mask)
+                T_2 += -.5*np.sum(numerator * inv_var * apperture_mask)
         
         if CstData.cste_part_Likelihood is None :
-            cst_part = -N * M**2 / 2 * np.log(2 * np.pi) - np.nansum(log_sigma) - 0.5*np.nansum(Signal_2_over_var)
-            CstData.cste_part_Likelihood = cst_part
+            T_1 = -N * M**2 / 2 * np.log(2 * np.pi) - np.nansum(log_sigma) - 0.5*np.nansum(Signal_2_over_var)
+            CstData.cste_part_Likelihood = T_1
         else:
-            cst_part = CstData.cste_part_Likelihood
+            T_1 = CstData.cste_part_Likelihood
             
-        log_likelihood = cst_part -.5*som
+        log_likelihood = T_1 + T_2
         
         return log_likelihood
 
@@ -132,7 +139,7 @@ def log_likelihood(x, CstData):
         manage the constante values needed.
     Returns
     -------
-    log_p : float
+    log_L : float
         log likelihood value for these x values.
 
     """
@@ -140,7 +147,6 @@ def log_likelihood(x, CstData):
     x_complete = [0] * 7 # initialise the final paramters variable
     
     if CstData.fixed_params is None: # all the parameters are free
-        unfixed_param_indices = range(7)
         x_complete = list(x)
     else:
         unfixed_param_indices = [i for i, name in enumerate(param_names) if name not in CstData.fixed_params] # get the indices of the unfixed variables
@@ -149,5 +155,5 @@ def log_likelihood(x, CstData):
         for name, val in CstData.fixed_params.items(): # save the fixed variable into the final orbital parameters variable
             x_complete[param_names.index(name)] = val
 
-    log_p = compute_log_likelihood(x_complete, CstData)
-    return log_p
+    log_L = compute_log_likelihood(x_complete, CstData)
+    return log_L

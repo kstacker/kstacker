@@ -71,15 +71,18 @@ Running |kstacker|
 
       kstacker optimize parameters.yml
 
-- When the optimization computation is finished, run the gradient by launching
-  in a terminal::
+- When the optimization computation is finished, you have several options for refining the orbital solution:
+  **1. Gradient-based refinement:**, run in a terminal::
 
-    kstacker reopt parameters.yml
+      kstacker reopt parameters.yml
 
-  or the mcmc by launching
-  in a terminal::
+  **2. First MCMC refinement**, run in a terminal::
 
-    kstacker mcmc parameters.yml
+      kstacker mcmc parameters.yml
+
+  **3. Newest MCMC refinement method**, run in a terminal::
+  
+      kstacker mcmc_matrix parameters.yml
 
 Running on a Slurm cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

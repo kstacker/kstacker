@@ -234,7 +234,7 @@ def reoptimize_mcmc(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits=100
             for i in range(0, n_steps, n_check):
                 pos, _, _ = sampler.run_mcmc(pos, n_check, progress=True)
 
-                if sampler.iteration > 1:#6*n_check:
+                if sampler.iteration > 6*n_check:
                     tau = sampler.get_autocorr_time(tol=0)
                     with open(log_path, "a") as f:
                         f.write(f"Step {sampler.iteration}: Autocorrelation time = {tau}")

@@ -6,6 +6,7 @@ import ast
 import numpy as np
 
 from .gradient_reoptimization import compute_detailed_positions, reoptimize_gradient
+from .inject_planet_in_data import inject_planet
 from .mcmc_reoptimization import reoptimize_mcmc
 from .mcmc_starting_pos import build_mcmc_starting_position
 from .run_matrix_mcmc import compute_mcmc_matrix
@@ -27,13 +28,6 @@ def main():
     sub_prof.add_argument("parameter_file", help="Parameter file (yml)")
     sub_prof.add_argument("--seed", type=int, help="seed for random numbers")
     sub_prof.set_defaults(func=noise_profiles)
-
-    # ---------------------------------------------------------------
-    # matrix mcmc image builder parser
-    sub_mcmc_image = subparsers.add_parser("mcmc_matrix_image", help="Building the images for mcmc matrix")
-    sub_mcmc_image.add_argument("parameter_file", help="Parameter file (yml)")
-    sub_mcmc_image.add_argument("--angle", type=float, default=1, help="fraction of the circle in witch we take for the noise profil (default 1)")
-    sub_mcmc_image.set_defaults(func=build_mcmc_matrix_images)
 
     # ---------------------------------------------------------------
     # optimize parser
@@ -87,16 +81,16 @@ def main():
         "--njobs", type=int, default=1, help="number of processes (default=1; -1 to use all CPUs)"
     )
     sub_mcmc.add_argument(
-        "--nwalkers", type=int, default=14, help="number of walkers (default=14)"
+        "--nwalkers", type=int, default=28, help="number of walkers (default=28)"
     )
     sub_mcmc.add_argument(
-        "--nsteps", type=int, default=150000, help="number of max mcmc steps (default 150 000)"
+        "--nsteps", type=int, default=100000, help="number of max mcmc steps (default 100 000)"
     )
     sub_mcmc.add_argument(
         "--norbits", type=int, default=1000, help="number of mcmc orbits saved (default 1000)"
     )
     sub_mcmc.add_argument(
-        "--ncheck", type=int, default=100, help="number of mcmc check (default 100)"
+        "--ncheck", type=int, default=1000, help="number of mcmc check (default 100)"
     )
     sub_mcmc.add_argument(
         "--fixedparams", type=str, default=None, help="define the fixed parameters, example \"{'inc': 60, 'e': 0.1}\" (default None)"
@@ -105,7 +99,7 @@ def main():
         "--nbrpsf", type=float, default=1., help="number of psf to define the searching bounds (default 1.)"
     )
     sub_mcmc.add_argument(
-        "--initposprecomputed", type=bool, default=False, help="define if the initial postion are precompute or not (default False)"
+        "--initposprecomputed", type=str, default="False", help="define if the initial postion are precompute or not (default False)"
     )
     sub_mcmc.add_argument(
         "--PSFshape", type=str, default='Circle', help="name of the used PSF, possible value 'Bessel', 'Circle'. (default 'Circle')."
@@ -119,13 +113,13 @@ def main():
     )
     sub_mcmc_matrix.add_argument("parameter_file", help="Parameter file (yml)")
     sub_mcmc_matrix.add_argument(
-        "--njobs", type=int, default=4, help="number of processes (default=1; -1 to use all CPUs)"
+        "--njobs", type=int, default=1, help="number of processes (default=1; -1 to use all CPUs)"
     )
     sub_mcmc_matrix.add_argument(
         "--nwalkers", type=int, default=28, help="number of walkers (default=14)"
     )
     sub_mcmc_matrix.add_argument(
-        "--nsteps", type=int, default=1000000, help="number of max mcmc steps (default 150 000)"
+        "--nsteps", type=int, default=100000, help="number of max mcmc steps (default 100 000)"
     )
     sub_mcmc_matrix.add_argument(
         "--norbits", type=int, default=1000, help="number of mcmc orbits saved (default 1000)"
@@ -140,7 +134,7 @@ def main():
         "--nbrpsf", type=float, default=1., help="number of psf to define the searching bounds (default 1.)"
     )
     sub_mcmc_matrix.add_argument(
-        "--initposprecomputed", type=bool, default=False, help="define if the initial postion are precompute or not (default False)"
+        "--initposprecomputed", type=str, default="False", help="define if the initial postion are precompute or not (default False)"
     )
     sub_mcmc_matrix.add_argument(
         "--PSFshape", type=str, default='Bessel', help="name of the used PSF, possible value 'Bessel', 'Circle'. (default 'Bessel')."
@@ -149,23 +143,23 @@ def main():
 
     # ---------------------------------------------------------------
     # matrix mcmc init pos parser
-    sub_mcmc_matrix = subparsers.add_parser(
+    sub_mcmc_matrix_init_pos = subparsers.add_parser(
         "mcmc_starting_pos", help="Create starting position for every walkers in both Likelihood methods"
     )
-    sub_mcmc_matrix.add_argument("parameter_file", help="Parameter file (yml)")
-    sub_mcmc_matrix.add_argument(
+    sub_mcmc_matrix_init_pos.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_mcmc_matrix_init_pos.add_argument(
         "--nwalkers", type=int, default=28, help="number of walkers (default=14)"
     )
-    sub_mcmc_matrix.add_argument(
+    sub_mcmc_matrix_init_pos.add_argument(
         "--fixedparams", type=str, default=None, help="define the fixed parameters, example \"{'i': 60, 'e': 0.1}\" (default None)"
     )
-    sub_mcmc_matrix.add_argument(
+    sub_mcmc_matrix_init_pos.add_argument(
         "--nbrpsf", type=float, default=1., help="number of psf to define the searching bounds (default 1.)"
     )
-    sub_mcmc_matrix.add_argument(
+    sub_mcmc_matrix_init_pos.add_argument(
         "--fixbounds", type=str, default=None, help="define an upper, a lower or both limits for a parameters parameters, example \"{'i': {'bounds': 'lower', 'value': 60}, 'e': {'bounds': 'lower', 'value': 60}, 'e': {'bounds': 'both', 'value': [60,50]}}\" (default None)"
     )
-    sub_mcmc_matrix.set_defaults(func=mcmc_starting_pos)
+    sub_mcmc_matrix_init_pos.set_defaults(func=mcmc_starting_pos)
 
     # ---------------------------------------------------------------
     # recompute_positions parser
@@ -193,6 +187,12 @@ def main():
     sub_pos.set_defaults(func=recompute_positions)
 
     # ---------------------------------------------------------------
+    # inject planet parser
+    sub_prof = subparsers.add_parser("inject_planet", help="inject a planet into a data set")
+    sub_prof.add_argument("parameter_file", help="Parameter file (yml)")
+    sub_prof.set_defaults(func=inject_planet_in_data)
+
+    # ---------------------------------------------------------------
     # parse arguments
     args = parser.parse_args()
 
@@ -218,6 +218,9 @@ def main():
 if __name__ == "__main__":
     main()
 
+def str2bool(s):
+    return {"true": True, "false": False}[s.lower()]
+
 
 def noise_profiles(args):
     if args.seed:
@@ -227,11 +230,7 @@ def noise_profiles(args):
         compute_noise_profiles(params)
     if params.snr_plot == "yes":
         compute_snr_plots(params)
-        
-
-def build_mcmc_matrix_images(args):
-    params = Params.read(args.parameter_file)
-    compute_mcmc_noise_signal_profil(params,angle=args.angle)
+    compute_mcmc_noise_signal_profil(params)
 
 
 def optimize(args):
@@ -260,7 +259,7 @@ def reopt_mcmc(args):
     else:
         fixedparams = None
     params = Params.read(args.parameter_file)
-    reoptimize_mcmc(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed,PSF_shape=args.PSFshape)
+    reoptimize_mcmc(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=str2bool(args.initposprecomputed),PSF_shape=args.PSFshape)
 
 
 def reopt_mcmc_matrix(args):
@@ -269,7 +268,7 @@ def reopt_mcmc_matrix(args):
     else:
         fixedparams = None
     params = Params.read(args.parameter_file)
-    compute_mcmc_matrix(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=args.initposprecomputed,PSF_shape=args.PSFshape)
+    compute_mcmc_matrix(params, n_jobs=args.njobs, n_walkers=args.nwalkers, n_steps=args.nsteps, n_orbits=args.norbits, n_check=args.ncheck, fixed_params=fixedparams, nbr_psf=args.nbrpsf, init_pos_precomputed=str2bool(args.initposprecomputed),PSF_shape=args.PSFshape)
 
 
 def mcmc_starting_pos(args):
@@ -283,6 +282,7 @@ def mcmc_starting_pos(args):
         fixbounds = None
     params = Params.read(args.parameter_file)
     build_mcmc_starting_position(params, n_walkers=args.nwalkers, fixed_params=fixedparams, nbr_psf=args.nbrpsf, fix_bounds=fixbounds)
+
 
 def recompute_positions(args):
     params = Params.read(args.parameter_file)
@@ -299,3 +299,8 @@ def recompute_positions(args):
         exclude_lobes=True,
         use_interp_bgnoise=False,
     )
+
+
+def inject_planet_in_data(args):
+    params = Params.read(args.parameter_file)
+    inject_planet(params)

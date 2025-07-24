@@ -224,8 +224,6 @@ def compute_mcmc_matrix(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits
     # pre run the PSF shape (bessel) to note get to run it every time and just interpolate value
     r_vals, j0_vals = precompute_bessel_lookup()
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_posterior)
-    r_mask = 30
-    r_mask_ext = size//2
     
     # initialize the globals value passed to emcee (global values are necessary to allow multiprocessing)
     global CstData
@@ -237,8 +235,8 @@ def compute_mcmc_matrix(params, n_jobs=1, n_walkers=28, n_steps=100000, n_orbits
     CstData.fwhm = fwhm
     CstData.bounds = bounds
     CstData.treated_image = treated_image
-    CstData.r_mask = r_mask
-    CstData.r_mask_ext = r_mask_ext
+    CstData.r_mask = params.r_mask
+    CstData.r_mask_ext = params.r_mask_ext
     CstData.r_vals = r_vals
     CstData.j0_vals = j0_vals
     CstData.fixed_params = fixed_params

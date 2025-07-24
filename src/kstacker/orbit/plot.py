@@ -9,7 +9,7 @@ import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-from photutils import CircularAperture, aperture_photometry
+from photutils.aperture import CircularAperture, aperture_photometry
 
 import seaborn as sns  # used for the scatterplot colormap
 from astropy.visualization import ZScaleInterval
@@ -420,9 +420,9 @@ def corner_plots_mcmc(
     axes[6, 6].hist(omega_min_theta_0, bins=nbins, color="darkcyan")
 
     # Figure Title
-    fig.suptitle(
-        f"Corner-plot of the {norbits} K-Stacker orbits at higher SNR", fontsize=16
-    )
+    # fig.suptitle(
+    #     f"Corner-plot of the {norbits} K-Stacker orbits at higher Likelihood", fontsize=16
+    # )
 
     # Axes Labels
     axes[6, 0].set_xlabel("a (a.u.)")
@@ -1114,7 +1114,7 @@ def plot_converge_points_map(images, ts, scale, N, M, log_probabilities, samples
         projected_positions = orbit.project_position_full(
             ts, *sample[:7]
         )
-        projected_positions += scale
+        projected_positions *= scale
         projected_positions += image_size // 2  # Centering on the image
 
         for j in range(N):

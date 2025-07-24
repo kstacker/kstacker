@@ -40,7 +40,7 @@ def aperture(position,N,M,radius,PSF_shape):
         total number of time steps.
     M : int
         number of pixel on each side of the matrix.
-    radius : int
+    radius : float
         radius of the studied apeture, defined by fwhm/2 value.
         
     Description
@@ -49,7 +49,7 @@ def aperture(position,N,M,radius,PSF_shape):
 
     Returns
     -------
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
@@ -57,9 +57,9 @@ def aperture(position,N,M,radius,PSF_shape):
 
     """
     if (PSF_shape == "Bessel" or "Circle"):
-        all_mask, all_pixel_indices = circular_aperture_mask(position,N,M,radius)
+        all_apperture_mask, all_pixel_indices = circular_aperture_mask(position,N,M,radius)
     
-    return all_mask, all_pixel_indices
+    return all_apperture_mask, all_pixel_indices
 
 def circular_aperture_mask(position,N,M,radius):
     """
@@ -72,7 +72,7 @@ def circular_aperture_mask(position,N,M,radius):
         total number of time steps.
     M : int
         number of pixel on each side of the matrix.
-    radius : int
+    radius : float
         radius of the studied apeture, defined by fwhm/2 value.
         
     Description
@@ -82,14 +82,14 @@ def circular_aperture_mask(position,N,M,radius):
 
     Returns
     -------
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
         y and x coordinates in the M sized image and, the two last y and x coordinates in the aperture matrice.
 
     """
-    all_mask = []
+    all_apperture_mask = []
     all_pixel_indices = []
     # initialize the output values
     for k in range (N):
@@ -107,7 +107,7 @@ def circular_aperture_mask(position,N,M,radius):
         image_mask = mask.to_image((M, M))
         
         if image_mask is None:
-            all_mask.append(None)
+            all_apperture_mask.append(None)
             all_pixel_indices.append(None)
             
         else:
@@ -122,12 +122,12 @@ def circular_aperture_mask(position,N,M,radius):
             x_mask = x_img - x0
     
             # Save data
-            all_mask.append(mask.data)
+            all_apperture_mask.append(mask.data)
             all_pixel_indices.append(((y_img, x_img), (y_mask, x_mask)))
     
-    return all_mask, all_pixel_indices
+    return all_apperture_mask, all_pixel_indices
 
-def PSF(x_kepler, N, M, CstData, all_pixel_indices, all_mask):
+def PSF(x_kepler, N, M, CstData, all_pixel_indices, all_apperture_mask):
     """
 
     Parameters
@@ -140,7 +140,7 @@ def PSF(x_kepler, N, M, CstData, all_pixel_indices, all_mask):
         number of pixel on each side of the matrix.
     fwhm : float
         diameter of the studied aperture.
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
@@ -154,19 +154,19 @@ def PSF(x_kepler, N, M, CstData, all_pixel_indices, all_mask):
     -------
     all_psf_shape_matrix : list
         an N sized list of array, each array is a 2D zero order bessel function, centered, with the border values
-        close to zero, the value is computed for all the non zero value in the all_mask variable.
+        close to zero, the value is computed for all the non zero value in the all_apperture_mask variable.
     
     """
     if (CstData.PSF_shape == "Bessel"):
-        all_psf_shape_matrix = bessel_PSF(x_kepler, N, M, CstData.fwhm, all_pixel_indices, all_mask, CstData.r_vals, CstData.j0_vals)
+        all_psf_shape_matrix = bessel_PSF(x_kepler, N, M, CstData.fwhm, all_pixel_indices, all_apperture_mask, CstData.r_vals, CstData.j0_vals)
     
     if (CstData.PSF_shape == "Circle"):
-        all_psf_shape_matrix = circle_PSF(x_kepler, N, M, CstData.fwhm, all_pixel_indices, all_mask)
+        all_psf_shape_matrix = circle_PSF(x_kepler, N, M, CstData.fwhm, all_pixel_indices, all_apperture_mask)
     
     return all_psf_shape_matrix
     
 
-def circle_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask):
+def circle_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_apperture_mask):
     """
 
     Parameters
@@ -179,7 +179,7 @@ def circle_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask):
         number of pixel on each side of the matrix.
     fwhm : float
         diameter of the studied aperture.
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
@@ -198,23 +198,23 @@ def circle_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask):
     all_psf_shape_matrix = []
     
     for k in range(N):
-        circle_psf = np.zeros_like(all_mask[k])
+        circle_psf = np.zeros_like(all_apperture_mask[k])
         
-        if all_mask[k] is None:
+        if all_apperture_mask[k] is None:
             all_psf_shape_matrix.append(None)
             
         else:
             # Get the (y, x) indices in the aperture matrix
-            y_ap, x_ap = all_pixel_indices[k][1]
+            apperture_y, apperture_x = all_pixel_indices[k][1]
             
-            circle_psf[y_ap, x_ap] = 1
+            circle_psf[apperture_y, apperture_x] = 1
     
             all_psf_shape_matrix.append(circle_psf)
         
     return all_psf_shape_matrix
     
 
-def bessel_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask, r_vals, j0_vals):
+def bessel_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_apperture_mask, r_vals, j0_vals):
     """
 
     Parameters
@@ -227,7 +227,7 @@ def bessel_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask, r_vals, j0_val
         number of pixel on each side of the matrix.
     fwhm : float
         diameter of the studied aperture.
-    all_mask : list
+    all_apperture_mask : list
         an N sized list of array, each value of the array is the weigth added to the aperture mask by photutils.
     all_pixel_indices : list
         an N sized list of array, each list contain 4 array, with respectively the two first array defining the 
@@ -239,33 +239,33 @@ def bessel_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask, r_vals, j0_val
         
     Description
     -----------
-    compute a bessel shapped matrixs, on non zeros values of the aperture mask contained in all_mask variable
+    compute a bessel shapped matrixs, on non zeros values of the aperture mask contained in all_apperture_mask variable
     for each N time step.
 
     Returns
     -------
     all_psf_shape_matrix : list
         an N sized list of array, each array is a 2D zero order bessel function, centered, with the border values
-        close to zero, the value is computed for all the non zero value in the all_mask variable.
+        close to zero, the value is computed for all the non zero value in the all_apperture_mask variable.
     
     """
     all_psf_shape_matrix = []
     factor = 2 / fwhm
     
     for k in range(N):
-        bessel_value = np.zeros_like(all_mask[k])
+        bessel_value = np.zeros_like(all_apperture_mask[k])
         
-        if all_mask[k] is None:
+        if all_apperture_mask[k] is None:
             all_psf_shape_matrix.append(None)
             
         else:
             # Get the (y, x) indices in the aperture matrix
-            y_ap, x_ap = all_pixel_indices[k][1]
-            y_im, x_im = all_pixel_indices[k][0]
-            Y_size, X_size = all_mask[k].shape
+            image_y, image_x = all_pixel_indices[k][0]
+            apperture_y, apperture_x = all_pixel_indices[k][1]
+            Y_size, X_size = all_apperture_mask[k].shape
     
-            dx = x_im - x_kepler[k][1] + 0.5
-            dy = y_im - x_kepler[k][0] + 0.5
+            dx = image_x - x_kepler[k][1] + 0.5
+            dy = image_y - x_kepler[k][0] + 0.5
     
             r = np.sqrt(dx**2 + dy**2) * factor
     
@@ -273,7 +273,7 @@ def bessel_PSF(x_kepler, N, M, fwhm, all_pixel_indices, all_mask, r_vals, j0_val
             bessel_vals = np.interp(r, r_vals, j0_vals)
             
             # Direct fill into the array
-            bessel_value[y_ap, x_ap] = bessel_vals
+            bessel_value[apperture_y, apperture_x] = bessel_vals
     
             # Ensure all values are non-negative
             bessel_value[bessel_value < 0] = 0

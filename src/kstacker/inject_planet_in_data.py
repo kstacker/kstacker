@@ -1,5 +1,5 @@
 from kstacker.orbit import orbit
-from kstacker.Matrix_Likelihood import precompute_bessel_lookup, aperture, bessel_PSF
+from kstacker.PSF_shape_mcmc import precompute_bessel_lookup, aperture, bessel_PSF
 
 from astropy.io import fits
 
@@ -77,11 +77,13 @@ def inject_planet(params):
         fits_image_filename = os.path.join(images_dir, dico[a])
         hdul = fits.open(fits_image_filename)
         images.append(hdul[0].data)
+        hdul.close()
         
     N,M,_ = np.shape(np.array(images))
     
     for i in range(len(coord)):
-        fwhm = coord[i]['FWHM']
+        fwhm = 2.44*(coord[i]['wave_length']*10**(-9))/coord[i]['Telescope_D']*((206265*10**(3))/(params.resol))
+        print(fwhm)
         # planet projected positions
         position = orbit.project_position_full(ts,coord[i]['a'],coord[i]['e'],coord[i]['t0'],
                                     coord[i]['m0'],coord[i]['omega'],coord[i]['i'],coord[i]['theta_0'])
@@ -106,7 +108,7 @@ def inject_planet(params):
             resize_y, resize_x = all_pixel_indices[k][1]
             
             images[k][image_size_y, image_size_x] = images[k][image_size_y, image_size_x] + PSF[k][resize_y, resize_x]
-            
+    
     for k in range(len(dico)):
         fits_image_filename = os.path.join(images_dir, dico[k])
         

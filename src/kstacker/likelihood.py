@@ -119,13 +119,11 @@ def compute_log_likelihood(
 
     try:
         if CstData.PSF_shape == "Circle":
-            print(1)
             sigma_inv2 = np.sum(1 / noise ** 2)
             loglikelihood = 0.5 * ((np.sum(signal / noise ** 2)) ** 2) / sigma_inv2
         
         
         if CstData.PSF_shape == "Bessel":
-            print(2)
             n = 0
             d = 0
             cpt = 0
@@ -136,6 +134,7 @@ def compute_log_likelihood(
                     S = images[k][image_size_y, image_size_x]
                     G = g_values[k][resize_y, resize_x]
                     Mask = all_mask[k][resize_y, resize_x]
+                    # Mask is photutils mask, it is needed to extract the flux
                     n += (np.sum(S*G*Mask)-background[cpt])/noise[cpt]**2
                     d += (np.sum(G*Mask)**2/noise[cpt]**2)
                     cpt+=1

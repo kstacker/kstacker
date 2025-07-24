@@ -25,6 +25,8 @@ class MCMCCstData:
         fixe some orbital params, typical shape is {"a":50,"e":0.1}, the orbital param names must be : ["a", "e", "t0", "m0", "omega", "i", "theta_0"]. The default is None.
     cste_part_Likelihood : float
         store the constant component of the likelihood.
+    data : dict
+        params.load_data(method="aperture")
     
     Attributes
     ----------
