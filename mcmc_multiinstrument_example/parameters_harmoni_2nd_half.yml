@@ -1,0 +1,243 @@
+noise_prof: 'yes' # to compute the noise and background profile (with noise_profile_snr_herve.py)
+snr_plot: 'yes'   # to compute the snr plots (with noise_profile_snr_herve.py)
+
+remove_noisy: 'no' # Default='weakly'; To reject bad images: 'no' or 'weakly' or 'strongly'; weakly (: coef of 1.4); See demo of herve logbook
+
+p: 2   # number of images for a run, or number of images added to a previous run
+p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
+total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
+n: 150   # size of the images nxn
+
+time: "8.0+12.0" # time (years) of each observation for p+p_prev images;
+
+method: "convolve"  # "aperture" or "convolve"
+upsampling_factor: 5 # equivalent to what do photutils
+
+invvar_weight: True
+
+# in brute force, keep solutions with SNR >= min_snr
+min_snr: 2.5
+
+# Remove planet for the noise and background computation
+# [x, y, radius] for each image
+# remove_planet:
+#   - [20, 35, 5]
+#   - [20, 35, 5]
+#   - [20, 35, 5]
+
+work_dir: "."
+images_dir: "images_HARMONI_2nd_half"       # folder where to load the images
+grid_dir: "brute_grid"     # folder where to save the grid and the values of signals and noises after the brute force
+values_dir: "values"       # folder where to save the SNR and parameters of the q best orbits, the q final images and orbits
+profile_dir: "profiles_HARMONI_2nd_half"    # folder where to save and load the background and noise profiles
+single_plot: 'yes'         # yes or no to display the positions of the planet in each frame for the q best solutions
+adding: 'no'               # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
+
+# ---- NEW: instrument name used by the multi-instrument code ----
+instrument_name: "HARMONI"  # used to build the Instrument object (and suffix plots)
+
+q: 100      # number of maxima that will be reoptimized by the gradient descent algorithm (default=100)
+dist: 86.2  # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels) 
+
+# FWHM (pixel)
+# used to compute the diameter of the circle for integration of the flux,
+# diameter = 2 x FWHM
+fwhm: 1.9 # Diam PSF ASDI HARMONI 3.8 pixels mesuré sur images dmag=7
+
+resol: 4.    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels )
+
+r_mask: 33.    # radius of the coronagraphic mask (in pixels) # 20 pixel put also in VIP 
+
+r_mask_ext: 60 #  radius of the exterior mask (in pixels). Put at zero values at larger radius (use in noise_profile_snr_herve.py)
+
+mask_value: 0. # Put the min value of the speckles. Default 0.
+
+a:
+  label: "a, semi-major axis (a.u.)"
+  min: 9.    # minimum semi-major axis (in a.u.)#
+  max: 25.   # maximum semi-major axis (in a.u.)
+  N: 14
+  init: 20.
+  Ninit: 3000
+e:
+  label: "e, eccentricity"
+  min: 0.    # minimum eccentricity
+  max: 0.9   # maximum eccentricity
+  N: 12
+  init: 0.1
+  Ninit: 2000
+t0:
+  label: "t0, epoch at perihelion (years)"
+  min: -100.
+  max: -0.
+  N: 60
+  init: -0.1
+  Ninit: 2000
+m0:
+  label: "mass of the star (solar mass)"
+  min: 1.55
+  max: 1.65
+  N: 8
+  init: 1.59
+  Ninit: 3000
+omega:
+  label: "omega, longitude of the ascending node (rad)"
+  min: -3.14
+  max: 3.14    # maximum longitude of the ascending node in rad
+  N: 40
+  init: 0.
+  Ninit: 3000
+i:
+  label: "i, inclination (rad)"
+  min: 0.
+  max: 3.14
+  N: 12
+  init: 0.
+  Ninit: 3000
+theta_0:
+  label: "theta_0, argument of the periapsis (rad)"
+  min: -3.14   # minimum argument of the periapsis in rad
+  max: 3.14    # maximum argument of the periapsis in rad
+  N: 40
+  init: 0.
+  Ninit: 3000
+
+# min/max values on x/y axis for the plot of the orbits (in a.u.)
+xmin: -15.
+xmax: 15.
+ymin: -15.
+ymax: 15.
+
+# ------------------------------------------
+# ------------ MCMC CONFIG (YAML) ----------
+# ------------------------------------------
+
+# Where to save plots (under the run's values_dir)
+plots_dir: "plots"
+
+# Random seed for reproducibility (set to null to disable)
+random_seed: 12345   # or: null
+
+# ------------------------------------------------------------------
+# Time reference used in the definition of λ0 (lambda0)
+# ------------------------------------------------------------------
+t_ref_mode: "min_ts"  # "min_ts" or "fixed"
+t_ref: 0.0            # used only if t_ref_mode == "fixed"
+
+# ------------------------------------------------------------------
+# Global SNR/posterior controls (read at ROOT by mcmc.py)
+# ------------------------------------------------------------------
+weighting: "invvar"   # "invvar" (recommended) or "simple"
+snr_scale: 1.0        # only used in likelihood_mode == "snr"
+noise_floor: 1.0
+
+# ------------------------------------------------------------------
+# Priors and supports (read as priors.* by mcmc.py)
+# ------------------------------------------------------------------
+priors:
+  a_bounds:  [8.0, 25.0]                # [AU]
+  m0_bounds: [1.55,  1.65]              # fixed example
+  la0_bounds: [0.0, 6.283185307179586]  # [0, 2π]
+  ecc_prior: "uniform_e"                # "kipping" | "uniform_e" | "uniform_disk"
+  ecc_beta_a: 0.867
+  ecc_beta_b: 3.03
+  e_max: 0.95
+  orientation_isotropic: true
+
+# ------------------------------------------------------------------
+# Initial guess and walker cloud spreads
+# ------------------------------------------------------------------
+init:
+  a_init:   20.0
+  la0_init: 0.0
+  m0_init:  1.59
+  h_init:   0.0
+  k_init:   0.0
+  p_init:   0.0
+  q_init:   0.0
+
+init_spread:
+  a:   0.02
+  la0: 0.2
+  m0:  0.02
+  hk:  0.02
+  pq:  0.02
+  fp:  0.2   # jitter scale (interpreted in log-space if fp_prior == "loguniform")
+
+# ------------------------------------------------------------------
+# emcee MCMC settings
+# ------------------------------------------------------------------
+mcmc:
+  # Sampler shape
+  nwalkers: 100
+  burnin:   1000
+  nsteps:   10000
+  thin:     100
+  progress: true
+
+  likelihood_mode: "snr"     # "snr" (legacy surrogate) or "flux" (recommended if you model fp)
+  sample_fp: false           # true => sample the 8th parameter 'fp'
+  fp_bounds: [1e-4, 1e2]     # support for fp (must be >0 for loguniform)
+  fp_prior: "loguniform"     # "uniform" | "loguniform"  (loguniform recommended)
+  fp_init: 1.0               # initial fp around which the walker cloud is drawn
+
+# ------------------------------------------------------------------
+# Chunked multiprocessing for vectorized log_prob
+# ------------------------------------------------------------------
+parallel:
+  max_workers: null
+  chunk_size: 256
+
+glrt:
+  n_off: 1000000
+
+# ------------------------------------------------------------------
+# Plot suite configuration (all optional)
+# ------------------------------------------------------------------
+plots:
+  enable: true
+
+  corner:
+    enable: true
+    filename: "corner.png"    # if sample_fp=true, "fp" is appended automatically
+
+  hist:
+    enable: true
+    filename: "posteriors.png"
+    bins: 40
+    labels: ["a","la0","m0","e","i","M0","t0","omega","theta0"]
+
+  coadd_native:
+    enable: true
+    filename: "coadd_native.png"
+    combine: "invvar"
+    align_to: "first"
+    nsamples_marginalize: 0
+
+  top_orbits_overlay:
+    enable: true
+    n_top: 100
+    circle_radius: 4
+    alpha: 0.35
+    filename: "images_with_top_orbits.png"
+
+  logprob_maps:
+    enable: true
+    bins: 128
+    chunk_size: 50000
+    cmap_image: "gray"
+    cmap_map:   "viridis"
+    out_dir: "logprob_maps"
+
+  sum_with_top_orbits:
+    enable: true
+    n_top: 100
+    orbit_time_pad: 0.1
+    orbit_T: 1000
+    orbit_color: "r"
+    orbit_alpha: 0.25
+    orbit_lw: 0.6
+    cross_color: "b"
+    cross_ms: 6
+    cross_mew: 1.2
+    filename: "sum_top_orbits.png"
