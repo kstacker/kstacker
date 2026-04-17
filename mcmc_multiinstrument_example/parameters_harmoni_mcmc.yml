@@ -84,7 +84,7 @@ instruments:
 
     # ── Data locations ──────────────────────────────────────────────
     images_dir:  "images_HARMONI_1st_half"        # folder containing the FITS image files
-    profile_dir: "profiles_HARMONI_1st_halfs"      # folder for noise/background radial profiles
+    profile_dir: "profiles_HARMONI_1st_half"      # folder for noise/background radial profiles
 
     # ── Epoch count and timing ──────────────────────────────────────
     p:      2          # number of new images in this run
