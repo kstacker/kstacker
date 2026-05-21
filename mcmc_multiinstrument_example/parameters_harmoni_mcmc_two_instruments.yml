@@ -1,0 +1,669 @@
+# parameters_harmoni_mcmc.yml
+# ============================
+#
+# Configuration file for the KStacker MCMC orbital inference pipeline.
+# Read by `run_mcmc_from_yaml()` in mcmc.py.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# QUICK COMPATIBILITY GUIDE
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  Photometry backend  │  likelihood_mode  │  sample_fp  │  Notes
+#  ────────────────────┼───────────────────┼─────────────┼──────────────────
+#  "convolve"          │  "snr" or "flux"  │  true/false │  default backend
+#  "aperture"          │  "snr" or "flux"  │  true/false │  aperture photom.
+#  "snr_map"           │  "snr" ONLY       │  false ONLY │  pre-computed SNR
+#  ────────────────────┴───────────────────┴─────────────┴──────────────────
+#
+#  → If you set snr_maps_suffix in an instrument block, the code automatically
+#    forces likelihood_mode = "snr" and disables sample_fp.
+#  → You can mix "convolve"/"aperture" and "snr_map" instruments in the same
+#    run — the "snr" likelihood is used globally.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ANGLE CONVENTION USED BY THE MCMC
+# ─────────────────────────────────────────────────────────────────────────────
+#   omega_rad  = Ω = longitude of the ascending node [rad]
+#   theta0_rad = ω = argument of periapsis [rad]
+#
+# This YAML and the accompanying mcmc.py use these meanings consistently.
+# In particular, the internal projection matrix is the standard (Ω, i, ω)
+# matrix and must not be edited by swapping omega/theta0 inside the matrix.
+#
+# The sampled non-singular variables are:
+#   h = e · sin(Ω + ω)
+#   k = e · cos(Ω + ω)
+#   p = sin(i/2) · cos(Ω − ω)
+#   q = sin(i/2) · sin(Ω − ω)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ------------------------------------------------------------------
+# Noise / SNR pre-flight diagnostics
+# ------------------------------------------------------------------
+noise_prof: 'yes'   # compute per-epoch noise and background profiles
+snr_plot:   'yes'   # compute pre-MCMC SNR maps for a sanity check
+
+remove_noisy: 'no'  # reject noisy images before MCMC
+                    # 'no'       : keep all images
+                    # 'weakly'   : mild rejection
+                    # 'strongly' : aggressive rejection
+
+# ------------------------------------------------------------------
+# Brute-force (pre-MCMC) grid search settings
+# ------------------------------------------------------------------
+min_snr: 3.0        # keep brute-force solutions with SNR >= min_snr
+                    # used when init_mode = "bruteforce"
+
+q: 100              # number of top brute-force solutions re-optimised
+                    # by gradient descent
+
+work_dir:   "."
+grid_dir:   "brute_grid"   # where brute-force results are stored
+values_dir: "values"       # where MCMC outputs (chains, GLRT JSON) are saved
+plots_dir:  "plots"        # sub-directory of values_dir for all plots
+
+# ------------------------------------------------------------------
+# Output and console logging
+# ------------------------------------------------------------------
+# Long MCMC runs produce important information in the terminal: parameter
+# conventions, clipping warnings, acceptance fraction, autocorrelation estimates,
+# saved-file paths, and GLRT/FAP summaries.  The options below keep a permanent
+# copy of that text in values_dir so a future user can audit the run afterwards.
+logging:
+  save_console: true
+  filename: "mcmc_console.log"
+  timestamp_filename: true   # true -> mcmc_console_YYYYMMDD_HHMMSS.log
+
+# The HDF5 file contains both the full production chain and the thinned flat
+# samples, plus the matching log-probabilities.  This avoids losing information
+# needed for convergence checks or re-plotting after the cluster job finishes.
+outputs:
+  save_chain: true
+  chain_filename: "mcmc_chain_and_logprob.h5"
+
+single_plot: 'yes'  # show planet positions for the q best brute-force solutions
+adding:      'no'   # 'yes' if adding new epochs to a previous run
+
+# ------------------------------------------------------------------
+# Stellar / system geometry
+# ------------------------------------------------------------------
+dist: 86.2          # stellar distance [pc]
+                    # used to compute scale = 1000 / (dist * resol) [AU/px]
+
+# ------------------------------------------------------------------
+# Per-instrument configurations
+# ------------------------------------------------------------------
+# You can have one or more instruments in this list.
+# Each entry defines a self-contained dataset with its own images, timing,
+# and photometry settings.
+#
+# ┌──────────────────────────────────────────────────────────────────┐
+# │  IMPORTANT: snr_maps_suffix vs method                            │
+# │                                                                  │
+# │  If you add "snr_maps_suffix" to an instrument block:            │
+# │    - The pipeline loads pre-computed SNR maps from               │
+# │        images_dir/image_{k}{snr_maps_suffix}.fits                │
+# │    - The photometry backend is set to "snr_map" automatically.   │
+# │    - likelihood_mode is forced to "snr" globally.                │
+# │    - sample_fp is disabled.                                      │
+# │    - You do NOT need to set method: in this case.                │
+# │                                                                  │
+# │  If you do NOT add "snr_maps_suffix":                            │
+# │    - The standard "convolve" or "aperture" backend is used.      │
+# │    - likelihood_mode can be "snr" or "flux".                     │
+# └──────────────────────────────────────────────────────────────────┘
+
+instruments:
+  - name: "HARMONI_1st_half"              # instrument label (used in output filenames)
+
+    # ── Data locations ──────────────────────────────────────────────
+    images_dir:  "images_HARMONI_1st_half"        # folder containing the FITS image files
+    profile_dir: "profiles_HARMONI_1st_half"      # folder for noise/background radial profiles
+
+    # ── Epoch count and timing ──────────────────────────────────────
+    p:      2          # number of new images in this run
+    p_prev: 0          # number of images from a previous run (0 = fresh)
+    total_time: 0      # total time span [years] for simulated data; 0 = real data
+
+    # Observation times [years] for all p + p_prev epochs, separated by "+".
+    # Must have exactly p + p_prev values.
+    time: "0.0+4.0"
+
+    # ── Image geometry ───────────────────────────────────────────────
+    n: 150             # native image size [pixels] — images are n × n
+
+    # ── Photometry backend ───────────────────────────────────────────
+    # Choose ONE of the options below:
+
+    # OPTION A — Standard "convolve" backend (default, works with both "snr"
+    #             and "flux" likelihood modes):
+    method: "convolve"
+    upsampling_factor: 5   # upsampling factor applied during preprocessing
+
+    # OPTION B — "aperture" backend (sum within a circular aperture of
+    #             radius = fwhm pixels; works with both "snr" and "flux"):
+    # method: "aperture"
+
+    # OPTION C — Pre-computed SNR maps (forces likelihood_mode = "snr"):
+    # If you have per-epoch SNR maps with filenames of the form
+    #     images_dir/image_{k}_snr_map.fits
+    # then add:
+    #   snr_maps_suffix: "_snr_map"
+    # and remove (or ignore) the method key.
+    #
+    # The SNR maps must:
+    #   - Be in native-pixel resolution (same n × n as the images).
+    #   - Contain dimensionless SNR values (signal / noise per pixel).
+    #   - Not require any further background subtraction.
+    #
+    # Example:
+    # snr_maps_suffix: "_snr_map"
+
+    # ── PSF / plate scale ────────────────────────────────────────────
+    fwhm:  2.0         # PSF FWHM [native pixels]
+                       # Required for "aperture" backend (aperture radius = fwhm).
+                       # Also used by GLRT off-tracks to set the default offset scale.
+    resol: 4.0         # plate scale [mas/pixel]
+                       # Combined with `dist`, gives scale = 1000/(dist*resol).
+
+    # ── Coronagraph masks ────────────────────────────────────────────
+    # The masks are SOFT: epochs where the planet falls inside IWA or
+    # outside OWA contribute zero photometric signal to the likelihood.
+    # The MCMC can still explore such orbits; only the masked epochs
+    # are silenced.  This is physically sensible: a planet on a wide
+    # orbit can transit the masked region at some epochs.
+    r_mask:     30.0   # inner working angle (IWA) [native pixels]
+    r_mask_ext: 74     # outer working angle (OWA) [native pixels]
+    mask_value: 0.0    # value assigned to masked pixels in output images
+
+  - name: "HARMONI_2nd_half"              # instrument label (used in output filenames)
+
+    # ── Data locations ──────────────────────────────────────────────
+    images_dir:  "images_HARMONI_2nd_half"        # folder containing the FITS image files
+    profile_dir: "profiles_HARMONI_2nd_half"      # folder for noise/background radial profiles
+
+    # ── Epoch count and timing ──────────────────────────────────────
+    p:      2          # number of new images in this run
+    p_prev: 0          # number of images from a previous run (0 = fresh)
+    total_time: 0      # total time span [years] for simulated data; 0 = real data
+
+    # Observation times [years] for all p + p_prev epochs, separated by "+".
+    # Must have exactly p + p_prev values.
+    time: "8.0+12.0"
+
+    # ── Image geometry ───────────────────────────────────────────────
+    n: 150             # native image size [pixels] — images are n × n
+
+    # ── Photometry backend ───────────────────────────────────────────
+    # Choose ONE of the options below:
+
+    # OPTION A — Standard "convolve" backend (default, works with both "snr"
+    #             and "flux" likelihood modes):
+    method: "convolve"
+    upsampling_factor: 5   # upsampling factor applied during preprocessing
+
+    # OPTION B — "aperture" backend (sum within a circular aperture of
+    #             radius = fwhm pixels; works with both "snr" and "flux"):
+    # method: "aperture"
+
+    # OPTION C — Pre-computed SNR maps (forces likelihood_mode = "snr"):
+    # If you have per-epoch SNR maps with filenames of the form
+    #     images_dir/image_{k}_snr_map.fits
+    # then add:
+    #   snr_maps_suffix: "_snr_map"
+    # and remove (or ignore) the method key.
+    #
+    # The SNR maps must:
+    #   - Be in native-pixel resolution (same n × n as the images).
+    #   - Contain dimensionless SNR values (signal / noise per pixel).
+    #   - Not require any further background subtraction.
+    #
+    # Example:
+    # snr_maps_suffix: "_snr_map"
+
+    # ── PSF / plate scale ────────────────────────────────────────────
+    fwhm:  2.0         # PSF FWHM [native pixels]
+                       # Required for "aperture" backend (aperture radius = fwhm).
+                       # Also used by GLRT off-tracks to set the default offset scale.
+    resol: 4.0         # plate scale [mas/pixel]
+                       # Combined with `dist`, gives scale = 1000/(dist*resol).
+
+    # ── Coronagraph masks ────────────────────────────────────────────
+    # The masks are SOFT: epochs where the planet falls inside IWA or
+    # outside OWA contribute zero photometric signal to the likelihood.
+    # The MCMC can still explore such orbits; only the masked epochs
+    # are silenced.  This is physically sensible: a planet on a wide
+    # orbit can transit the masked region at some epochs.
+    r_mask:     30.0   # inner working angle (IWA) [native pixels]
+    r_mask_ext: 74     # outer working angle (OWA) [native pixels]
+    mask_value: 0.0    # value assigned to masked pixels in output images
+
+
+# ------------------------------------------------------------------
+# Weighting and SNR combination
+# ------------------------------------------------------------------
+invvar_weight: true    # legacy boolean; overridden by `weighting` below
+
+weighting: "invvar"    # how to combine per-epoch scalars into a single SNR
+                       # "invvar" : inverse-variance weighting (recommended)
+                       #            gives more weight to lower-noise epochs
+                       # "simple" : uniform weighting (sum of scalars)
+
+snr_scale:   1.0       # multiplicative scaling applied to the combined SNR
+                       # in the log-likelihood surrogate.
+                       # Useful for adjusting the effective temperature of the
+                       # posterior (larger = sharper peak).
+
+noise_floor: 0.1       # minimum noise value [same units as images]
+                       # prevents division by zero in very low-noise regimes
+
+# ------------------------------------------------------------------
+# Reference epoch for λ0
+# ------------------------------------------------------------------
+# λ0 (mean longitude at t_ref) is the angular parameter that replaces
+# the classical M0 and avoids the M0/ω singularity.
+#
+# "min_ts" (recommended): t_ref = earliest observation time.
+#   This keeps λ0 ∈ [0, 2π] well-calibrated: λ0 is approximately the
+#   sky position angle of the planet at the first observation.
+#
+# "fixed": t_ref = the numeric value specified in t_ref below.
+#   Use this if you want consistency with a specific external reference
+#   (e.g., a previously published epoch).
+
+t_ref_mode: "min_ts"
+t_ref: 0.0             # used only when t_ref_mode = "fixed"
+
+# ------------------------------------------------------------------
+# Walker initialisation mode
+# ------------------------------------------------------------------
+# "manual"     : use the `init` + `init_spread` values below.
+#                Best when you have a physical prior guess.
+# "bruteforce" : seed walkers from the best solution in the brute-force
+#                grid (values_dir/res_grid.h5, "Best solutions" dataset).
+#                Best when you have already run the K-Stacker grid search.
+
+init_mode: "bruteforce"
+
+# If the brute-force grid used a different axis convention than the MCMC
+# (x and y swapped), set this to true to apply the correction:
+#   i' = π - i,  ω' = -ω + π/2
+bruteforce_swap_xy: true
+
+# ------------------------------------------------------------------
+# Priors
+# ------------------------------------------------------------------
+priors:
+  a_bounds:   [0.0, 100.0]               # semi-major axis support [AU]
+  m0_bounds:  [1.55, 1.65]               # stellar mass support [solar masses]
+  la0_bounds: [0.0, 6.283185307179586]   # mean longitude support [rad] = [0, 2π]
+
+  # Eccentricity prior:
+  #   "kipping"      : Beta(a=0.867, b=3.03) on e; peaked near 0, physically motivated.
+  #   "uniform_e"    : uniform in e ∈ [0, e_max]; gives equal weight to all eccentricities.
+  #   "uniform_disk" : uniform area in the (h,k) disk e ≤ e_max.
+  ecc_prior: "uniform_e"
+
+  # Beta distribution hyperparameters (used only with ecc_prior = "kipping"):
+  ecc_beta_a: 0.867
+  ecc_beta_b: 3.03
+
+  e_max: 0.95            # hard upper limit on eccentricity
+
+  # Orientation prior:
+  # true  (recommended): isotropic — uniform area on the unit disk p²+q² ≤ 1,
+  #                       corresponding to a uniform distribution on the sphere
+  #                       over orbital inclinations and position angles.
+  # false: flat on the square [-1,1]² — not physically motivated.
+  orientation_isotropic: true
+
+# ------------------------------------------------------------------
+# Manual initial guess (used when init_mode = "manual")
+# ------------------------------------------------------------------
+init:
+  a_init:   20.0         # semi-major axis [AU]
+  la0_init: 0.0          # mean longitude at t_ref [rad]
+  m0_init:  1.59         # stellar mass [solar masses]
+  h_init:   0.0          # e·sin(Ω+ω) — zero eccentricity = circular orbit
+  k_init:   0.0          # e·cos(Ω+ω)
+  p_init:   0.0          # sin(i/2)·cos(Ω−ω) — zero = face-on
+  q_init:   0.0          # sin(i/2)·sin(Ω−ω)
+
+# ------------------------------------------------------------------
+# Walker cloud spreads (Gaussian jitter around the initial guess)
+# ------------------------------------------------------------------
+# Each walker is drawn as:
+#   a   ~ a_init × (1 + N(0, spread_a))
+#   la0 ~ la0_init + N(0, spread_la0)   [then wrapped to [0, 2π]]
+#   m0  ~ clip(m0_init × (1 + N(0, spread_m0)), *m0_bounds)   [if spread_m0 > 0]
+#   h,k ~ h_init/k_init + N(0, spread_hk)   [then projected to e ≤ e_max]
+#   p,q ~ p_init/q_init + N(0, spread_pq)   [then projected to unit disk]
+#
+# These spreads control the INITIAL cloud only.  The jump size DURING MCMC is
+# controlled separately by mcmc.moves below.
+#
+# For "bruteforce" init: use small spreads (0.01–0.05) to stay near the
+#   brute-force best solution.
+# For "manual" init: larger spreads (0.1–0.3) allow wider initial exploration.
+init_spread:
+  a:   0.02
+  la0: 0.2
+  m0:  0.02
+  hk:  0.02
+  pq:  0.02
+  fp:  0.2        # spread for the flux parameter fp (used only when sample_fp=true)
+
+# ------------------------------------------------------------------
+# MCMC sampler settings
+# ------------------------------------------------------------------
+# ┌──────────────────────────────────────────────────────────────────┐
+# │  IMPORTANT: likelihood_mode compatibility                        │
+# │                                                                  │
+# │  "snr"  : works with all backends ("convolve", "aperture",       │
+# │           "snr_map"). Recommended default.                       │
+# │                                                                  │
+# │  "flux" : INCOMPATIBLE with "snr_map" backend.                   │
+# │           Requires raw photometric counts + per-pixel noise.      │
+# │           Use only with "convolve" or "aperture" backends.        │
+# │           With sample_fp=true, fp is sampled as an 8th            │
+# │           parameter; otherwise fp is fixed at fp_bounds[0].       │
+# └──────────────────────────────────────────────────────────────────┘
+mcmc:
+  nwalkers: 100          # number of ensemble walkers
+                         # must be >= 2 * ndim and even
+                         # ndim = 7 for (a, la0, m0, h, k, p, q)
+                         # ndim = 8 if sample_fp=true
+
+  burnin:   25000        # burn-in steps
+                         # these steps let walkers relax toward the posterior,
+                         # then they are discarded with sampler.reset()
+
+  nsteps:   75000        # production steps kept in the final chain
+
+  thin:     100          # thinning factor
+                         # keep one sample every `thin` production steps
+                         # final flat chain has approximately:
+                         #   (nsteps / thin) * nwalkers samples
+
+  progress: true         # show tqdm progress bars during sampling
+
+  # ----------------------------------------------------------------
+  # emcee proposal moves
+  # ----------------------------------------------------------------
+  # These moves control how walkers propose new positions DURING the MCMC.
+  # They are different from init_spread:
+  #
+  #   init_spread -> controls only the initial walker cloud
+  #   moves       -> controls the actual proposal steps during sampling
+  #
+  # At each MCMC step, emcee randomly chooses one move according to the
+  # relative weights below. The weights do not need to sum to 1; they are
+  # normalized internally.
+  #
+  # Important distinction:
+  #
+  #   emcee default, if no move is given to EnsembleSampler:
+  #     100% StretchMove
+  #
+  #   this pipeline default, if `moves` is removed or set to []:
+  #     50% DEMove + 50% DESnookerMove
+  #
+  # The pipeline default is chosen because orbital posteriors are often
+  # correlated, curved, and sometimes mildly multimodal.
+  #
+  # ----------------------------------------------------------------
+  # Move type summary
+  # ----------------------------------------------------------------
+  #
+  # 1) StretchMove
+  #    emcee's historical/default affine-invariant move.
+  #
+  #    Idea:
+  #      A walker picks another walker as a reference and proposes a new
+  #      point along the line connecting them.
+  #
+  #    Main parameter:
+  #      a : stretch scale.
+  #          Larger a -> wider proposals.
+  #          emcee default is usually a = 2.0.
+  #
+  #    Pros:
+  #      - very robust default;
+  #      - simple and stable;
+  #      - good for approximately elongated Gaussian-like posteriors;
+  #      - useful as a local refinement move.
+  #
+  #    Cons:
+  #      - can be slow for highly curved orbital degeneracies;
+  #      - can mix poorly between separated modes;
+  #      - often less efficient than differential-evolution moves in
+  #        strongly correlated orbital problems.
+  #
+  # 2) DEMove
+  #    Differential Evolution move.
+  #
+  #    Idea:
+  #      Proposes jumps using the difference between two other walkers:
+  #
+  #        new_position ≈ current_position + gamma0 * (walker_A - walker_B)
+  #
+  #    Main parameters:
+  #      gamma0 : jump scale.
+  #               null uses emcee's default:
+  #
+  #                 gamma0 = 2.38 / sqrt(2 * ndim)
+  #
+  #               For this pipeline:
+  #                 ndim = 7 -> gamma0 ≈ 0.636
+  #                 ndim = 8 -> gamma0 ≈ 0.595, if sample_fp=true
+  #
+  #      sigma  : very small Gaussian perturbation added to the proposal.
+  #               It helps avoid numerical degeneracies if walkers become
+  #               too aligned.
+  #
+  #    Pros:
+  #      - very good for correlated parameters;
+  #      - often efficient for orbital fits;
+  #      - adapts naturally to the ensemble geometry;
+  #      - usually explores faster than StretchMove for elongated posteriors.
+  #
+  #    Cons:
+  #      - can propose jumps that are too wide if the posterior is very sharp;
+  #      - depends on having a healthy, well-spread ensemble;
+  #      - if all walkers collapse into one small region, exploration can slow.
+  #
+  # 3) DESnookerMove
+  #    Differential Evolution Snooker move.
+  #
+  #    Idea:
+  #      Uses the ensemble geometry to propose more oblique/global jumps.
+  #      It is less purely local than StretchMove and can help move along
+  #      curved or separated structures.
+  #
+  #    Main parameter:
+  #      gammas : snooker jump amplitude.
+  #               Larger gammas -> wider jumps.
+  #
+  #    Pros:
+  #      - useful for curved, elongated, or mildly multimodal posteriors;
+  #      - helps walkers avoid getting stuck in narrow local structures;
+  #      - complementary to DEMove.
+  #
+  #    Cons:
+  #      - can lower acceptance if gammas is too large;
+  #      - can be less stable if the posterior is very compact;
+  #      - usually best mixed with another move, not used alone.
+  #
+  # ----------------------------------------------------------------
+  # Practical tuning guide
+  # ----------------------------------------------------------------
+  #
+  # Use the acceptance fraction AND the autocorrelation plot.
+  #
+  #   acceptance fraction < 0.1
+  #     proposals are probably too wide, or the posterior is very sharp.
+  #     Try decreasing gamma0 or gammas.
+  #
+  #   acceptance fraction > 0.6
+  #     proposals may be too small.
+  #     The chain can accept often but still explore slowly.
+  #     Try increasing gamma0 or gammas.
+  #
+  #   acceptance fraction around 0.2--0.5
+  #     usually reasonable for this type of ensemble MCMC.
+  #
+  # The final check should be the autocorrelation diagnostic:
+  #   - if autocorrelation curves flatten, convergence is more credible;
+  #   - if they keep rising at the end, increase nsteps or improve moves.
+  #
+  # Recommended starting point for orbit fitting:
+  #   50% DEMove + 50% DESnookerMove
+  #
+  moves:
+    - name: "de"
+      weight: 0.5
+      sigma: 1.0e-5
+      gamma0: null       # null = 2.38 / sqrt(2 * ndim)
+                          # approx 0.636 for ndim=7
+                          # approx 0.595 for ndim=8 with sample_fp=true
+
+    - name: "desnooker"
+      weight: 0.5
+      gammas: 1.7        # larger = wider snooker jumps
+
+    # Optional additional local move.
+    # Uncomment if the chain needs more local refinement around a narrow peak.
+    # Since weights are relative, 0.5 / 0.5 / 0.2 would be normalized to
+    # roughly 42% / 42% / 16%.
+    #
+    # - name: "stretch"
+    #   weight: 1.0
+    #   a: 2.0           # larger a = wider stretch proposals
+
+  # Likelihood surrogate:
+  # "snr"  : log L ≈ snr_scale × SNR_total(θ)   — compatible with all backends
+  # "flux" : Gaussian flux model with sufficient statistics (S1, S2)
+  #          INCOMPATIBLE with snr_map backend
+  likelihood_mode: "snr"
+
+  # Flux parameter settings (flux mode only):
+  sample_fp: false       # if true, fp is sampled as an 8th parameter
+                         # if false, fp is fixed at fp_bounds[0]
+  fp_bounds: [1e-4, 1e2] # support for fp [same units as image pixels]
+                         # for loguniform prior, both bounds must be > 0
+  fp_prior:  "loguniform" # "uniform" or "loguniform"
+                         # loguniform is recommended when the dynamic range
+                         # of fp is large (planet-to-star contrast unknown)
+  fp_init: 1.0           # centre of the initial fp walker cloud
+
+# ------------------------------------------------------------------
+# GLRT + Off-tracks settings
+# ------------------------------------------------------------------
+glrt:
+  n_off: 1000000         # number of off-track trials for the null distribution
+                         # more = more reliable FAP; 10⁵–10⁶ is typical
+                         # runtime scales linearly with n_off
+
+  # Off-track displacement range for the GLRT null distribution.
+  # IMPORTANT: these are FWHM MULTIPLIERS, not raw pixels.
+  # Example: dr_min_px: 2.0 means the random off-track position is at least
+  # 2 × instrument.fwhm away from the on-track planet position.
+  # With fwhm=2 px, dr_min_px=2 corresponds to 4 native pixels.
+  # The historical default was effectively [1, 5] × FWHM.
+  dr_min_px: 2.0
+  dr_max_px: 4.0
+
+  # Expert-only absolute native-pixel offsets.  Leave null for normal use.
+  # If both are set, they override dr_min_px/dr_max_px above.
+  dr_min_abs_px: null
+  dr_max_abs_px: null
+
+# ------------------------------------------------------------------
+# Chunked multiprocessing
+# ------------------------------------------------------------------
+# The log-posterior is vectorized and evaluated in chunks of walkers
+# distributed across worker processes.  Larger chunk_size = fewer
+# subprocess round-trips but more memory per worker.
+parallel:
+  max_workers: null      # null = use all available CPUs
+  chunk_size:  256       # walkers per parallel chunk
+
+# ------------------------------------------------------------------
+# Plot suite
+# ------------------------------------------------------------------
+plots:
+  enable: true           # master switch for all plots
+
+  # 0) Autocorrelation/convergence diagnostic.
+  # The plot shows integrated autocorrelation-time estimates τ as a function
+  # of the production chain length.  Curves that flatten are a good sign;
+  # curves still rising at the final step usually mean nsteps is too small.
+  autocorrelation:
+    enable: true
+    filename: "autocorrelation.png"
+
+  # 1) Corner plot: joint and marginal posteriors for all parameters.
+  corner:
+    enable: true
+    filename: "corner.png"   # if sample_fp=true, "_with_fp" is appended automatically
+
+  # 2) 1-D posterior histograms with median and 16/84% credible bands.
+  hist:
+    enable: true
+    filename: "posteriors.png"
+    bins: 40
+    # Labels to plot; must be a subset of the augmented chain columns:
+    # ["a","la0","m0","h","k","p","q","M0","t0","e","i","omega","theta0"]
+    # and optionally "fp" when sample_fp=true.
+    # Here omega = Ω ascending node, theta0 = ω argument of periapsis.
+    labels: ["a", "la0", "m0", "e", "i", "M0", "t0", "omega", "theta0"]
+
+  # 3) Posterior-aligned native coadd per instrument.
+  #    Shifts each epoch's native image so the planet (at the MAP orbit)
+  #    lands at the same pixel, then co-adds.
+  #    NOTE: When using the "snr_map" backend, this plot is still produced
+  #    using images_native (not the SNR maps) — it shows the actual flux
+  #    data, which is more interpretable as a visual confirmation.
+  coadd_native:
+    enable: true
+    filename: "coadd_native.png"
+    combine:  "invvar"     # "invvar" (inverse-variance) or "sum" (arithmetic mean)
+    align_to: "first"      # "first" = align to predicted position in first epoch
+                           # or a tuple (x0, y0) for a fixed anchor
+
+  # 4) Orbit overlay: predicted positions of the top-N posterior samples
+  #    drawn as circles on each epoch's native image.
+  top_orbits_overlay:
+    enable: true
+    n_top:         100     # number of top-probability samples to overlay
+    circle_radius: 4       # radius of the marker circle [native pixels]
+    alpha:         0.35    # transparency of the circles
+    filename:      "images_with_top_orbits.png"
+
+  # 5) Log-probability maps: for each epoch, a 2-D spatial map of the
+  #    maximum log-posterior among all posterior samples whose predicted
+  #    planet position falls in each bin.  Useful to check that the MCMC
+  #    samples are spatially consistent with a real signal.
+  logprob_maps:
+    enable:     true
+    bins:       128        # number of spatial bins per axis
+    chunk_size: 50000      # samples processed per chunk (memory trade-off)
+    cmap_image: "gray"
+    cmap_map:   "viridis"
+    out_dir:    "logprob_maps"
+
+  # 6) Sum of all native images with smooth orbit curves and epoch marks
+  #    for the top-N posterior samples.  Two panels: full field and a zoom
+  #    centred around the predicted positions.
+  sum_with_top_orbits:
+    enable:       true
+    n_top:        100
+    orbit_time_pad: 0.1    # fractional padding on each side of the observation span
+    orbit_T:      1000     # number of time steps for smooth orbit rendering
+    orbit_color:  "r"
+    orbit_alpha:  0.25
+    orbit_lw:     0.6
+    cross_color:  "b"
+    cross_ms:     6
+    cross_mew:    1.2
+    filename:     "sum_top_orbits.png"
