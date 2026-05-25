@@ -1,0 +1,112 @@
+noise_prof: 'yes' # to compute the noise and background profile (with noise_profile_snr_herve.py)
+snr_plot: 'yes'   # to compute the snr plots (with noise_profile_snr_herve.py)
+
+remove_noisy: 'no' # Default='weakly'; To reject bad images: 'no' or 'weakly' or 'strongly'; weakly (: coef of 1.4); See demo of herve logbook
+
+p: 4   # number of images for a run, or number of images added to a previous run
+p_prev: 0   # number of previous images used for a run on which other p images will be added, for a new run put 0
+total_time: 0  # total time for all the observations in years for simulations, put 0 for real observations and fill the time variable
+n: 150   # size of the images nxn
+
+time: "0.0+1.5+3.+4.5" # time (years) of each observation for p+p_prev images;
+
+method: "convolve"  # "aperture" or "convolve"
+upsampling_factor: 5 # equivalent to what do photutils
+
+invvar_weight: True
+
+# in brute force, keep solutions with SNR >= min_snr
+min_snr: 3.0
+
+# Remove planet for the noise and background computation
+# [x, y, radius] for each image
+# remove_planet:
+#   - [20, 35, 5]
+#   - [20, 35, 5]
+#   - [20, 35, 5]
+
+work_dir: "."
+images_dir: "images"       # folder where to load the images
+grid_dir: "brute_grid"     # folder where to save the grid and the values of signals and noises after the brute force
+values_dir: "values"       # folder where to save the SNR and parameters of the q best orbits, the q final images and orbits
+profile_dir: "profiles"    # folder where to save and load the background and noise profiles
+single_plot: 'yes'         # yes or no to display the positions of the planet in each frame for the q best solutions
+adding: 'no'               # yes or no if you want to add new p images to a previous run. WARNING : use the exact same grid as the previous run.
+
+q: 100      # number of maxima that will be reoptimized by the gradient descent algorithm (default=100)
+dist: 86.2  # distance of the star  (in parsec)(used to project the orbits on the CCD and in the convertion a.u. in pixels)
+
+# FWHM (pixel)
+# used to compute the diameter of the circle for integration of the flux,
+# diameter = 2 x FWHM
+fwhm: 2.0
+
+resol: 4.0    # plate-scale in marcsec/pixel (used to define the size of the circle for integration of the flux,and convert a.u. in pixels )
+
+r_mask: 30.0    # radius of the coronagraphic mask (in pixels) # 20 pixel put also in VIP
+
+r_mask_ext: 74 #  radius of the exterior mask (in pixels). Put at zero values at larger radius (use in noise_profile_snr_herve.py)
+
+mask_value: 0.0 # Put the min value of the speckles. Default 0.
+
+a:
+  label: "a, semi-major axis (a.u.)"
+  min: 9.    # minimum semi-major axis (in a.u.)#
+  max: 25.   # maximum semi-major axis (in a.u.)
+  N: 14
+  init: 20.
+  Ninit: 3000
+
+e:
+  label: "e, eccentricity"
+  min: 0.    # minimum eccentricity
+  max: 0.9   # maximum eccentricity
+  N: 12
+  init: 0.1
+  Ninit: 2000
+
+t0:
+  label: "t0, epoch at perihelion (years)"
+  min: -100.
+  max: -0.
+  N: 60
+  init: -0.1
+  Ninit: 2000
+
+m0:
+  label: "mass of the star (solar mass)"
+  min: 1.55
+  max: 1.65
+  N: 8
+  init: 1.59
+  Ninit: 3000
+
+omega:
+  label: "omega, longitude of the ascending node (rad)"
+  min: -3.14
+  max: 3.14    # maximum longitude of the ascending node in rad
+  N: 40
+  init: 0.
+  Ninit: 3000
+
+i:
+  label: "i, inclination (rad)"
+  min: 0.
+  max: 3.14
+  N: 12
+  init: 0.
+  Ninit: 3000
+
+theta_0:
+  label: "theta_0, argument of the periapsis (rad)"
+  min: -3.14   # minimum argument of the periapsis in rad
+  max: 3.14    # maximum argument of the periapsis in rad
+  N: 40
+  init: 0.
+  Ninit: 3000
+
+# min/max values on x/y axis for the plot of the orbits (in a.u.)
+xmin: -15.
+xmax: 15.
+ymin: -15.
+ymax: 15.
