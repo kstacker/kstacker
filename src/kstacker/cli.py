@@ -246,21 +246,12 @@ def run_mcmc_command(args):
     print("[cli] Running MCMC pipeline")
     print(f"[cli] Parameter file: {args.parameter_file}")
 
-    # Redirect output to mcmc_output.txt in values directory
-    values_directory = Params.read(args.parameter_file).get_path("values_dir")
-    output_path = os.path.join(values_directory, "mcmc_output.txt")
-    os.makedirs(values_directory, exist_ok=True)
-
-    with open(output_path, 'w') as f, redirect_stdout(f):
-        sampler, flat_chain = run_mcmc_from_yaml(args.parameter_file)
+    sampler, flat_chain = run_mcmc_from_yaml(args.parameter_file)
 
     values_directory = Params.read(args.parameter_file).get_path("values_dir")
-
     print(f"[mcmc] Saved sampling outputs to: {values_directory}")
     print(f"[mcmc] Saved artifacts in: {values_directory}")
     print(f"[mcmc] Flat chain shape: {flat_chain.shape}")
-
-    print(f"[mcmc] Saved output to: {output_path}")
 
 
 if __name__ == "__main__":
