@@ -8,6 +8,7 @@
 #   - optimize
 #   - reopt
 #   - mcmc
+#   - plot
 #
 # This CLI intentionally exposes only the commands that are still part of the
 # current workflow.
@@ -27,6 +28,7 @@ from .noise_profile import (
     compute_snr_plots,
 )
 from .optimize import brute_force
+from .plot import run_plot_from_yaml_cli
 from .utils import Params
 from .version import version
 
@@ -146,6 +148,29 @@ def main():
     )
     mcmc_parser.set_defaults(func=run_mcmc_command)
 
+    # -------------------------------------------------------------------------
+    # plot
+    # -------------------------------------------------------------------------
+    plot_parser = subparsers.add_parser(
+        "plot",
+        help="regenerate MCMC orbit plots with optional orbit range selection",
+    )
+    plot_parser.add_argument(
+        "parameter_file",
+        help="path to the YAML parameter file",
+    )
+    plot_parser.add_argument(
+        "--orbits-range",
+        type=str,
+        default=None,
+        help=(
+            "Range of orbits to plot, as 'N,P' where N and P are 1-indexed ranks "
+            "by log_prob (e.g., '3,12' plots orbits ranked 3rd to 12th highest). "
+            "If not specified, all orbits are plotted (same as mcmc.py default)."
+        ),
+    )
+    plot_parser.set_defaults(func=run_plot_command)
+
     args = parser.parse_args()
 
     if args.debug:
@@ -252,6 +277,34 @@ def run_mcmc_command(args):
     print(f"[mcmc] Saved sampling outputs to: {values_directory}")
     print(f"[mcmc] Saved artifacts in: {values_directory}")
     print(f"[mcmc] Flat chain shape: {flat_chain.shape}")
+
+
+def run_plot_command(args):
+    """
+    Run the plot command to regenerate MCMC orbit plots.
+    
+    This command reads an existing MCMC HDF5 file and regenerates the
+    sum_top_orbits and images_with_top_orbits plots, with optional
+    selection of orbits by log_prob rank and color coding from red to green.
+    
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments including:
+        - parameter_file : path to the YAML configuration file
+        - orbits_range : optional string of the form "N,P" specifying orbit range
+    """
+    print("[cli] Running plot command")
+    print(f"[cli] Parameter file: {args.parameter_file}")
+    if args.orbits_range:
+        print(f"[cli] Orbits range: {args.orbits_range}")
+    else:
+        print("[cli] Orbits range: all (default)")
+    
+    run_plot_from_yaml_cli(
+        yaml_path=args.parameter_file,
+        orbits_range=args.orbits_range,
+    )
 
 
 if __name__ == "__main__":
