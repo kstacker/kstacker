@@ -317,6 +317,15 @@ priors:
   # false: flat on the square [-1,1]² — not physically motivated.
   orientation_isotropic: true
 
+  # Orbital rotation direction prior:
+  # Restricts the orbital inclination to favor a specific rotation direction.
+  # Only applicable when orientation_isotropic = true (required).
+  # Recall: p² + q² = sin²(i/2), so the threshold 0.5 corresponds to i = π/2.
+  #   "none"          : No additional constraint (default, full disk p²+q² ≤ 1).
+  #   "clockwise"     : p² + q² < 0.5  → corresponds to 0 < i < π/2 (clockwise orbits)
+  #   "counterclockwise": p² + q² > 0.5  → corresponds to π/2 < i < π (counter-clockwise orbits)
+  pq_prior: "none"
+
 # ------------------------------------------------------------------
 # Manual initial guess (used when init_mode = "manual")
 # ------------------------------------------------------------------

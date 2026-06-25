@@ -1521,6 +1521,7 @@ def log_prior_hkpq(
     ecc_beta_b: float = 3.03,
     e_max: float = 0.95,
     isotropic_orientation: bool = True,
+    pq_prior: str = "none",
 ) -> np.ndarray:
     """
     Vectorized log-prior for the orbital parameters (a, λ0, m0, h, k, p, q).
@@ -1561,6 +1562,15 @@ def log_prior_hkpq(
     isotropic_orientation = False (discouraged):
         Flat prior on the square [−1,1]² in (p,q).
         Not physically motivated; provided for legacy compatibility only.
+
+    Orbital rotation direction prior (pq_prior)
+    ─────────────────────────────────────────
+    Only applicable when isotropic_orientation = True.
+    Restricts the orbital inclination range to favor a specific rotation direction:
+      - "none"          : No additional constraint (default).
+      - "clockwise"     : p² + q² < 0.5  → corresponds to 0 < i < π/2 (clockwise orbits)
+      - "counterclockwise": p² + q² > 0.5  → corresponds to π/2 < i < π (counter-clockwise orbits)
+    Note: p² + q² = sin²(i/2), so the threshold 0.5 corresponds to i = π/2.
     """
     theta = np.asarray(theta, dtype=float)
     scalar_input = (theta.ndim == 1)
@@ -1582,10 +1592,26 @@ def log_prior_hkpq(
     if isotropic_orientation:
         r2     = p * p + q * q
         valid &= (r2 <= 1.0)
-        logp_pq = -np.log(np.pi)            # area of unit disk
+        # Apply rotation direction prior
+        if pq_prior == "clockwise":
+            valid &= (r2 < 0.5)
+            logp_pq = np.log(2) - np.log(np.pi)
+        elif pq_prior == "counterclockwise":
+            valid &= (r2 > 0.5)
+            logp_pq = np.log(2) - np.log(np.pi)
+        elif pq_prior == "none":
+            logp_pq = -np.log(np.pi)
+        else:
+            raise ValueError("pq_prior must be 'none', 'clockwise', or 'counterclockwise'.")
     else:
         valid &= (np.abs(p) <= 1.0) & (np.abs(q) <= 1.0)
         logp_pq = -np.log(4.0)
+        # pq_prior is incompatible with isotropic_orientation=False
+        if pq_prior != "none":
+            raise ValueError(
+                "pq_prior requires isotropic_orientation=True. "
+                "Set isotropic_orientation: true in the YAML."
+            )
 
     e      = np.sqrt(np.maximum(0.0, h * h + k * k))
     valid &= (e <= e_max)
@@ -1676,6 +1702,7 @@ def log_probability(
     ecc_beta_b: float = 3.03,
     e_max: float = 0.95,
     orientation_isotropic: bool = True,
+    pq_prior: str = "none",
     snr_scale: float = 1.0,
     weighting: str = "invvar",
     likelihood_mode: str = "snr",
@@ -1714,6 +1741,7 @@ def log_probability(
     ecc_beta_a/b       : Beta prior hyperparameters (used when ecc_prior="kipping").
     e_max              : hard upper limit on eccentricity.
     orientation_isotropic: whether to use the isotropic orientation prior.
+    pq_prior           : rotation direction prior: "none", "clockwise", or "counterclockwise".
     snr_scale          : multiplicative scaling of SNR in log-likelihood.
     weighting          : "invvar" or "simple".
     likelihood_mode    : "snr" or "flux".
@@ -1766,6 +1794,7 @@ def log_probability(
         ecc_beta_b=ecc_beta_b,
         e_max=e_max,
         isotropic_orientation=orientation_isotropic,
+        pq_prior=pq_prior,
     )
 
     # Early exit if all walkers are already out of prior support.
@@ -4120,6 +4149,20 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         str(_get(priors, "orientation_isotropic", "yes")).lower()
         in ("1", "true", "yes", "y")
     )
+    pq_prior = str(_get(priors, "pq_prior", "none")).lower()
+    print(f"orientation_isotropic: {orientation_isotropic}")
+    print(f"pq_prior: {pq_prior}")
+    # Validate pq_prior compatibility with orientation_isotropic
+    if pq_prior in ("clockwise", "counterclockwise") and not orientation_isotropic:
+        raise ValueError(
+            "pq_prior ('clockwise' or 'counterclockwise') requires "
+            "orientation_isotropic: true. Set orientation_isotropic: true in YAML."
+        )
+    if pq_prior not in ("none", "clockwise", "counterclockwise"):
+        raise ValueError(
+            f"Invalid pq_prior value '{pq_prior}'. "
+            "Must be 'none', 'clockwise', or 'counterclockwise'."
+        )
     a_bounds, m0_bounds = _resolve_bounds(params, priors)
 
     t_ref     = _resolve_tref(params, root, ts_global)
@@ -4221,6 +4264,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         ecc_beta_b=ecc_beta_b,
         e_max=e_max,
         orientation_isotropic=orientation_isotropic,
+        pq_prior=pq_prior,
         snr_scale=snr_scale,
         weighting=weighting,
         likelihood_mode=mconf["likelihood_mode"],
