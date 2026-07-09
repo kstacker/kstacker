@@ -43,8 +43,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # For each walker θ and each epoch k, we predict the planet's on-sky position
-# in the sky frame (North, West), then convert it to native image pixels with
-# x = West and y = North before extracting a photometric scalar from the
+# in the sky frame (North, East), then convert it to native image pixels with
+# x = -East and y = North before extracting a photometric scalar from the
 # images.  Three backends are supported:
 #
 # 1) "convolve"  (default)
@@ -52,7 +52,7 @@
 #    Uses *upsampled* images (preprocessed by a matched-filter / convolution).
 #    Reads the single nearest pixel at the predicted sub-pixel location.
 #    Background and noise are interpolated from a radial profile at radius r_k.
-#    This is the legacy KStacker approach.
+#    This uses the radial-profile interpolation workflow.
 #
 # 2) "aperture"
 #    ──────────
@@ -140,6 +140,13 @@ from scipy.ndimage import shift as ndi_shift
 from scipy.stats import beta as scipy_beta
 from astropy.io import fits
 from photutils.aperture import CircularAperture, aperture_photometry
+
+try:
+    from tqdm.auto import tqdm
+except Exception:
+    def tqdm(iterable=None, **kwargs):
+        return iterable
+
 
 # Project helpers — try relative import first (package mode), fall back to
 # absolute import when the file is run standalone.
@@ -320,6 +327,50 @@ class Instrument:
     """
 
 
+    bgnoise_cfg: Optional[dict] = None
+    """
+    Optional background/noise estimation configuration.
+
+    Supported modes
+    ---------------
+    "radial_profile":
+        Background and noise are interpolated from per-epoch azimuthally
+        averaged radial profiles stored in `bkg` and `noise`.
+
+    "local_aperture_ring":
+        For each tested orbital position and each epoch,
+        the code estimates the background and the noise from an annulus of
+        *independent reference apertures* placed at the same separation from
+        the star.
+
+        The reference aperture that would contain the tested source is
+        excluded, together with neighbouring apertures inside an exclusion
+        arc-length expressed in units of FWHM.  This avoids contaminating the
+        background/noise estimate with the planet signal and with the nearby
+        convolved lobes or residual correlated structure.
+
+        The exact scalar extracted in each reference aperture depends on the
+        photometry backend:
+          - "convolve": read the local scalar on the upsampled convolved image;
+          - "aperture": perform native-image aperture photometry with the same
+                        aperture radius as the science measurement.
+    """
+
+    local_bkg_maps: Optional[np.ndarray] = None
+    """
+    Optional per-epoch 2-D background maps used when the local aperture-ring
+    estimator is precomputed on the native pixel grid.
+    Shape: (K, size, size).
+    """
+
+    local_noise_maps: Optional[np.ndarray] = None
+    """
+    Optional per-epoch 2-D noise maps used when the local aperture-ring
+    estimator is precomputed on the native pixel grid.
+    Shape: (K, size, size).
+    """
+
+
 # =============================================================================
 # YAML HELPERS
 # =============================================================================
@@ -349,7 +400,7 @@ def _resolve_weighting(yaml_root: dict) -> str:
 
     Priority:
       1. The `weighting` key (string: "invvar" or "simple").
-      2. Legacy boolean `invvar_weight` (True → "invvar", False → "simple").
+      2. Profile-based boolean `invvar_weight` (True → "invvar", False → "simple").
 
     "invvar":
         Inverse-variance weighting. Each epoch k is weighted by w_k = 1/σ_k².
@@ -411,23 +462,33 @@ def _resolve_tref(params: Params, root: dict, ts: np.ndarray) -> float:
     return float(np.min(ts))
 
 
+
 def _resolve_init_mode(root: dict) -> str:
     """
     Decide how to initialise the MCMC walkers.
 
-    "manual"     : Use the explicit `init` + `init_spread` values from the YAML.
-    "bruteforce" : Seed the walkers from the best solution in the brute-force
-                   grid (res_grid.h5 inside values_dir).
+    Supported modes
+    ---------------
+    "manual"
+        Use the explicit `init` + `init_spread` values from the YAML.
 
-    Use "bruteforce" when you have already run the K-Stacker brute-force
-    search and want the MCMC to refine the best solutions.
-    Use "manual" when you have a good prior guess for the orbital parameters.
+    "bruteforce"
+        Seed the walkers from the best solution stored in `values_dir/res_grid.h5`.
+
+    "init_search"
+        Seed the walkers from the dedicated ranked pre-MCMC search stored in
+        `values_dir/init_search.output_h5`.
+
+    Notes
+    -----
+    Multi-start initialisation is controlled separately by the `multistart`
+    YAML block.  The role of `init_mode` is only to choose the default source
+    of the initial centre(s).
     """
     mode = str(root.get("init_mode", "manual") or "manual").lower()
-    if mode not in ("manual", "bruteforce"):
-        raise ValueError("init_mode must be 'manual' or 'bruteforce'.")
+    if mode not in ("manual", "bruteforce", "init_search"):
+        raise ValueError("init_mode must be 'manual', 'bruteforce', or 'init_search'.")
     return mode
-
 
 def _build_init_from_bruteforce(
     params: "Params",
@@ -664,6 +725,111 @@ def _resolve_parallel(root: dict) -> dict:
 
 
 # =============================================================================
+# BACKGROUND / NOISE CONFIGURATION
+# =============================================================================
+
+def _resolve_background_noise(root: dict) -> dict:
+    """
+    Parse the optional `background_noise` YAML block.
+
+    Two complementary strategies are available.
+
+    "radial_profile"
+        Use per-epoch 1-D radial profiles background(r) and sigma(r).  This
+        requires the profile files to exist on disk and is convenient when the
+        user wants a fast, azimuthally averaged estimate.
+
+    "local_aperture_ring"
+        Recompute the background and the noise at each tested position from
+        reference samples located on one or more annuli at the same
+        stellocentric separation as the predicted planet position.
+
+        The method works in resolution-element units rather than raw pixels:
+          - the reference centres are spaced by an arc length expressed in FWHM,
+          - a sector around the tested source is excluded,
+          - the same photometric scalar as the science backend is measured at
+            every surviving reference position,
+          - the background is the median of those reference values,
+          - the noise is a robust scatter estimate (MAD or standard deviation).
+
+    The parser keeps the YAML flexible:
+      - if no `background_noise` block is provided, the code falls back to
+        "radial_profile";
+      - if `background_noise.mode` is "local_aperture_ring", the run can start
+        directly from the image files without requiring precomputed radial
+        profiles.
+
+    Parameters
+    ----------
+    aperture_spacing_fwhm:
+        Arc-length spacing between neighbouring reference centres, expressed
+        in units of FWHM.
+
+    exclusion_radius_fwhm:
+        Half-width of the excluded arc around the tested source position,
+        expressed in FWHM.
+
+    radial_samples:
+        Number of annuli sampled around the tested separation.
+
+    radial_step_fwhm:
+        Radial spacing between neighbouring annuli, in FWHM.
+
+    min_reference_apertures:
+        Minimum number of valid reference samples required to accept the local
+        estimate.
+
+    sigma_statistic:
+        "mad" (recommended) or "std".
+
+    fallback_to_radial_profile:
+        If true, and if radial profiles are available, the code can fall back
+        to the radial interpolation when the local estimate cannot be formed
+        robustly.
+    """
+    cfg = root.get("background_noise", {}) or {}
+
+    def _parse_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, np.integer)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "y", "on")
+        return bool(value)
+
+    mode = str(cfg.get("mode", "radial_profile") or "radial_profile").strip().lower()
+    if mode not in ("radial_profile", "local_aperture_ring"):
+        raise ValueError(
+            "background_noise.mode must be 'radial_profile' or 'local_aperture_ring'."
+        )
+
+    sigma_statistic = str(cfg.get("sigma_statistic", "mad") or "mad").strip().lower()
+    if sigma_statistic not in ("mad", "std"):
+        raise ValueError("background_noise.sigma_statistic must be 'mad' or 'std'.")
+
+    return dict(
+        mode=mode,
+        aperture_spacing_fwhm=float(cfg.get("aperture_spacing_fwhm", 1.0)),
+        exclusion_radius_fwhm=float(cfg.get("exclusion_radius_fwhm", 3.0)),
+        radial_samples=max(1, int(cfg.get("radial_samples", 1))),
+        radial_step_fwhm=float(cfg.get("radial_step_fwhm", 0.5)),
+        min_reference_apertures=max(1, int(cfg.get("min_reference_apertures", 12))),
+        sigma_statistic=sigma_statistic,
+        fallback_to_radial_profile=_parse_bool(
+            cfg.get("fallback_to_radial_profile", True), True
+        ),
+        local_map_mode=str(cfg.get("local_map_mode", "on_the_fly") or "on_the_fly").strip().lower(),
+        precompute_maps=_parse_bool(cfg.get("precompute_maps", False), False),
+        overwrite_cached_maps=_parse_bool(cfg.get("overwrite_cached_maps", False), False),
+        cache_compression=_parse_bool(cfg.get("cache_compression", True), True),
+        cache_dtype=str(cfg.get("cache_dtype", "float32") or "float32").strip().lower(),
+    )
+
+
+# =============================================================================
 # ORBITAL / ANGLE HELPERS
 # =============================================================================
 
@@ -718,8 +884,8 @@ def compute_projection_matrices_from_hkpq(
     Build 2×2 sky-projection matrices from non-singular elements (h, k, p, q).
 
     The matrix R maps (x_orb, y_orb) in the orbital plane [AU] to
-    (North, West) in the sky plane [AU].  Native image pixels use the same
-    convention as the plotting code: x = West, y = North.
+    (North, East) in the sky plane [AU].  Native image pixels use the same
+    direct-imaging convention: North is up, East is left, so x = -East and y = North.
 
     Derivation
     ──────────
@@ -735,8 +901,8 @@ def compute_projection_matrices_from_hkpq(
     #   omega  = Ω = longitude of the ascending node
     #   theta0 = ω = argument of periapsis
     # Therefore w = Ω+ω and Delta = Ω−ω.  The projection matrix below is
-    # the standard sky projection for (North, West) and is converted to image
-    # pixels later with x = West and y = North.
+    # the standard sky projection for (North, East) and is converted to image
+    # pixels later with x = -East and y = North.
     w     = np.arctan2(h, k)   # Ω + ω
     Delta = np.arctan2(q, p)   # Ω − ω
 
@@ -754,8 +920,8 @@ def compute_projection_matrices_from_hkpq(
     rot = np.array([
         [cos_omega * cos_theta0 - sin_omega * sin_theta0 * cos_i,
          -cos_omega * sin_theta0 - sin_omega * cos_theta0 * cos_i],
-        [sin_omega * cos_theta0 + cos_omega * sin_theta0 * cos_i,
-         -sin_omega * sin_theta0 + cos_omega * cos_theta0 * cos_i],
+        [-(sin_omega * cos_theta0 + cos_omega * sin_theta0 * cos_i),
+         -(-sin_omega * sin_theta0 + cos_omega * cos_theta0 * cos_i)],
     ], dtype=np.float32)
     return np.rollaxis(rot, 2)   # (W, 2, 2)
 
@@ -832,6 +998,46 @@ def _load_native_images(params: Params, suffix: str = "_preprocessed") -> np.nda
     return np.asarray(imgs)
 
 
+
+def _load_convolved_images(params: Params, suffix: str = "_resampled") -> np.ndarray:
+    """
+    Load the preprocessed convolved / upsampled FITS images from the images_dir.
+
+    File naming convention:
+        images_dir / image_{k}{suffix}.fits   for k in [0, p_prev + p)
+
+    These images are the science images used by the "convolve" photometry
+    backend.  They can also be loaded directly when background/noise is
+    estimated with `background_noise.mode = "local_aperture_ring"`, in which
+    case no radial profile files are required.
+    """
+    images_dir = params.get_path("images_dir")
+    nimg = params.p + params.p_prev
+    imgs = []
+    for k in range(nimg):
+        fn = os.path.join(images_dir, f"image_{k}{suffix}.fits")
+        im = fits.getdata(fn)
+        imgs.append(im.astype("float32", copy=False))
+    return np.asarray(imgs)
+
+
+def _make_placeholder_profiles(n_epochs: int, size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Create placeholder x/background/noise arrays.
+
+    They are sufficient for code paths that only use
+    `background_noise.mode = "local_aperture_ring"` and therefore do not need
+    precomputed radial profiles.  If a later fallback to radial interpolation is
+    requested without real profiles being available, these placeholders make the
+    behaviour explicit rather than leaving undefined data in memory.
+    """
+    nr = max(2, int(size))
+    xgrid = np.arange(nr, dtype=float)
+    bkg = np.zeros((int(n_epochs), nr), dtype=np.float32)
+    noise = np.ones((int(n_epochs), nr), dtype=np.float32)
+    return xgrid, bkg, noise
+
+
 def _load_snr_maps(params: Params, suffix: str) -> np.ndarray:
     """
     Load pre-computed per-epoch SNR maps from the images_dir.
@@ -898,6 +1104,408 @@ def _aperture_sum_native(
 
 
 # =============================================================================
+# LOCAL BACKGROUND / NOISE HELPERS
+# =============================================================================
+
+def _wrap_pi(angle: np.ndarray | float) -> np.ndarray | float:
+    """Wrap angles to the interval [-π, π)."""
+    return (np.asarray(angle) + np.pi) % (2.0 * np.pi) - np.pi
+
+
+def _robust_sigma(samples: np.ndarray, statistic: str) -> float:
+    """
+    Convert a 1-D sample into a robust σ estimate.
+
+    "mad":
+        σ ≈ 1.4826 × MAD, robust against outliers and bright residual speckles.
+
+    "std":
+        Classical sample standard deviation (ddof=1), less robust but useful
+        for debugging or cross-checks.
+    """
+    samples = np.asarray(samples, dtype=float)
+    if samples.size == 0:
+        return np.nan
+
+    if statistic == "std":
+        if samples.size < 2:
+            return np.nan
+        return float(np.std(samples, ddof=1))
+
+    med = float(np.median(samples))
+    mad = float(np.median(np.abs(samples - med)))
+    return 1.4826 * mad
+
+
+def _extract_convolved_scalar(
+    image_up: np.ndarray,
+    x_native: float,
+    y_native: float,
+    upsampling_factor: float,
+) -> float | None:
+    """
+    Read the same scalar as the "convolve" backend at one test position.
+
+    The signal model for the "convolve" backend uses the *upsampled convolved
+    image* as the science image and reads the nearest pixel at the predicted
+    location.  The local reference measurements must therefore probe the same
+    image, otherwise the background/noise estimate would not live in the same
+    units as the science signal.
+    """
+    x_up = int(np.floor(float(x_native) * float(upsampling_factor) - 0.5))
+    y_up = int(np.floor(float(y_native) * float(upsampling_factor) - 0.5))
+    if x_up < 0 or x_up >= image_up.shape[1] or y_up < 0 or y_up >= image_up.shape[0]:
+        return None
+    return float(image_up[y_up, x_up])
+
+
+def _extract_aperture_scalar(
+    image_native: np.ndarray,
+    x_native: float,
+    y_native: float,
+    r_ap: float,
+) -> float | None:
+    """
+    Measure a reference scalar with native-image aperture photometry.
+
+    This is used both for the science aperture backend and for the annular
+    reference apertures in the local background/noise mode.
+    """
+    if (
+        x_native < r_ap or x_native > (image_native.shape[1] - 1 - r_ap) or
+        y_native < r_ap or y_native > (image_native.shape[0] - 1 - r_ap)
+    ):
+        return None
+    return _aperture_sum_native(image_native, x_native, y_native, r_ap)
+
+
+def _local_aperture_ring_stats(
+    *,
+    photometry_method: str,
+    x_target: float,
+    y_target: float,
+    r_target: float,
+    size: int,
+    upsampling_factor: float,
+    fwhm: Optional[float],
+    image_up: Optional[np.ndarray],
+    image_native: Optional[np.ndarray],
+    cfg: Optional[dict],
+) -> tuple[float, float, int, bool]:
+    """
+    Estimate local background and noise from independent reference apertures.
+
+    Method
+    ------
+    1.  Build one or more thin annuli centred on the tested separation r_target.
+    2.  Place reference aperture centres along each annulus with an arc-length
+        spacing of `aperture_spacing_fwhm × FWHM`.
+    3.  Exclude the arc around the tested source position over an arc-length
+        `exclusion_radius_fwhm × FWHM`.  This masks the source and nearby lobes.
+    4.  Evaluate the same photometric scalar as the science backend at every
+        surviving reference centre.
+    5.  Estimate:
+            background = median(reference scalars)
+            sigma      = robust scatter of the reference scalars
+       using either MAD or standard deviation.
+
+    Returns
+    -------
+    background, sigma, n_reference, success
+    """
+    cfg = cfg or {}
+    mode = str(cfg.get("mode", "radial_profile")).lower()
+    if mode != "local_aperture_ring":
+        return np.nan, np.nan, 0, False
+
+    if fwhm is None or not np.isfinite(fwhm) or fwhm <= 0:
+        return np.nan, np.nan, 0, False
+    if r_target <= 0 or not np.isfinite(r_target):
+        return np.nan, np.nan, 0, False
+
+    radial_samples = max(1, int(cfg.get("radial_samples", 1)))
+    radial_step = float(cfg.get("radial_step_fwhm", 0.5)) * float(fwhm)
+    spacing = max(float(cfg.get("aperture_spacing_fwhm", 1.0)) * float(fwhm), 1e-6)
+    exclusion_arc = max(float(cfg.get("exclusion_radius_fwhm", 3.0)) * float(fwhm), 0.0)
+    min_ref = max(1, int(cfg.get("min_reference_apertures", 12)))
+    sigma_statistic = str(cfg.get("sigma_statistic", "mad")).lower()
+
+    theta_target = float(np.arctan2(y_target - size / 2.0, x_target - size / 2.0))
+
+    if radial_samples == 1:
+        ring_radii = np.array([float(r_target)], dtype=float)
+    else:
+        offsets = np.linspace(
+            -0.5 * (radial_samples - 1),
+            0.5 * (radial_samples - 1),
+            radial_samples,
+            dtype=float,
+        ) * radial_step
+        ring_radii = float(r_target) + offsets
+        ring_radii = ring_radii[ring_radii > 0.0]
+
+    samples: list[float] = []
+    r_ap = float(fwhm)
+
+    for rr in ring_radii:
+        n_centres = max(int(np.floor(2.0 * np.pi * rr / spacing)), 8)
+        phis = np.linspace(0.0, 2.0 * np.pi, n_centres, endpoint=False, dtype=float)
+
+        if exclusion_arc > 0.0:
+            exclusion_half_angle = exclusion_arc / max(rr, 1e-6)
+            keep = np.abs(_wrap_pi(phis - theta_target)) > exclusion_half_angle
+        else:
+            keep = np.ones_like(phis, dtype=bool)
+
+        if not np.any(keep):
+            continue
+
+        x_ring = size / 2.0 + rr * np.cos(phis)
+        y_ring = size / 2.0 + rr * np.sin(phis)
+
+        for x_ref, y_ref, k_keep in zip(x_ring, y_ring, keep):
+            if not k_keep:
+                continue
+
+            if photometry_method == "convolve":
+                if image_up is None:
+                    continue
+                value = _extract_convolved_scalar(
+                    image_up=image_up,
+                    x_native=float(x_ref),
+                    y_native=float(y_ref),
+                    upsampling_factor=upsampling_factor,
+                )
+            elif photometry_method == "aperture":
+                if image_native is None:
+                    continue
+                value = _extract_aperture_scalar(
+                    image_native=image_native,
+                    x_native=float(x_ref),
+                    y_native=float(y_ref),
+                    r_ap=r_ap,
+                )
+            else:
+                value = None
+
+            if value is None or not np.isfinite(value):
+                continue
+            samples.append(float(value))
+
+    if len(samples) < min_ref:
+        return np.nan, np.nan, len(samples), False
+
+    samples_arr = np.asarray(samples, dtype=float)
+    background = float(np.median(samples_arr))
+    sigma = float(_robust_sigma(samples_arr, sigma_statistic))
+
+    if (not np.isfinite(background)) or (not np.isfinite(sigma)) or sigma <= 0.0:
+        return np.nan, np.nan, len(samples), False
+
+    return background, sigma, len(samples), True
+
+
+
+def _sanitize_cache_token(value: Any) -> str:
+    token = str(value)
+    token = token.replace(".", "p")
+    token = token.replace("-", "m")
+    token = token.replace("/", "_")
+    token = token.replace(" ", "")
+    return token
+
+
+def _local_aperture_ring_cache_stem(
+    *,
+    photometry_method: str,
+    size: int,
+    upsampling_factor: float,
+    fwhm: float,
+    cfg: Mapping[str, Any],
+) -> str:
+    return "__".join([
+        "local_aperture_ring",
+        f"method={_sanitize_cache_token(photometry_method)}",
+        f"n={_sanitize_cache_token(size)}",
+        f"up={_sanitize_cache_token(upsampling_factor)}",
+        f"fwhm={_sanitize_cache_token(fwhm)}",
+        f"spacing={_sanitize_cache_token(cfg.get('aperture_spacing_fwhm'))}",
+        f"exclude={_sanitize_cache_token(cfg.get('exclusion_radius_fwhm'))}",
+        f"radialsamples={_sanitize_cache_token(cfg.get('radial_samples'))}",
+        f"radialstep={_sanitize_cache_token(cfg.get('radial_step_fwhm'))}",
+        f"minref={_sanitize_cache_token(cfg.get('min_reference_apertures'))}",
+        f"sigma={_sanitize_cache_token(cfg.get('sigma_statistic'))}",
+    ])
+
+
+def _cache_epoch_paths(profile_dir: str, stem: str, epoch_index: int) -> tuple[str, str]:
+    base = os.path.join(profile_dir, f"{stem}__epoch={epoch_index:03d}")
+    return base + "__background.npy", base + "__noise.npy"
+
+
+def _interp_map_bilinear(
+    maps: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    k_idx: np.ndarray,
+) -> np.ndarray:
+    h = maps.shape[1]
+    w = maps.shape[2]
+
+    x0 = np.floor(x).astype(np.int32)
+    y0 = np.floor(y).astype(np.int32)
+    x1 = x0 + 1
+    y1 = y0 + 1
+
+    x0 = np.clip(x0, 0, w - 1)
+    x1 = np.clip(x1, 0, w - 1)
+    y0 = np.clip(y0, 0, h - 1)
+    y1 = np.clip(y1, 0, h - 1)
+
+    dx = x - x0
+    dy = y - y0
+
+    v00 = maps[(k_idx, y0, x0)]
+    v01 = maps[(k_idx, y0, x1)]
+    v10 = maps[(k_idx, y1, x0)]
+    v11 = maps[(k_idx, y1, x1)]
+
+    return (
+        (1.0 - dx) * (1.0 - dy) * v00
+        + dx * (1.0 - dy) * v01
+        + (1.0 - dx) * dy * v10
+        + dx * dy * v11
+    ).astype(np.float32)
+
+
+def _compute_local_ring_maps_for_epoch(
+    *,
+    epoch_index: int,
+    photometry_method: str,
+    size: int,
+    upsampling_factor: float,
+    fwhm: float,
+    image_up: Optional[np.ndarray],
+    image_native: Optional[np.ndarray],
+    cfg: Mapping[str, Any],
+    radial_xgrid: Optional[np.ndarray],
+    radial_bkg: Optional[np.ndarray],
+    radial_noise: Optional[np.ndarray],
+    noise_floor: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    bg_map = np.zeros((size, size), dtype=np.float32)
+    noise_map = np.full((size, size), float(noise_floor), dtype=np.float32)
+
+    row_iter = tqdm(range(size), desc=f"[bgnoise] epoch {epoch_index}", leave=False)
+    for y in row_iter:
+        for x in range(size):
+            r_target = float(np.hypot(x - size / 2.0, y - size / 2.0))
+            bg_loc, sig_loc, _, ok_loc = _local_aperture_ring_stats(
+                photometry_method=photometry_method,
+                x_target=float(x),
+                y_target=float(y),
+                r_target=r_target,
+                size=size,
+                upsampling_factor=upsampling_factor,
+                fwhm=fwhm,
+                image_up=image_up,
+                image_native=image_native,
+                cfg=cfg,
+            )
+            if ok_loc:
+                bg_map[y, x] = float(bg_loc)
+                noise_map[y, x] = float(sig_loc)
+            else:
+                can_fallback = (
+                    bool(cfg.get("fallback_to_radial_profile", True))
+                    and radial_xgrid is not None
+                    and radial_bkg is not None
+                    and radial_noise is not None
+                )
+                if can_fallback:
+                    bg_fb = float(np.interp(r_target, radial_xgrid, radial_bkg))
+                    sig_fb = float(np.interp(r_target, radial_xgrid, radial_noise))
+                    bg_map[y, x] = bg_fb
+                    noise_map[y, x] = sig_fb if np.isfinite(sig_fb) and sig_fb > 0 else float(noise_floor)
+                else:
+                    bg_map[y, x] = 0.0
+                    noise_map[y, x] = float(noise_floor)
+    return bg_map, noise_map
+
+
+def _load_or_build_local_ring_maps(
+    *,
+    profile_dir: str,
+    photometry_method: str,
+    size: int,
+    upsampling_factor: float,
+    fwhm: float,
+    images_up: Optional[np.ndarray],
+    images_native: Optional[np.ndarray],
+    cfg: Mapping[str, Any],
+    radial_xgrid: Optional[np.ndarray],
+    radial_bkg: Optional[np.ndarray],
+    radial_noise: Optional[np.ndarray],
+    noise_floor: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    if profile_dir is None:
+        raise ValueError("profile_dir is required to cache local aperture ring maps.")
+
+    os.makedirs(profile_dir, exist_ok=True)
+
+    cache_dtype = np.float32 if str(cfg.get("cache_dtype", "float32")).lower() == "float32" else np.float64
+    stem = _local_aperture_ring_cache_stem(
+        photometry_method=photometry_method,
+        size=size,
+        upsampling_factor=upsampling_factor,
+        fwhm=fwhm,
+        cfg=cfg,
+    )
+
+    n_epochs = images_up.shape[0] if images_up is not None else images_native.shape[0]
+    overwrite = bool(cfg.get("overwrite_cached_maps", False))
+    bg_maps = []
+    noise_maps = []
+
+    print(f"[bgnoise] local_aperture_ring cache stem: {stem}")
+    print(f"[bgnoise] profile_dir: {profile_dir}")
+
+    for epoch_index in tqdm(range(n_epochs), desc="[bgnoise] epochs", leave=True):
+        bg_path, noise_path = _cache_epoch_paths(profile_dir, stem, epoch_index)
+        if (not overwrite) and os.path.exists(bg_path) and os.path.exists(noise_path):
+            print(f"[bgnoise] loading cached maps for epoch {epoch_index}: {os.path.basename(bg_path)}")
+            bg_map = np.load(bg_path).astype(cache_dtype, copy=False)
+            noise_map = np.load(noise_path).astype(cache_dtype, copy=False)
+        else:
+            print(f"[bgnoise] computing local maps for epoch {epoch_index}")
+            bg_map, noise_map = _compute_local_ring_maps_for_epoch(
+                epoch_index=epoch_index,
+                photometry_method=photometry_method,
+                size=size,
+                upsampling_factor=upsampling_factor,
+                fwhm=fwhm,
+                image_up=None if images_up is None else images_up[epoch_index],
+                image_native=None if images_native is None else images_native[epoch_index],
+                cfg=cfg,
+                radial_xgrid=radial_xgrid,
+                radial_bkg=None if radial_bkg is None else radial_bkg[epoch_index],
+                radial_noise=None if radial_noise is None else radial_noise[epoch_index],
+                noise_floor=noise_floor,
+            )
+            bg_map = bg_map.astype(cache_dtype, copy=False)
+            noise_map = noise_map.astype(cache_dtype, copy=False)
+            np.save(bg_path, bg_map)
+            np.save(noise_path, noise_map)
+            print(f"[bgnoise] saved {bg_path}")
+            print(f"[bgnoise] saved {noise_path}")
+
+        bg_maps.append(bg_map)
+        noise_maps.append(noise_map)
+
+    return np.asarray(bg_maps, dtype=cache_dtype), np.asarray(noise_maps, dtype=cache_dtype)
+
+
+# =============================================================================
 # SNR CORE  (vectorized over walkers)
 # =============================================================================
 
@@ -918,7 +1526,10 @@ def snr_from_hkpq(
     photometry_method: str = "convolve",
     images_native: Optional[np.ndarray] = None,
     fwhm: Optional[float] = None,
-    snr_maps: Optional[np.ndarray] = None,   
+    snr_maps: Optional[np.ndarray] = None,
+    background_noise_cfg: Optional[dict] = None,
+    local_bkg_maps: Optional[np.ndarray] = None,
+    local_noise_maps: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute per-walker (signal, noise, SNR) across all epochs.
@@ -932,13 +1543,14 @@ def snr_from_hkpq(
     ─────────────────────────
     "convolve":
         Read the nearest pixel in the upsampled image at the predicted
-        sub-pixel location.  Background and noise are interpolated from
-        radial profiles.
+        sub-pixel location.  Background and noise are obtained either from
+        radial profiles or from a local reference ring, depending on the
+        background_noise configuration.
 
     "aperture":
         Perform circular aperture photometry on the native image with
-        radius = fwhm [native pixels].  Background and noise come from
-        radial profiles.
+        radius = fwhm [native pixels].  Background and noise can come from
+        radial profiles or from a local reference ring.
 
     "snr_map": 
         Read the pre-computed SNR value at the nearest native pixel.
@@ -1051,10 +1663,10 @@ def snr_from_hkpq(
     r00 = rot[:, 0, 0][:, None]; r01 = rot[:, 0, 1][:, None]
     r10 = rot[:, 1, 0][:, None]; r11 = rot[:, 1, 1][:, None]
     north_sky = x_orb * r00 + y_orb * r01
-    west_sky  = x_orb * r10 + y_orb * r11
+    east_sky  = x_orb * r10 + y_orb * r11
 
     cx = cy = size // 2
-    x_pix = west_sky * scale + cx    # (W_ok, K) native pixel x = West
+    x_pix = (-east_sky) * scale + cx    # (W_ok, K) native pixel x = -East
     y_pix = north_sky * scale + cy   # (W_ok, K) native pixel y = North
     r     = np.hypot(x_pix - cx, y_pix - cy)   # (W_ok, K) radius [native px]
 
@@ -1139,11 +1751,56 @@ def snr_from_hkpq(
         bkg   = np.asarray(data["bkg"], dtype=np.float32)
         noise = np.asarray(data["noise"],dtype=np.float32)
 
-        # Interpolate background and noise at the predicted radii.
+        # Radial-profile path: interpolate the pre-computed 1-D profiles when available.
         bg  = _interp_profiles_vectorized(xgrid, bkg,  r, k_idx)
         sig = _interp_profiles_vectorized(xgrid, noise, r, k_idx)
         bg[~validpix]  = 0.0
         sig[~validpix] = 0.0
+
+        # Local ring path:
+        # estimate background/noise at each tested position from an annulus of
+        # independent reference apertures at the same separation, while masking
+        # the source position and its nearby lobes.  This is slower because the
+        # local statistics are recomputed for each trial position, but it avoids
+        # mixing the tested source into its own background/noise estimate.
+        bg_cfg = background_noise_cfg or {}
+        bg_mode = str(bg_cfg.get("mode", "radial_profile")).lower()
+        if bg_mode == "local_aperture_ring" and photometry_method in ("convolve", "aperture"):
+            map_mode = str(bg_cfg.get("local_map_mode", "on_the_fly")).lower()
+            use_precomputed_maps = (
+                map_mode == "precompute_cache"
+                and local_bkg_maps is not None
+                and local_noise_maps is not None
+            )
+            if use_precomputed_maps:
+                bg = _interp_map_bilinear(local_bkg_maps, x_pix, y_pix, k_idx)
+                sig = _interp_map_bilinear(local_noise_maps, x_pix, y_pix, k_idx)
+                bg[~validpix] = 0.0
+                sig[~validpix] = 0.0
+            else:
+                use_fallback = bool(bg_cfg.get("fallback_to_radial_profile", True))
+                for ii in range(idx.size):
+                    for kk in range(K):
+                        if not validpix[ii, kk]:
+                            continue
+                        bg_loc, sig_loc, _, ok_loc = _local_aperture_ring_stats(
+                            photometry_method=photometry_method,
+                            x_target=float(x_pix[ii, kk]),
+                            y_target=float(y_pix[ii, kk]),
+                            r_target=float(r[ii, kk]),
+                            size=size,
+                            upsampling_factor=upsampling_factor,
+                            fwhm=fwhm,
+                            image_up=None if photometry_method != "convolve" else images[kk],
+                            image_native=None if photometry_method != "aperture" else images_native[kk],
+                            cfg=bg_cfg,
+                        )
+                        if ok_loc:
+                            bg[ii, kk] = bg_loc
+                            sig[ii, kk] = sig_loc
+                        elif not use_fallback:
+                            bg[ii, kk] = 0.0
+                            sig[ii, kk] = float(noise_floor)
 
         y = flux - bg   # background-subtracted flux
 
@@ -1247,6 +1904,9 @@ def snr_multi_from_hkpq(
             images_native=inst.images_native,
             fwhm=inst.fwhm,
             snr_maps=inst.snr_maps,
+            background_noise_cfg=inst.bgnoise_cfg,
+            local_bkg_maps=inst.local_bkg_maps,
+            local_noise_maps=inst.local_noise_maps,
         )
 
         if weighting == "simple":
@@ -1296,6 +1956,9 @@ def flux_sufficient_stats_from_hkpq(
     photometry_method: str = "convolve",
     images_native: Optional[np.ndarray] = None,
     fwhm: Optional[float] = None,
+    background_noise_cfg: Optional[dict] = None,
+    local_bkg_maps: Optional[np.ndarray] = None,
+    local_noise_maps: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute sufficient statistics (S1, S2) for the Gaussian flux likelihood.
@@ -1370,10 +2033,10 @@ def flux_sufficient_stats_from_hkpq(
     r00  = rot[:, 0, 0][:, None]; r01 = rot[:, 0, 1][:, None]
     r10  = rot[:, 1, 0][:, None]; r11 = rot[:, 1, 1][:, None]
     north_sky = x_orb * r00 + y_orb * r01
-    west_sky  = x_orb * r10 + y_orb * r11
+    east_sky  = x_orb * r10 + y_orb * r11
 
     cx = cy = size // 2
-    x_pix = west_sky * scale + cx
+    x_pix = east_sky * scale + cx
     y_pix = north_sky * scale + cy
     r     = np.hypot(x_pix - cx, y_pix - cy)
 
@@ -1412,10 +2075,55 @@ def flux_sufficient_stats_from_hkpq(
     xgrid = np.asarray(data["x"],    dtype=float)
     bkg   = np.asarray(data["bkg"],  dtype=np.float32)
     noise = np.asarray(data["noise"],dtype=np.float32)
+
+    # Radial-profile path: interpolate the pre-computed 1-D profiles when available.
     bg    = _interp_profiles_vectorized(xgrid, bkg,  r, k_idx)
     sig   = _interp_profiles_vectorized(xgrid, noise, r, k_idx)
     bg[~validpix]  = 0.0
     sig[~validpix] = 0.0
+
+    # Local ring path:
+    # estimate background/noise from independent reference apertures around
+    # each tested position.  The same local statistics are then used to build
+    # the Gaussian sufficient statistics S1 and S2.
+    bg_cfg = background_noise_cfg or {}
+    bg_mode = str(bg_cfg.get("mode", "radial_profile")).lower()
+    if bg_mode == "local_aperture_ring" and photometry_method in ("convolve", "aperture"):
+        map_mode = str(bg_cfg.get("local_map_mode", "on_the_fly")).lower()
+        use_precomputed_maps = (
+            map_mode == "precompute_cache"
+            and local_bkg_maps is not None
+            and local_noise_maps is not None
+        )
+        if use_precomputed_maps:
+            bg = _interp_map_bilinear(local_bkg_maps, x_pix, y_pix, k_idx)
+            sig = _interp_map_bilinear(local_noise_maps, x_pix, y_pix, k_idx)
+            bg[~validpix] = 0.0
+            sig[~validpix] = 0.0
+        else:
+            use_fallback = bool(bg_cfg.get("fallback_to_radial_profile", True))
+            for ii in range(idx.size):
+                for kk in range(K):
+                    if not validpix[ii, kk]:
+                        continue
+                    bg_loc, sig_loc, _, ok_loc = _local_aperture_ring_stats(
+                        photometry_method=photometry_method,
+                        x_target=float(x_pix[ii, kk]),
+                        y_target=float(y_pix[ii, kk]),
+                        r_target=float(r[ii, kk]),
+                        size=size,
+                        upsampling_factor=upsampling_factor,
+                        fwhm=fwhm,
+                        image_up=None if photometry_method != "convolve" else images[kk],
+                        image_native=None if photometry_method != "aperture" else images_native[kk],
+                        cfg=bg_cfg,
+                    )
+                    if ok_loc:
+                        bg[ii, kk] = bg_loc
+                        sig[ii, kk] = sig_loc
+                    elif not use_fallback:
+                        bg[ii, kk] = 0.0
+                        sig[ii, kk] = float(noise_floor)
 
     ytilde = flux - bg
 
@@ -1493,6 +2201,9 @@ def flux_sufficient_stats_multi_from_hkpq(
             photometry_method=inst.photometry_method,
             images_native=inst.images_native,
             fwhm=inst.fwhm,
+            background_noise_cfg=inst.bgnoise_cfg,
+            local_bkg_maps=inst.local_bkg_maps,
+            local_noise_maps=inst.local_noise_maps,
         )
         S1_total += S1_i
         S2_total += S2_i
@@ -1521,7 +2232,6 @@ def log_prior_hkpq(
     ecc_beta_b: float = 3.03,
     e_max: float = 0.95,
     isotropic_orientation: bool = True,
-    pq_prior: str = "none",
 ) -> np.ndarray:
     """
     Vectorized log-prior for the orbital parameters (a, λ0, m0, h, k, p, q).
@@ -1561,16 +2271,7 @@ def log_prior_hkpq(
 
     isotropic_orientation = False (discouraged):
         Flat prior on the square [−1,1]² in (p,q).
-        Not physically motivated; provided for legacy compatibility only.
-
-    Orbital rotation direction prior (pq_prior)
-    ─────────────────────────────────────────
-    Only applicable when isotropic_orientation = True.
-    Restricts the orbital inclination range to favor a specific rotation direction:
-      - "none"          : No additional constraint (default).
-      - "clockwise"     : p² + q² < 0.5  → corresponds to 0 < i < π/2 (clockwise orbits)
-      - "counterclockwise": p² + q² > 0.5  → corresponds to π/2 < i < π (counter-clockwise orbits)
-    Note: p² + q² = sin²(i/2), so the threshold 0.5 corresponds to i = π/2.
+        Not physically motivated; provided for profile-based compatibility only.
     """
     theta = np.asarray(theta, dtype=float)
     scalar_input = (theta.ndim == 1)
@@ -1592,26 +2293,10 @@ def log_prior_hkpq(
     if isotropic_orientation:
         r2     = p * p + q * q
         valid &= (r2 <= 1.0)
-        # Apply rotation direction prior
-        if pq_prior == "clockwise":
-            valid &= (r2 < 0.5)
-            logp_pq = np.log(2) - np.log(np.pi)
-        elif pq_prior == "counterclockwise":
-            valid &= (r2 > 0.5)
-            logp_pq = np.log(2) - np.log(np.pi)
-        elif pq_prior == "none":
-            logp_pq = -np.log(np.pi)
-        else:
-            raise ValueError("pq_prior must be 'none', 'clockwise', or 'counterclockwise'.")
+        logp_pq = -np.log(np.pi)            # area of unit disk
     else:
         valid &= (np.abs(p) <= 1.0) & (np.abs(q) <= 1.0)
         logp_pq = -np.log(4.0)
-        # pq_prior is incompatible with isotropic_orientation=False
-        if pq_prior != "none":
-            raise ValueError(
-                "pq_prior requires isotropic_orientation=True. "
-                "Set isotropic_orientation: true in the YAML."
-            )
 
     e      = np.sqrt(np.maximum(0.0, h * h + k * k))
     valid &= (e <= e_max)
@@ -1702,7 +2387,6 @@ def log_probability(
     ecc_beta_b: float = 3.03,
     e_max: float = 0.95,
     orientation_isotropic: bool = True,
-    pq_prior: str = "none",
     snr_scale: float = 1.0,
     weighting: str = "invvar",
     likelihood_mode: str = "snr",
@@ -1741,7 +2425,6 @@ def log_probability(
     ecc_beta_a/b       : Beta prior hyperparameters (used when ecc_prior="kipping").
     e_max              : hard upper limit on eccentricity.
     orientation_isotropic: whether to use the isotropic orientation prior.
-    pq_prior           : rotation direction prior: "none", "clockwise", or "counterclockwise".
     snr_scale          : multiplicative scaling of SNR in log-likelihood.
     weighting          : "invvar" or "simple".
     likelihood_mode    : "snr" or "flux".
@@ -1794,7 +2477,6 @@ def log_probability(
         ecc_beta_b=ecc_beta_b,
         e_max=e_max,
         isotropic_orientation=orientation_isotropic,
-        pq_prior=pq_prior,
     )
 
     # Early exit if all walkers are already out of prior support.
@@ -1827,8 +2509,8 @@ def log_probability(
             noise_floor=noise_floor,
             weighting=weighting,
         )
-        out = lp + snr_scale * snr
-
+        out = lp + (snr_scale * snr)**2
+ 
     else:   # "flux"
         S1, S2 = flux_sufficient_stats_multi_from_hkpq(
             theta7,
@@ -1847,6 +2529,299 @@ def log_probability(
 # =============================================================================
 # WALKER INITIALISATION
 # =============================================================================
+
+
+
+def _resolve_multistart(root: dict) -> dict:
+    """
+    Parse the optional YAML block controlling multi-start walker initialisation.
+    """
+    cfg = root.get("multistart", {}) or {}
+    return dict(
+        enabled=bool(cfg.get("enabled", False)),
+        n_starts=max(1, int(cfg.get("n_starts", 3))),
+        source=str(cfg.get("source", "current_init_mode") or "current_init_mode").lower(),
+        ratios=list(cfg.get("ratios", [50, 30, 20])),
+        min_snr=cfg.get("min_snr", None),
+        init_search_h5=str(cfg.get("init_search_h5", "mcmc_init_search.h5") or "mcmc_init_search.h5"),
+    )
+
+
+def _clip_theta_init_to_bounds(
+    theta_init: np.ndarray,
+    *,
+    a_bounds: Tuple[float, float],
+    m0_bounds: Tuple[float, float],
+    la0_bounds: Tuple[float, float],
+    e_max: float,
+) -> np.ndarray:
+    """
+    Clip a 7-D non-singular initial vector to the supported box / disk priors.
+    """
+    theta_init = np.asarray(theta_init, dtype=float).copy()
+    theta_init[0] = np.clip(theta_init[0], *a_bounds)
+    theta_init[1] = np.clip(theta_init[1], *la0_bounds)
+    theta_init[2] = np.clip(theta_init[2], *m0_bounds)
+
+    h, k = float(theta_init[3]), float(theta_init[4])
+    e = float(np.hypot(h, k))
+    if e > e_max and e > 0.0:
+        theta_init[3] *= e_max / e
+        theta_init[4] *= e_max / e
+
+    p, q = float(theta_init[5]), float(theta_init[6])
+    r2 = p * p + q * q
+    if r2 > 1.0 and r2 > 0.0:
+        r = np.sqrt(r2)
+        theta_init[5] /= r
+        theta_init[6] /= r
+
+    return theta_init
+
+
+def _classical_row_to_theta_init(
+    row: np.ndarray,
+    *,
+    t_ref: float,
+) -> np.ndarray:
+    """
+    Convert one ranked classical-orbit row into the 7-D non-singular state.
+    """
+    a, e, t0, m0, omega, inc, theta0 = map(float, row[:7])
+
+    n = 2.0 * np.pi * np.sqrt(m0 / (a ** 3))
+    M0 = wrap_2pi(n * (t_ref - t0))
+    la0 = wrap_2pi(M0 + omega + theta0)
+
+    w_sum = omega + theta0
+    delta = omega - theta0
+    h = e * np.sin(w_sum)
+    k = e * np.cos(w_sum)
+    sin_i_2 = np.sin(0.5 * inc)
+    p = sin_i_2 * np.cos(delta)
+    q = sin_i_2 * np.sin(delta)
+
+    return np.array([a, la0, m0, h, k, p, q], dtype=float)
+
+
+def _load_ranked_classical_rows_from_h5(
+    h5_path: str,
+    *,
+    min_snr: Optional[float] = None,
+) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    """
+    Load ranked classical-orbit solutions from an HDF5 file.
+    """
+    if not os.path.exists(h5_path):
+        raise FileNotFoundError(f"Ranked initialisation file not found: {h5_path}")
+
+    with h5py.File(h5_path, "r") as f:
+        if "Best solutions" not in f:
+            raise KeyError(f"Dataset 'Best solutions' not found in {h5_path}.")
+        data = np.asarray(f["Best solutions"][:], dtype=float)
+
+    if data.ndim != 2 or data.shape[1] < 7:
+        raise ValueError(
+            f"'Best solutions' in {h5_path} has shape {data.shape}; expected (N, >=7)."
+        )
+
+    snr = None
+    if data.shape[1] >= 8:
+        snr = np.asarray(data[:, -1], dtype=float)
+        if min_snr is not None:
+            valid = snr >= float(min_snr)
+            data = data[valid]
+            snr = snr[valid]
+
+    if data.shape[0] == 0:
+        raise RuntimeError(f"No ranked solutions available in {h5_path} after filtering.")
+
+    return data, snr
+
+
+def _resolve_results_h5_from_source(
+    params: "Params",
+    root: dict,
+    *,
+    init_mode: str,
+    multistart_cfg: dict,
+) -> Optional[str]:
+    """
+    Resolve which ranked HDF5 file should feed the initial centres.
+    """
+    source = str(multistart_cfg.get("source", "current_init_mode")).lower()
+    if source == "current_init_mode":
+        source = init_mode
+
+    values_dir = params.get_path("values_dir")
+
+    if source == "bruteforce":
+        return os.path.join(values_dir, "res_grid.h5")
+
+    if source == "init_search":
+        init_search_cfg = root.get("init_search", {}) or {}
+        filename = str(
+            multistart_cfg.get("init_search_h5")
+            or init_search_cfg.get("output_h5", "mcmc_init_search.h5")
+        )
+        return os.path.join(values_dir, filename)
+
+    if source == "manual":
+        return None
+
+    raise ValueError(
+        "multistart.source must be 'current_init_mode', 'manual', 'bruteforce', or 'init_search'."
+    )
+
+
+def _build_theta_centres_from_ranked_h5(
+    h5_path: str,
+    *,
+    t_ref: float,
+    n_centres: int,
+    min_snr: Optional[float] = None,
+    a_bounds: Tuple[float, float],
+    m0_bounds: Tuple[float, float],
+    la0_bounds: Tuple[float, float],
+    e_max: float,
+) -> tuple[list[np.ndarray], list[dict]]:
+    """
+    Read the top-ranked classical-orbit solutions from an HDF5 file and convert
+    them into clipped 7-D non-singular centres suitable for walker initialisation.
+    """
+    data, snr = _load_ranked_classical_rows_from_h5(h5_path, min_snr=min_snr)
+
+    n_take = min(int(n_centres), int(data.shape[0]))
+    centres: list[np.ndarray] = []
+    meta: list[dict] = []
+
+    for i in range(n_take):
+        theta = _classical_row_to_theta_init(data[i, :7], t_ref=t_ref)
+        theta = _clip_theta_init_to_bounds(
+            theta,
+            a_bounds=a_bounds,
+            m0_bounds=m0_bounds,
+            la0_bounds=la0_bounds,
+            e_max=e_max,
+        )
+        centres.append(theta)
+        meta.append(
+            dict(
+                rank=i + 1,
+                snr=None if snr is None else float(snr[i]),
+                classical_row=np.asarray(data[i, :7], dtype=float).tolist(),
+            )
+        )
+
+    if not centres:
+        raise RuntimeError(f"No valid initial centres could be built from {h5_path}.")
+
+    return centres, meta
+
+
+def _normalise_multistart_ratios(ratios: Sequence[float], n_starts: int) -> np.ndarray:
+    """
+    Normalise user-provided multi-start ratios.
+    """
+    ratios = list(ratios)
+    if len(ratios) == 0:
+        ratios = [1.0] * n_starts
+    if len(ratios) < n_starts:
+        ratios = ratios + [ratios[-1]] * (n_starts - len(ratios))
+    ratios = np.asarray(ratios[:n_starts], dtype=float)
+    ratios = np.where(np.isfinite(ratios) & (ratios > 0.0), ratios, 0.0)
+    if float(np.sum(ratios)) <= 0.0:
+        ratios = np.ones(n_starts, dtype=float)
+    return ratios / np.sum(ratios)
+
+
+def _allocate_multistart_walkers(
+    nwalkers: int,
+    *,
+    n_starts: int,
+    ratios: Sequence[float],
+) -> np.ndarray:
+    """
+    Convert user ratios into integer walker counts per start.
+    """
+    if n_starts <= 0:
+        raise ValueError("n_starts must be >= 1.")
+    if nwalkers < n_starts:
+        raise ValueError(
+            f"nwalkers={nwalkers} is smaller than n_starts={n_starts}; "
+            "increase nwalkers or reduce multistart.n_starts."
+        )
+
+    w = _normalise_multistart_ratios(ratios, n_starts)
+    exact = nwalkers * w
+    counts = np.floor(exact).astype(int)
+
+    remainder = int(nwalkers - np.sum(counts))
+    if remainder > 0:
+        order = np.argsort(-(exact - counts))
+        counts[order[:remainder]] += 1
+
+    counts = np.maximum(counts, 0)
+    if np.any(counts == 0):
+        zero_idx = np.where(counts == 0)[0]
+        for zi in zero_idx:
+            donor = int(np.argmax(counts))
+            if counts[donor] <= 1:
+                raise RuntimeError(
+                    "Could not allocate at least one walker to every start. "
+                    "Increase nwalkers or reduce n_starts."
+                )
+            counts[donor] -= 1
+            counts[zi] += 1
+
+    return counts
+
+
+def draw_walkers_multistart(
+    nwalkers: int,
+    theta_centres: Sequence[np.ndarray],
+    *,
+    ratios: Sequence[float],
+    a_bounds: Tuple[float, float],
+    m0_bounds: Tuple[float, float],
+    e_max: float = 0.95,
+    la0_bounds: Tuple[float, float] = (0.0, 2.0 * np.pi),
+    spread: dict = dict(a=0.02, la0=0.2, m0=0.0, hk=0.02, pq=0.02),
+) -> np.ndarray:
+    """
+    Draw the initial walker cloud around several ranked centres.
+    """
+    theta_centres = [np.asarray(theta, dtype=float) for theta in theta_centres]
+    if len(theta_centres) == 0:
+        raise ValueError("theta_centres must contain at least one centre.")
+
+    counts = _allocate_multistart_walkers(
+        nwalkers=nwalkers,
+        n_starts=len(theta_centres),
+        ratios=ratios,
+    )
+
+    chunks = []
+    for theta_c, n_here in zip(theta_centres, counts):
+        chunks.append(
+            draw_walkers_around_theta_init(
+                nwalkers=int(n_here),
+                theta_init=np.asarray(theta_c, dtype=float),
+                a_bounds=a_bounds,
+                m0_bounds=m0_bounds,
+                e_max=e_max,
+                la0_bounds=la0_bounds,
+                spread=spread,
+            )
+        )
+
+    p0 = np.vstack(chunks)
+    if p0.shape[0] != nwalkers:
+        raise RuntimeError(
+            f"draw_walkers_multistart built {p0.shape[0]} walkers, expected {nwalkers}."
+        )
+    return p0
+
 
 def draw_walkers_around_theta_init(
     nwalkers: int,
@@ -2623,16 +3598,16 @@ def _predict_pixel_track_native(theta, ts, *, size, scale, t_ref):
         np.array([p], float), np.array([q], float),
     )[0]
     north_sky = x_orb * proj[0, 0] + y_orb * proj[0, 1]
-    west_sky  = x_orb * proj[1, 0] + y_orb * proj[1, 1]
+    east_sky  = x_orb * proj[1, 0] + y_orb * proj[1, 1]
     cx = cy = size // 2
-    return west_sky * scale + cx, north_sky * scale + cy
+    return (-east_sky) * scale + cx, north_sky * scale + cy
 
 
 def _predict_tracks_native_chunk(thetas_chunk, ts, *, size, scale, t_ref):
     """
     Vectorized prediction of native pixel tracks for a chunk of walkers.
 
-    Returns (x_pix, y_pix) of shape (K, Wc), with x = West and y = North.
+    Returns (x_pix, y_pix) of shape (K, Wc), with x = -East and y = North.
     """
     th = np.asarray(thetas_chunk, float)
     a, la0, m0, h, k, p, q = th.T
@@ -2647,9 +3622,9 @@ def _predict_tracks_native_chunk(thetas_chunk, ts, *, size, scale, t_ref):
 
     R     = compute_projection_matrices_from_hkpq(k, h, p, q)   # (Wc, 2, 2)
     north_sky = x_orb * R[None, :, 0, 0] + y_orb * R[None, :, 0, 1]
-    west_sky  = x_orb * R[None, :, 1, 0] + y_orb * R[None, :, 1, 1]
+    east_sky  = x_orb * R[None, :, 1, 0] + y_orb * R[None, :, 1, 1]
 
-    x_pix = west_sky * scale + (size // 2)
+    x_pix = (-east_sky) * scale + (size // 2)
     y_pix = north_sky * scale + (size // 2)
     return x_pix, y_pix
 
@@ -3446,9 +4421,9 @@ def _offtrack_stat_for_theta(
             np.array([p], float), np.array([q], float),
         )[0]
         north_sky_ = x_orb_ * proj[0, 0] + y_orb_ * proj[0, 1]
-        west_sky_  = x_orb_ * proj[1, 0] + y_orb_ * proj[1, 1]
+        east_sky_  = x_orb_ * proj[1, 0] + y_orb_ * proj[1, 1]
         cx = cy = float(inst.size // 2)
-        base_tracks[inst.name] = (west_sky_ * inst.scale + cx, north_sky_ * inst.scale + cy)
+        base_tracks[inst.name] = (east_sky_ * inst.scale + cx, north_sky_ * inst.scale + cy)
         centers[inst.name]     = (cx, cy)
         max_K = max(max_K, len(ts_i))
 
@@ -3884,15 +4859,35 @@ def _run_plots_from_yaml(
     params: "Params",
     sampler: emcee.EnsembleSampler,
     flat: np.ndarray,
+    flat_log_prob: np.ndarray,
     instruments: Sequence[Instrument],
     lp_kwargs: dict,
 ) -> None:
     """
     Run the full plotting suite as configured in the YAML `plots` section.
+
+    The plotting suite must consume the already thinned flattened posterior
+    products extracted upstream, rather than re-deriving them ad hoc.
     """
     plots_cfg = params._params.get("plots", {}) or {}
     if not plots_cfg.get("enable", True):
         return
+
+    flat = np.asarray(flat, dtype=float)
+    flat_log_prob = np.asarray(flat_log_prob, dtype=float)
+
+    if flat.ndim != 2:
+        raise ValueError(f"'flat' must be a 2-D thinned flattened chain, got shape {flat.shape}.")
+    if flat_log_prob.ndim != 1:
+        raise ValueError(
+            f"'flat_log_prob' must be a 1-D thinned flattened log-probability array, "
+            f"got shape {flat_log_prob.shape}."
+        )
+    if flat.shape[0] != flat_log_prob.shape[0]:
+        raise ValueError(
+            "The thinned flattened chain and log-probability arrays must have the "
+            f"same number of samples, got {flat.shape[0]} and {flat_log_prob.shape[0]}."
+        )
 
     values_dir = params.get_path("values_dir")
     plots_dir  = os.path.join(values_dir, params._params.get("plots_dir", "plots"))
@@ -4024,7 +5019,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
     Pipeline
     ────────
     1.  Read YAML → Params object.
-    2.  For each instrument block: load images, profiles, time vector.
+    2.  For each instrument block: load images, optional profiles, and the time vector.
         If snr_maps_suffix is present, load SNR maps and set backend to "snr_map".
     3.  Combine all time vectors → resolve global t_ref.
     4.  Resolve priors, eccentricity prior, and bounds.
@@ -4033,10 +5028,11 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
     7.  Optionally add the fp dimension (flux mode with sample_fp=true).
     8.  Build Instrument objects and lp_kwargs.
     9.  Run burn-in + production MCMC via run_emcee_hybrid.
-    10. Extract flattened chain.
+    10. Extract thinned flattened chain and log-probability arrays.
     11. Print diagnostics (acceptance fraction, IAT).
-    12. Run the plotting suite.
+    12. Save outputs.
     13. Run GLRT + off-tracks.
+    14. Run the plotting suite on the already thinned products.
 
     Parameters
     ──────────
@@ -4054,12 +5050,14 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
     base_root = dict(root)
 
     # ── (2) Load per-instrument data ──
+
     instruments_cfg = root.get("instruments", None)
     if not isinstance(instruments_cfg, (list, tuple)):
         raise ValueError("`instruments` must be a list of instrument configs.")
 
     per_inst_data: list = []
     all_ts:        list = []
+    background_noise_cfg = _resolve_background_noise(root)
 
     for inst_cfg in instruments_cfg:
         if not isinstance(inst_cfg, dict):
@@ -4082,33 +5080,105 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
             if photometry_method not in ("convolve", "aperture"):
                 photometry_method = "convolve"
 
-        # Load image data and radial profiles via the Params helper.
-        data_io     = params.load_data(method=photometry_method if photometry_method != "snr_map" else "convolve")
         ts_i        = params.get_ts(use_p_prev=True)
-        images_up   = data_io["images"]    # upsampled images (or equivalent)
-        xgrid       = data_io["x"]
-        bkg         = data_io["bkg"]
-        noise       = data_io["noise"]
         size_i      = params.n
         scale_i     = params.scale
-        upsampling_factor = params.upsampling_factor
+        upsampling_factor = getattr(params, "upsampling_factor", 1)
         r_mask      = getattr(params, "r_mask",     None)
         r_mask_ext  = getattr(params, "r_mask_ext", None)
         fwhm        = float(getattr(params, "fwhm", _get(tmp_root, "fwhm", 3.0)))
         inst_name   = inst_cfg.get("name", inst_cfg.get("instrument_name", "INST"))
 
-        # Always load native images (used by coadd and orbit overlay plots).
-        images_native = _load_native_images(params)
-
-        # Load SNR maps when the "snr_map" backend is requested.
+        # Backend-specific loading policy.
+        #
+        # The code supports two sources of background/noise information:
+        #   - radial profiles loaded from the preprocessing products;
+        #   - on-the-fly local estimates from `background_noise.mode =
+        #     "local_aperture_ring"`.
+        #
+        # The image loading strategy therefore depends both on the photometry
+        # backend and on the background/noise mode selected in the YAML.
         if photometry_method == "snr_map":
             snr_maps = _load_snr_maps(params, suffix=snr_maps_suffix)
+            images_up = None
+            xgrid, bkg, noise = _make_placeholder_profiles(len(ts_i), size_i)
+
+            try:
+                images_native = _load_native_images(params)
+            except Exception:
+                images_native = np.asarray(snr_maps, dtype=np.float32)
+                print(
+                    f"[load] Instrument '{inst_name}': native images not found; "
+                    "using SNR maps as images_native for plotting."
+                )
+
+            local_bkg_maps = None
+            local_noise_maps = None
             print(
                 f"[load] Instrument '{inst_name}': loaded {snr_maps.shape[0]} SNR maps "
                 f"(suffix='{snr_maps_suffix}', backend='snr_map')."
             )
         else:
+            use_local_ring = (
+                background_noise_cfg["mode"] == "local_aperture_ring"
+            )
+            use_precomputed_local_maps = (
+                use_local_ring
+                and str(background_noise_cfg.get("local_map_mode", "on_the_fly")).lower() == "precompute_cache"
+                and bool(background_noise_cfg.get("precompute_maps", False))
+            )
+
+            profile_dir = params.get_path("profile_dir")
+
+            # Native images are always useful for plots and are required by the
+            # "aperture" backend.
+            images_native = _load_native_images(params)
+
+            if photometry_method == "convolve":
+                images_up = _load_convolved_images(params)
+            else:
+                images_up = None
+
             snr_maps = None
+
+            need_radial_profiles = (
+                background_noise_cfg["mode"] == "radial_profile"
+                or bool(background_noise_cfg.get("fallback_to_radial_profile", True))
+            )
+
+            if need_radial_profiles:
+                data_io = params.load_data(method=photometry_method)
+                xgrid = data_io["x"]
+                bkg = data_io["bkg"]
+                noise = data_io["noise"]
+
+                if photometry_method == "convolve":
+                    images_up = data_io["images"]
+                elif photometry_method == "aperture":
+                    images_up = None
+            else:
+                xgrid, bkg, noise = _make_placeholder_profiles(len(ts_i), size_i)
+
+            local_bkg_maps = None
+            local_noise_maps = None
+            if use_precomputed_local_maps:
+                local_bkg_maps, local_noise_maps = _load_or_build_local_ring_maps(
+                    profile_dir=profile_dir,
+                    photometry_method=photometry_method,
+                    size=size_i,
+                    upsampling_factor=upsampling_factor,
+                    fwhm=fwhm,
+                    images_up=images_up,
+                    images_native=images_native,
+                    cfg=background_noise_cfg,
+                    radial_xgrid=xgrid if need_radial_profiles else None,
+                    radial_bkg=bkg if need_radial_profiles else None,
+                    radial_noise=noise if need_radial_profiles else None,
+                    noise_floor=float(root.get("noise_floor", 1.0)),
+                )
+            else:
+                local_bkg_maps = None
+                local_noise_maps = None
 
         per_inst_data.append(dict(
             name=inst_name,
@@ -4126,6 +5196,8 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
             xgrid=xgrid,
             bkg=bkg,
             noise=noise,
+            local_bkg_maps=None if photometry_method == "snr_map" else local_bkg_maps,
+            local_noise_maps=None if photometry_method == "snr_map" else local_noise_maps,
         ))
         all_ts.append(np.asarray(ts_i, float))
 
@@ -4149,24 +5221,11 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         str(_get(priors, "orientation_isotropic", "yes")).lower()
         in ("1", "true", "yes", "y")
     )
-    pq_prior = str(_get(priors, "pq_prior", "none")).lower()
-    print(f"orientation_isotropic: {orientation_isotropic}")
-    print(f"pq_prior: {pq_prior}")
-    # Validate pq_prior compatibility with orientation_isotropic
-    if pq_prior in ("clockwise", "counterclockwise") and not orientation_isotropic:
-        raise ValueError(
-            "pq_prior ('clockwise' or 'counterclockwise') requires "
-            "orientation_isotropic: true. Set orientation_isotropic: true in YAML."
-        )
-    if pq_prior not in ("none", "clockwise", "counterclockwise"):
-        raise ValueError(
-            f"Invalid pq_prior value '{pq_prior}'. "
-            "Must be 'none', 'clockwise', or 'counterclockwise'."
-        )
     a_bounds, m0_bounds = _resolve_bounds(params, priors)
 
     t_ref     = _resolve_tref(params, root, ts_global)
     init_mode = _resolve_init_mode(root)
+    multistart_cfg = _resolve_multistart(root)
     mconf     = _resolve_mcmc(root)
 
     # ── (5) Force likelihood_mode = "snr" when any instrument uses snr_maps ──
@@ -4188,35 +5247,96 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
     if init_mode == "bruteforce":
         theta_init = _build_init_from_bruteforce(params=params, root=root, t_ref=t_ref)
         print("[init] mode='bruteforce' — θ_init taken from best brute-force solution")
-
-        a_lo, a_hi = a_bounds; m_lo, m_hi = m0_bounds; la_lo, la_hi = la0_bounds
-        theta_raw  = theta_init.copy()
-        theta_init[0] = np.clip(theta_init[0], a_lo, a_hi)
-        theta_init[1] = np.clip(theta_init[1], la_lo, la_hi)
-        theta_init[2] = np.clip(theta_init[2], m_lo, m_hi)
-        for pname, pidx, (lo, hi) in [("a", 0, (a_lo, a_hi)), ("la0", 1, (la_lo, la_hi)), ("m0", 2, (m_lo, m_hi))]:
-            if theta_raw[pidx] < lo or theta_raw[pidx] > hi:
-                print(
-                    f"[init] WARNING: bruteforce {pname}_init={theta_raw[pidx]:.8g} "
-                    f"was outside [{lo:.8g}, {hi:.8g}]; clipped to {theta_init[pidx]:.8g}."
-                )
+    elif init_mode == "init_search":
+        init_search_h5 = os.path.join(
+            params.get_path("values_dir"),
+            str((root.get("init_search", {}) or {}).get("output_h5", "mcmc_init_search.h5")),
+        )
+        theta_centres_init_search, meta_init_search = _build_theta_centres_from_ranked_h5(
+            init_search_h5,
+            t_ref=t_ref,
+            n_centres=1,
+            min_snr=root.get("min_snr", None),
+            a_bounds=a_bounds,
+            m0_bounds=m0_bounds,
+            la0_bounds=la0_bounds,
+            e_max=e_max,
+        )
+        theta_init = np.asarray(theta_centres_init_search[0], dtype=float)
+        print("[init] mode='init_search' — θ_init taken from best ranked init-search solution")
+        if meta_init_search and meta_init_search[0].get("snr") is not None:
+            print(f"[init] init-search best SNR = {meta_init_search[0]['snr']:.6f}")
     else:
         theta_init = _resolve_init_vector(root, priors, m0_bounds)
         print("[init] mode='manual' — using YAML 'init'")
+
+    theta_init = _clip_theta_init_to_bounds(
+        theta_init,
+        a_bounds=a_bounds,
+        m0_bounds=m0_bounds,
+        la0_bounds=la0_bounds,
+        e_max=e_max,
+    )
 
     spread = _resolve_spread(root)
     print(f"[init] θ_init = {theta_init!r}  (a, λ0, m0, h, k, p, q)")
     print(f"[init] spreads = {spread}")
 
-    p0 = draw_walkers_around_theta_init(
-        nwalkers=mconf["nwalkers"],
-        theta_init=theta_init,
-        a_bounds=a_bounds,
-        m0_bounds=m0_bounds,
-        e_max=e_max,
-        la0_bounds=la0_bounds,
-        spread=spread,
-    )
+    if bool(multistart_cfg["enabled"]):
+        ranked_h5 = _resolve_results_h5_from_source(
+            params,
+            root,
+            init_mode=init_mode,
+            multistart_cfg=multistart_cfg,
+        )
+
+        if ranked_h5 is None:
+            theta_centres = [np.asarray(theta_init, dtype=float)]
+            centres_meta = [dict(rank=1, snr=None, source="manual")]
+        else:
+            theta_centres, centres_meta = _build_theta_centres_from_ranked_h5(
+                ranked_h5,
+                t_ref=t_ref,
+                n_centres=multistart_cfg["n_starts"],
+                min_snr=multistart_cfg["min_snr"],
+                a_bounds=a_bounds,
+                m0_bounds=m0_bounds,
+                la0_bounds=la0_bounds,
+                e_max=e_max,
+            )
+
+        print("[init] multi-start initialisation enabled")
+        print(f"[init] source          : {multistart_cfg['source']}")
+        print(f"[init] n_starts        : {len(theta_centres)}")
+        print(f"[init] ratios          : {multistart_cfg['ratios']}")
+        if ranked_h5 is not None:
+            print(f"[init] ranked file     : {ranked_h5}")
+        for idx_c, meta_c in enumerate(centres_meta, start=1):
+            if meta_c.get("snr") is None:
+                print(f"[init]   centre {idx_c}: rank={meta_c.get('rank')} snr=n/a")
+            else:
+                print(f"[init]   centre {idx_c}: rank={meta_c.get('rank')} snr={meta_c['snr']:.6f}")
+
+        p0 = draw_walkers_multistart(
+            nwalkers=mconf["nwalkers"],
+            theta_centres=theta_centres,
+            ratios=multistart_cfg["ratios"],
+            a_bounds=a_bounds,
+            m0_bounds=m0_bounds,
+            e_max=e_max,
+            la0_bounds=la0_bounds,
+            spread=spread,
+        )
+    else:
+        p0 = draw_walkers_around_theta_init(
+            nwalkers=mconf["nwalkers"],
+            theta_init=theta_init,
+            a_bounds=a_bounds,
+            m0_bounds=m0_bounds,
+            e_max=e_max,
+            la0_bounds=la0_bounds,
+            spread=spread,
+        )
 
     # ── (7) Optional fp dimension ──
     if bool(mconf["sample_fp"]):
@@ -4252,6 +5372,9 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
             xgrid=d["xgrid"],
             bkg=d["bkg"],
             noise=d["noise"],
+            bgnoise_cfg=background_noise_cfg,
+            local_bkg_maps=d.get("local_bkg_maps", None),
+            local_noise_maps=d.get("local_noise_maps", None),
         ))
 
     lp_kwargs = dict(
@@ -4264,7 +5387,6 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         ecc_beta_b=ecc_beta_b,
         e_max=e_max,
         orientation_isotropic=orientation_isotropic,
-        pq_prior=pq_prior,
         snr_scale=snr_scale,
         weighting=weighting,
         likelihood_mode=mconf["likelihood_mode"],
@@ -4300,8 +5422,10 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         progress=mconf["progress"],
     )
 
-    # ── (11) Extract and save chain ──
+    # ── (11) Extract thinned flattened products and save chain ──
     flat = sampler.get_chain(discard=0, thin=mconf["thin"], flat=True)
+    flat_log_prob = sampler.get_log_prob(discard=0, thin=mconf["thin"], flat=True)
+
     save_cfg = root.get("outputs", {}) or {}
     if _bool_from_config(save_cfg.get("save_chain", True), True):
         save_mcmc_chains_and_logprob(
@@ -4321,16 +5445,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
     except emcee.autocorr.AutocorrError as err:
         print("[MCMC] IAT not reliable:", err)
 
-    # ── (13) Plots ──
-    try:
-        _run_plots_from_yaml(
-            params=params, sampler=sampler, flat=flat,
-            instruments=instruments, lp_kwargs=lp_kwargs,
-        )
-    except Exception as plot_err:
-        print(f"[plots] Skipped due to error: {plot_err}")
-
-    # ── (14) GLRT + Off-tracks ──
+    # ── (13) GLRT + Off-tracks ──
     try:
         glrt_cfg = root.get("glrt", {}) or {}
 
@@ -4361,6 +5476,19 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         )
     except Exception as glrt_err:
         print(f"[GLRT] Skipped due to error: {glrt_err}")
+
+    # ── (14) Plots ──
+    try:
+        _run_plots_from_yaml(
+            params=params,
+            sampler=sampler,
+            flat=flat,
+            flat_log_prob=flat_log_prob,
+            instruments=instruments,
+            lp_kwargs=lp_kwargs,
+        )
+    except Exception as plot_err:
+        print(f"[plots] Skipped due to error: {plot_err}")
 
     return sampler, flat
 
