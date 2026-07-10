@@ -7,6 +7,7 @@
 #   - noise_profiles
 #   - optimize
 #   - reopt
+#   - mcmc_init_search
 #   - mcmc
 #   - plot
 #
@@ -23,6 +24,7 @@ import numpy as np
 
 from .gradient_reoptimization import reoptimize_gradient
 from .mcmc import run_mcmc_from_yaml
+from .mcmc_init_search import search_mcmc_initial_parameters_from_yaml
 from .noise_profile import (
     compute_noise_profiles,
     compute_snr_plots,
@@ -134,6 +136,19 @@ def main():
         help="number of candidate orbits to re-optimize (default: all available)",
     )
     reopt_parser.set_defaults(func=run_reopt_command)
+
+    # -------------------------------------------------------------------------
+    # mcmc_init_search
+    # -------------------------------------------------------------------------
+    mcmc_init_search_parser = subparsers.add_parser(
+        "mcmc_init_search",
+        help="run the ranked pre-MCMC initialisation search",
+    )
+    mcmc_init_search_parser.add_argument(
+        "parameter_file",
+        help="path to the YAML parameter file",
+    )
+    mcmc_init_search_parser.set_defaults(func=run_mcmc_init_search_command)
 
     # -------------------------------------------------------------------------
     # mcmc
@@ -262,6 +277,16 @@ def run_reopt_command(args):
         n_jobs=args.njobs,
         n_orbits=args.norbits,
     )
+
+
+def run_mcmc_init_search_command(args):
+    """
+    Run the ranked pre-MCMC initialisation search from the YAML configuration file.
+    """
+    print("[cli] Running MCMC initialisation search")
+    print(f"[cli] Parameter file: {args.parameter_file}")
+
+    search_mcmc_initial_parameters_from_yaml(args.parameter_file)
 
 
 def run_mcmc_command(args):
