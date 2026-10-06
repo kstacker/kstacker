@@ -1,0 +1,299 @@
+# parameters_harmoni_mcmc.yml
+# =============================================================================
+# Keplerian orbit inference for multi-epoch direct-imaging data.
+#
+# Put this file next to the dataset you want to analyse.
+#
+# Typical layouts
+# ---------------
+# convolve / aperture:
+#   reduction_dir/
+#   ├── parameters_harmoni_mcmc.yml
+#   ├── images/
+#   ├── profiles/
+#   └── values/                  # created automatically
+#
+# PACO:
+#   paco_asdi/
+#   ├── parameters_harmoni_mcmc.yml
+#   ├── wpca_alpha_var/
+#   └── values/                  # created automatically
+#
+# The code discovers epoch count, image size, observation times, and the
+# convolve upsampling factor from the files whenever possible.
+#
+# References
+# ----------
+# PACO ASDI: Flasseur et al. 2020, A&A 637, A9.
+# Multi-epoch positive-S/N profile: Dallant et al. 2023, A&A 679, A38.
+# VIP: Gomez Gonzalez et al. 2017, arXiv:1705.06184.
+# Adaptive PT / reddemcee: Peña R. & Jenkins 2026, arXiv:2509.24870.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# System
+# -----------------------------------------------------------------------------
+
+dist: 86.2                  # Stellar distance [pc].
+weighting: "invvar"         # "invvar" or "simple".
+
+
+# -----------------------------------------------------------------------------
+# Numerical noise floor
+# -----------------------------------------------------------------------------
+# The floor prevents almost-zero sigma values from dominating the likelihood.
+#
+# mode: "auto"
+#   robustly computes:
+#       floor = fraction_of_median * median(valid positive sigma values)
+#   The median is taken over the loaded noise products.
+#
+# mode: "fixed"
+#   uses exactly `value`.
+#
+# The floor is only a lower bound. It does not perform the radial recalibration.
+
+noise_floor:
+  mode: "auto"              # "auto" or "fixed"
+  fraction_of_median: 1.0e-3
+  min_samples: 100
+  # value: 0.1              # Uncomment when mode: "fixed".
+
+
+# -----------------------------------------------------------------------------
+# Data backend
+# -----------------------------------------------------------------------------
+# method:
+#   "paco"      -> PACO alpha_hat + var_alpha maps
+#   "convolve"  -> convolved reduced images
+#   "aperture"  -> aperture photometry on reduced native images
+#
+# If observation times cannot be read from the dataset, add:
+#   times_years: [0.0, 8.24, 16.48, 24.72]
+
+instruments:
+  - name: "HARMONI"
+    method: "paco"
+
+    resol: 4.0               # Plate scale [mas/pixel].
+    fwhm: 2.0                # PSF FWHM [native pixels].
+    r_mask: 23.0             # Inner working angle [native pixels].
+    r_mask_ext: 74.0         # Outer working angle [native pixels].
+
+    # PACO only. Ignored by convolve/aperture.
+    paco_interpolator: "bilinear"
+    paco_oversampling: 5
+    # paco_maps_dir: "wpca_alpha_var"  # Usually discovered automatically.
+
+
+# -----------------------------------------------------------------------------
+# Classical image preparation
+# -----------------------------------------------------------------------------
+# Used only by convolve/aperture.
+#
+# If image_k_preprocessed.fits is missing, it is created from image_k.fits.
+# If image_k_resampled.fits is missing, it is created from the preprocessed
+# image with a flux-conserving block replication followed by a circular kernel.
+#
+# Existing products are reused and never overwritten.
+#
+# If at least one resampled FITS already exists, its FACTOR header is reused.
+# Otherwise this value is used.
+
+preprocessing:
+  upsampling_factor: 5
+
+
+# -----------------------------------------------------------------------------
+# Background and noise for convolve/aperture
+# -----------------------------------------------------------------------------
+# Background and noise are always measured with local reference apertures at
+# similar stellar separation. PACO supplies alpha_hat and var_alpha and does
+# not use this estimator.
+
+background_noise:
+  aperture_spacing_fwhm: 2.0
+  exclusion_radius_fwhm: 4.0
+  radial_samples: 3
+  radial_step_fwhm: 2.0
+  min_reference_apertures: 1
+
+  sigma_statistic: "mad"
+  small_sample_correction: "student"
+  student_small_n_threshold: null
+
+  local_map_mode: "precompute_cache"
+  precompute_maps: true
+  overwrite_cached_maps: false
+
+
+# -----------------------------------------------------------------------------
+# Radial noise recalibration
+# -----------------------------------------------------------------------------
+# Standardized residuals are used to estimate a radial factor g(d):
+#
+#   sigma_cal(d) = g(d) * sigma_raw(d)
+#
+# For PACO:
+#
+#   var_alpha_cal(d) = g(d)^2 * var_alpha(d)
+#
+# mode:
+#   "none"                 no radial recalibration
+#   "empirical_radial"     use the measured radial g(d)
+#   "monotonic_inward"     prevent g(d) from decreasing toward the inner edge
+#   "extrapolated_inward"  robustly extrapolate the inner radial trend
+
+radial_noise_recalibration:
+  mode: "monotonic_inward"
+
+  bin_width_px: 2.0
+  max_distance_px: 30.0
+  min_samples_per_bin: 30
+  smoothing_bins: 3
+
+  min_factor: 1.0
+
+  monotonic_extent_px: 4.0
+  extrapolation_fit_min_px: 1.0
+  extrapolation_fit_max_px: 5.0
+
+  cache: true
+  overwrite_cache: false
+
+
+# -----------------------------------------------------------------------------
+# Orbital priors
+# -----------------------------------------------------------------------------
+
+priors:
+  a_bounds: [8.0, 30.0]       # Semi-major axis [AU].
+  m0_bounds: [1.55, 1.65]     # Stellar mass [solar masses].
+  la0_bounds: [0.0, 6.283185307179586]
+  e_max: 0.95
+  orbit_direction: "any"      # "any", "prograde", or "retrograde".
+
+
+# -----------------------------------------------------------------------------
+# Initial physical grid search
+# -----------------------------------------------------------------------------
+# Run mcmc_init_search.py before mcmc.py when init_mode is "init_search".
+# The search is deterministic and scans only this explicit physical grid.
+
+init_mode: "init_search"
+
+init_search:
+  stellar_mass_solar: 1.59
+  top_n_save: 5000
+  grid_batch_size: 50000
+
+  physical_grid:
+    a_au:       {min: 8.0, max: 30.0,  step: 2.0}
+    e:          {min: 0.0, max: 0.9,   step: 0.1}
+    i_deg:      {min: 0.0, max: 180.0, step: 10.0}
+    M0_deg:     {min: 0.0, max: 350.0, step: 10.0}
+    theta0_deg: {min: 0.0, max: 350.0, step: 10.0}
+    omega_deg:  {min: 0.0, max: 350.0, step: 10.0}
+
+
+# -----------------------------------------------------------------------------
+# Walker initialization
+# -----------------------------------------------------------------------------
+
+init_spread:
+  a: 0.02
+  la0: 0.2
+  m0: 0.02
+  hk: 0.02
+  pq: 0.02
+  fp: 0.2
+
+multistart:
+  enabled: false
+  n_starts: 5
+  detrack: true
+  detrack_dmax_px: 2.0
+
+
+# -----------------------------------------------------------------------------
+# Likelihood and sampler
+# -----------------------------------------------------------------------------
+# likelihood_mode:
+#
+#   "positive_snr_profile"   PACO only
+#       logL = 0.5 * sum_k max(0, z_k)^2
+#
+#   "signed_snr"             PACO / convolve / aperture
+#       logL = 0.5 * SNR_common^2
+#
+#   "flux"                   PACO / convolve / aperture
+#       Gaussian common-flux likelihood
+#
+# The selected sampler has its own explicit walker and step counts.
+
+mcmc:
+  sampler: "emcee"                   # "emcee" or "reddemcee"
+  likelihood_mode: "positive_snr_profile"
+  progress: true
+
+  # Used only when likelihood_mode is "flux".
+  sample_fp: false
+  fp_bounds: [1.0e-4, 1.0e2]
+  fp_prior: "uniform"
+  fp_init: 1.0
+
+  emcee:
+    walkers: 100
+    burnin_steps: 250000
+    production_steps: 750000
+    thin: 1000
+
+    # Optional custom emcee moves.
+    moves:
+      - {name: "stretch", weight: 1.0, a: 2.0}
+
+  # Adaptive parallel tempering with reddemcee.
+  # "walkers" is the number of walkers at EACH temperature.
+  reddemcee:
+    walkers: 128
+    burnin_sweeps: 5000
+    production_sweeps: 20000
+    thin: 20
+
+    temperatures: 12
+    beta_min: 1.0e-4
+    betas: null                    # Optional explicit decreasing beta ladder.
+
+    inner_steps: 1
+    adapt_mode: "SAR"
+    adapt_tau: 700.0
+    adapt_nu: 0.30
+
+    stretch_a: 1.5
+    smd_history: true
+    tsw_history: true
+
+
+# -----------------------------------------------------------------------------
+# Parallel likelihood evaluation
+# -----------------------------------------------------------------------------
+# max_workers: null uses the CPUs visible to the job.
+
+parallel:
+  max_workers: null
+  chunk_size: null
+
+
+# -----------------------------------------------------------------------------
+# Output and console
+# -----------------------------------------------------------------------------
+# Chain products are written to values/.
+# Console output is also saved to values/mcmc_console.log when enabled.
+
+logging:
+  save_console: true
+
+outputs:
+  save_chain: true
+  chain_filename: "mcmc_chain_and_logprob.h5"
