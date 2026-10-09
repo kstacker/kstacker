@@ -1,9 +1,5 @@
 [build-system]
-requires = ["setuptools>=42",
-            "setuptools_scm[toml]>=3.4",
-            "cython>=3.0",
-            "numpy>=1.25,<2",
-            "extension-helpers"]
+requires = ["setuptools>=68", "setuptools_scm[toml]>=7"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -19,6 +15,7 @@ authors = [
 dependencies = [
   "astropy",
   "h5py",
+  "emcee",
   "joblib",
   "kepler.py",
   "matplotlib",
@@ -27,6 +24,7 @@ dependencies = [
   "pyyaml",
   "scipy",
   "seaborn",
+  "tqdm",
 ]
 dynamic = ["version"]
 

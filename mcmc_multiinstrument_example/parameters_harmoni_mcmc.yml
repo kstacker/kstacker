@@ -5,7 +5,7 @@ noise_floor:
   fraction_of_median: 0.001
   min_samples: 100
 instruments:
-- name: HARMONI
+- name: HARMONI_1st_half
   method: convolve
   resol: 4.0
   fwhm: 2.0
@@ -13,12 +13,22 @@ instruments:
   r_mask_ext: 74.0
   paco_interpolator: bilinear
   paco_oversampling: 5
+  images_dir: images_HARMONI_1st_half
   times_years:
   - 0.0
   - 1.5
+- name: HARMONI_2nd_half
+  method: convolve
+  resol: 4.0
+  fwhm: 2.0
+  r_mask: 23.0
+  r_mask_ext: 74.0
+  paco_interpolator: bilinear
+  paco_oversampling: 5
+  images_dir: images_HARMONI_2nd_half
+  times_years:
   - 3.0
   - 4.5
-  images_dir: images
 preprocessing:
   upsampling_factor: 5
 background_noise:
