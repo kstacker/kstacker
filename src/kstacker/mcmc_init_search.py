@@ -39,12 +39,6 @@ import h5py
 import numpy as np
 
 try:
-    from tqdm.auto import tqdm
-except Exception:
-    def tqdm(iterable=None, **kwargs):
-        return iterable
-
-try:
     from .mcmc import (
         Instrument,
         Params,
@@ -55,6 +49,7 @@ try:
         _resolve_weighting,
         _noise_floor_build_value,
         _resolve_noise_floor,
+        configure_instrument_statistics,
         _print_section,
         _resolve_radial_noise_recalibration,
         _recalibrate_classical_noise,
@@ -65,8 +60,8 @@ try:
         _normalize_paco_interpolator,
         _effective_paco_oversampling,
         _make_placeholder_profiles,
-        positive_snr_profile_multi_from_hkpq,
-        snr_multi_from_hkpq,
+        _normalize_likelihood_mode,
+        total_direct_imaging_log_likelihood,
         wrap_2pi,
     )
 except Exception:
@@ -80,6 +75,7 @@ except Exception:
         _resolve_weighting,
         _noise_floor_build_value,
         _resolve_noise_floor,
+        configure_instrument_statistics,
         _print_section,
         _resolve_radial_noise_recalibration,
         _recalibrate_classical_noise,
@@ -90,11 +86,16 @@ except Exception:
         _normalize_paco_interpolator,
         _effective_paco_oversampling,
         _make_placeholder_profiles,
-        positive_snr_profile_multi_from_hkpq,
-        snr_multi_from_hkpq,
+        _normalize_likelihood_mode,
+        total_direct_imaging_log_likelihood,
         wrap_2pi,
     )
 
+
+try:
+    from .console import console_progress as tqdm, console_status
+except ImportError:
+    from console import console_progress as tqdm, console_status
 
 # =============================================================================
 # CONFIG HELPERS
@@ -113,8 +114,8 @@ def _resolve_init_search_config(root: dict) -> dict:
         omega=Omega_node [deg].
 
     Stellar mass is fixed during the grid by `init_search.stellar_mass_solar`.
-    The resulting physical orbits are converted exactly to the non-singular
-    MCMC coordinates (a, lambda_ref, m0, h, k, p, q) before S/N evaluation.
+    The physical grid is converted to non-singular orbital coordinates before
+    each orbit receives its total log-likelihood score.
     """
     cfg = root.get("init_search", {}) or {}
     grid = cfg.get("physical_grid", {}) or {}
@@ -135,7 +136,6 @@ def _resolve_init_search_config(root: dict) -> dict:
         method="grid",
         search_backend=str(cfg.get("search_backend", "auto") or "auto").lower(),
         weighting=str(cfg.get("weighting", "auto") or "auto").lower(),
-        score_mode=str(cfg.get("score_mode", "auto") or "auto").lower(),
         top_n_save=max(1, int(cfg.get("top_n_save", 500))),
         output_h5=str(cfg.get("output_h5", "mcmc_init_search.h5") or "mcmc_init_search.h5"),
         output_csv=str(cfg.get("output_csv", "mcmc_init_search_top.csv") or "mcmc_init_search_top.csv"),
@@ -297,7 +297,7 @@ def _load_instruments_for_search(
                         and bool(background_noise_cfg.get("precompute_maps", False))
                     )
                     or radial_recal_cfg["mode"] != "none"
-                    or _noise_floor_build_value(root) == 0.0
+                    or _noise_floor_build_value(tmp_root) == 0.0
                 )
             )
             profile_dir = params.get_path("profile_dir")
@@ -324,7 +324,7 @@ def _load_instruments_for_search(
                     images_up=images_up,
                     images_native=images_native,
                     cfg=background_noise_cfg,
-                    noise_floor=_noise_floor_build_value(root),
+                    noise_floor=_noise_floor_build_value(tmp_root),
                 )
 
             if radial_recal_cfg["mode"] != "none":
@@ -349,7 +349,8 @@ def _load_instruments_for_search(
 
         instruments.append(
             Instrument(
-                name=inst_name,
+                likelihood_mode=_normalize_likelihood_mode(inst_cfg.get("likelihood_mode", (root.get("mcmc", {}) or {}).get("likelihood_mode", "signed_snr"))),
+            name=inst_name,
                 size=size_i,
                 scale=scale_i,
                 upsampling_factor=upsampling_factor_i,
@@ -388,7 +389,7 @@ def _hkpq_to_classical(
     t_ref: float,
 ) -> np.ndarray:
     """
-    Convert the NEW non-singular coordinates to gauge-chosen classical rows for
+    Convert the non-singular coordinates to gauge-chosen classical rows for
     human-readable ranked output only.
 
     Sampling definitions:
@@ -539,9 +540,9 @@ def _count_physical_grid(init_cfg: dict, support: dict) -> int:
 
 def _keep_top_rows(existing: Optional[np.ndarray], new_rows: np.ndarray, *, top_n: int) -> np.ndarray:
     """
-    Keep only the highest-SNR rows seen so far.
+    Retain rows with the highest total log likelihood.
 
-    The last column is assumed to be the ranking score.
+    The last column is the total log likelihood.
     """
     if existing is None or existing.size == 0:
         merged = np.asarray(new_rows, dtype=float)
@@ -549,12 +550,12 @@ def _keep_top_rows(existing: Optional[np.ndarray], new_rows: np.ndarray, *, top_
         merged = np.vstack([existing, np.asarray(new_rows, dtype=float)])
 
     if merged.shape[0] <= int(top_n):
-        order = np.argsort(np.abs(merged[:, -1]))[::-1]
+        order = np.argsort(merged[:, -1])[::-1]
         return merged[order]
 
-    idx = np.argpartition(np.abs(merged[:, -1]), -int(top_n))[-int(top_n):]
+    idx = np.argpartition(merged[:, -1], -int(top_n))[-int(top_n):]
     top = merged[idx]
-    order = np.argsort(np.abs(top[:, -1]))[::-1]
+    order = np.argsort(top[:, -1])[::-1]
     return top[order]
 
 
@@ -586,7 +587,7 @@ def _save_ranked_results(
 
     header = ",".join([
         "a_au", "e", "t0_years", "m0_solar", "omega_rad", "inc_rad", "theta0_rad",
-        "signal", "noise", "snr",
+        "total_log_likelihood",
         "a_au_ns", "lambda0_rad_ns", "m0_solar_ns", "h", "k", "p", "q",
     ])
     merged = np.hstack([classical_rows, nonsingular_rows[:, :7]])
@@ -603,15 +604,16 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
     """
     Run the dedicated ranked initialisation search from a YAML file.
 
-    Important design choice
-    -----------------------
-    The search is GRID ONLY.  `score_mode` chooses either:
-      - positive_snr_profile: sqrt(sum max(0,z_k)^2), PACO only;
-      - signed_snr:  signed common-flux S/N, ranked by |S/N|.
-
-    No quasi-random or random global design is used.
+    Each physically valid orbit is ranked using the total direct-imaging log
+    likelihood, including every instrument's statistical mode. The search is
+    an explicit deterministic physical grid.
     """
     params = Params.read(yaml_path)
+    logging_settings = params._params.get("logging", {}) or {}
+    if logging_settings.get("color"):
+        os.environ["KSTACKER_COLOR"] = str(logging_settings["color"])
+    if (params._params.get("logging", {}) or {}).get("progress_mode"):
+        os.environ["KSTACKER_PROGRESS"] = str(params._params["logging"]["progress_mode"])
     root = _prepare_runtime_config_from_files(yaml_path, params._params, verbose=True)
     params._params = root
     params.work_dir = str(Path(yaml_path).expanduser().resolve().parent)
@@ -650,46 +652,25 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
         instrument_ts=instrument_ts,
     )
 
-    requested_score_mode = str(init_cfg["score_mode"]).lower()
-    if requested_score_mode == "auto":
-        active_like = str((root.get("mcmc", {}) or {}).get(
-            "likelihood_mode", "positive_snr_profile"
-        )).lower()
-        if active_like in {"snr", "positive", "positive_snr", "positive_snr_profile"} and all(
-            inst.photometry_method == "paco" for inst in instruments
-        ):
-            score_mode = "positive_snr_profile"
-        else:
-            score_mode = "signed_snr"
-    else:
-        aliases = {
-            "snr": "positive_snr_profile",
-            "positive": "positive_snr_profile",
-            "snr_signed": "signed_snr",
-        }
-        score_mode = aliases.get(requested_score_mode, requested_score_mode)
-
-    if score_mode not in {"positive_snr_profile", "signed_snr"}:
-        raise ValueError(
-            "init_search.score_mode must be 'auto', 'positive_snr_profile', or 'signed_snr'."
-        )
-    if score_mode == "positive_snr_profile" and any(
-        inst.photometry_method != "paco" for inst in instruments
-    ):
-        raise ValueError(
-            "init_search.score_mode='positive_snr_profile' is PACO-only. "
-            "Use 'signed_snr' for convolve/aperture."
-        )
-
-    noise_floor = _resolve_noise_floor(root, instruments, verbose=True)
+    # Each instrument chooses a photometry backend and likelihood mode.
+    for instrument in instruments:
+        if (instrument.likelihood_mode == "positive_snr_profile"
+                and instrument.photometry_method != "paco"):
+            raise ValueError(f"{instrument.name}: positive_snr_profile requires PACO")
+    mcmc_settings = root.get("mcmc", {}) or {}
+    fp_bounds = tuple(map(float, mcmc_settings.get("fp_bounds", (1e-4, 1e2))))
+    flux_names = configure_instrument_statistics(root, instruments, verbose=True)
+    grid_fluxes = [inst.flux_init for inst in instruments if inst.flux_index is not None]
+    noise_floor = min(float(inst.noise_floor) for inst in instruments)
     values_dir = params.get_path("values_dir")
 
     _print_section("MCMC INITIALISATION SEARCH", width=100)
     print(f"[search] yaml_path                : {yaml_path}")
     print(f"[search] method                  : {init_cfg['method']}")
     print(f"[search] search_backend          : {search_backend}")
-    print(f"[search] score_mode              : {score_mode}")
+    print("[search] objective               : sum of per-instrument log likelihoods")
     print(f"[search] weighting               : {weighting}")
+    print("[search] instrument likelihoods  : " + ", ".join(f"{inst.name}={inst.likelihood_mode}" for inst in instruments))
     print(f"[search] top_n_save              : {init_cfg['top_n_save']}")
     print(f"[search] values_dir              : {values_dir}")
     print(f"[search] t_ref                   : {t_ref:.6f}")
@@ -741,30 +722,23 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
         if theta_batch.ndim != 2 or theta_batch.shape[1] != 7:
             raise ValueError("Internal error: theta batch must have shape (N, 7).")
 
-        if score_mode == "positive_snr_profile":
-            signal, noise, snr, criterion = positive_snr_profile_multi_from_hkpq(
-                theta_batch,
-                instruments,
-                noise_floor=noise_floor,
-                weighting=weighting,
-            )
-        else:
-            signal, noise, snr = snr_multi_from_hkpq(
-                theta_batch,
-                instruments,
-                noise_floor=noise_floor,
-                weighting=weighting,
-            )
-            criterion = np.asarray(snr, dtype=float) ** 2
-
+        # The ranking objective matches the data term of the sampler posterior.
+        # For an explicitly sampled flux, evaluate the grid at its configured
+        # starting amplitude; otherwise the fixed lower-bound amplitude applies.
+        theta_score = theta_batch
+        if grid_fluxes:
+            # Same ordering and fixed amplitudes as the MCMC posterior.
+            theta_score = np.column_stack([theta_batch] + [
+                np.full(theta_batch.shape[0], value) for value in grid_fluxes
+            ])
+        log_likelihood = np.asarray(total_direct_imaging_log_likelihood(
+            theta_score, instruments=instruments, noise_floor=noise_floor,
+            weighting=weighting, fp_bounds=fp_bounds,
+        ), dtype=float)
         classical = _hkpq_to_classical(theta_batch, t_ref=t_ref)
-
-        classical_rows = np.column_stack([classical, signal, noise, snr])
-        nonsingular_rows = np.column_stack([theta_batch, signal, noise, snr])
-
-        valid = np.isfinite(classical_rows).all(axis=1) & np.isfinite(nonsingular_rows).all(axis=1)
-        valid &= np.isfinite(snr)
-
+        classical_rows = np.column_stack([classical, log_likelihood])
+        nonsingular_rows = np.column_stack([theta_batch, log_likelihood])
+        valid = np.isfinite(log_likelihood) & np.isfinite(classical_rows).all(axis=1)
         classical_rows = classical_rows[valid]
         nonsingular_rows = nonsingular_rows[valid]
 
@@ -782,7 +756,7 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
             top_n=init_cfg["top_n_save"],
         )
 
-        best_snr_here = (
+        best_log_likelihood_here = (
             float(top_classical[0, -1])
             if top_classical is not None and top_classical.size
             else float("nan")
@@ -791,7 +765,7 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
             progress_bar.set_postfix(
                 tested=f"{n_tested:,}",
                 kept=f"{n_kept:,}",
-                best=f"{best_snr_here:.3f}",
+                logL=f"{best_log_likelihood_here:.3f}",
                 refresh=False,
             )
         except Exception:
@@ -805,7 +779,10 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
         method=init_cfg["method"],
         search_backend=search_backend,
         weighting=weighting,
-        score_mode=score_mode,
+        objective="total_log_likelihood",
+        flux_grid_reference={inst.name: inst.flux_init for inst in instruments if inst.likelihood_mode == "flux"},
+        flux_parameter_names=flux_names,
+        noise_floors={inst.name: inst.noise_floor for inst in instruments},
         n_tested=int(n_tested),
         n_kept=int(n_kept),
         t_ref=float(t_ref),
@@ -840,7 +817,7 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
     _print_section("INITIALISATION SEARCH COMPLETE", width=100)
     print(f"[search] tested candidates       : {n_tested}")
     print(f"[search] kept candidates         : {n_kept}")
-    print(f"[search] best search S/N         : {float(top_classical[0, -1]):.6f}")
+    print(f"[search] best log likelihood     : {float(top_classical[0, -1]):.6f}")
     print(f"[search] output HDF5             : {h5_path}")
     print(f"[search] output CSV              : {csv_path}")
     print("=" * 100)

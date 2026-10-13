@@ -1,40 +1,46 @@
+# K-Stacker: four HARMONI epochs, one common Keplerian orbit.
+# Observation times are assumed relative years and must be verified.
+# Keep this file next to images/image_{0,1,2,3}.fits.
+
 dist: 86.2
-weighting: invvar
-noise_floor:
-  mode: auto
-  fraction_of_median: 0.001
-  min_samples: 100
+weighting: "invvar"
+t_ref_mode: "min_ts"
+random_seed: 20261013
+
 instruments:
-- name: HARMONI
-  method: convolve
-  resol: 4.0
-  fwhm: 2.0
-  r_mask: 23.0
-  r_mask_ext: 74.0
-  paco_interpolator: bilinear
-  paco_oversampling: 5
-  times_years:
-  - 0.0
-  - 1.5
-  - 3.0
-  - 4.5
-  images_dir: images
+  - name: "HARMONI"
+    method: "convolve"
+    likelihood_mode: "signed_snr"  # log LR = 0.5 * max(SNR_common, 0)^2
+    images_dir: "images"
+    profile_dir: "profiles_pixel_aligned"  # fresh noise-map cache after detector-grid alignment
+    times_years: [0.0, 1.5, 3.0, 4.5]
+    resol: 4.0
+    fwhm: 2.0
+    r_mask: 23.0
+    r_mask_ext: 74.0
+    noise_floor:
+      mode: "auto"
+      fraction_of_median: 1.0e-3
+      min_samples: 100
+
 preprocessing:
   upsampling_factor: 5
+
 background_noise:
   aperture_spacing_fwhm: 2.0
   exclusion_radius_fwhm: 4.0
   radial_samples: 3
   radial_step_fwhm: 2.0
   min_reference_apertures: 1
-  sigma_statistic: mad
-  small_sample_correction: student
+  sigma_statistic: "mad"
+  small_sample_correction: "student"
   student_small_n_threshold: null
-  local_map_mode: precompute_cache
+  local_map_mode: "precompute_cache"
   precompute_maps: true
   overwrite_cached_maps: false
+
 radial_noise_recalibration:
-  mode: monotonic_inward
+  mode: "monotonic_inward"
   bin_width_px: 2.0
   max_distance_px: 30.0
   min_samples_per_bin: 30
@@ -45,48 +51,27 @@ radial_noise_recalibration:
   extrapolation_fit_max_px: 5.0
   cache: true
   overwrite_cache: false
+
 priors:
-  a_bounds:
-  - 8.0
-  - 30.0
-  m0_bounds:
-  - 1.55
-  - 1.65
-  la0_bounds:
-  - 0.0
-  - 6.283185307179586
+  a_bounds: [8.0, 30.0]
+  m0_bounds: [1.55, 1.65]
+  la0_bounds: [0.0, 6.283185307179586]
   e_max: 0.95
-  orbit_direction: any
-init_mode: init_search
+  orbit_direction: "any"
+
+init_mode: "init_search"
 init_search:
   stellar_mass_solar: 1.59
   top_n_save: 5000
   grid_batch_size: 50000
   physical_grid:
-    a_au:
-      min: 8.0
-      max: 30.0
-      step: 2.0
-    e:
-      min: 0.0
-      max: 0.9
-      step: 0.1
-    i_deg:
-      min: 0.0
-      max: 180.0
-      step: 10.0
-    M0_deg:
-      min: 0.0
-      max: 350.0
-      step: 10.0
-    theta0_deg:
-      min: 0.0
-      max: 350.0
-      step: 10.0
-    omega_deg:
-      min: 0.0
-      max: 350.0
-      step: 10.0
+    a_au:       {min: 8.0, max: 30.0, step: 2.0}
+    e:          {min: 0.0, max: 0.9, step: 0.1}
+    i_deg:      {min: 0.0, max: 180.0, step: 10.0}
+    M0_deg:     {min: 0.0, max: 350.0, step: 10.0}
+    theta0_deg: {min: 0.0, max: 350.0, step: 10.0}
+    omega_deg:  {min: 0.0, max: 350.0, step: 10.0}
+
 init_spread:
   a: 0.02
   la0: 0.2
@@ -94,50 +79,56 @@ init_spread:
   hk: 0.02
   pq: 0.02
   fp: 0.2
+
 multistart:
-  enabled: false
+  enabled: true
   n_starts: 5
+  source: "init_search"
+  ratios: [1, 1, 1, 1, 1]
   detrack: true
   detrack_dmax_px: 2.0
+
 mcmc:
-  sampler: emcee
-  likelihood_mode: signed_snr
+  sampler: "emcee"
+  likelihood_mode: "signed_snr"
   progress: true
   sample_fp: false
-  fp_bounds:
-  - 0.0001
-  - 1.0e2
-  fp_prior: uniform
-  fp_init: 1.0
   emcee:
     walkers: 100
-    burnin_steps: 250000
-    production_steps: 750000
-    thin: 1000
+    burnin_steps: 25000
+    production_steps: 75000
+    thin: 100
     moves:
-    - name: stretch
-      weight: 1.0
-      a: 2.0
+      - {name: "stretch", weight: 1.0, a: 2.0}
   reddemcee:
     walkers: 128
     burnin_sweeps: 5000
     production_sweeps: 20000
     thin: 20
     temperatures: 12
-    beta_min: 0.0001
+    beta_min: 1.0e-4
     betas: null
     inner_steps: 1
-    adapt_mode: SAR
+    adapt_mode: "SAR"
     adapt_tau: 700.0
-    adapt_nu: 0.3
+    adapt_nu: 0.30
     stretch_a: 1.5
     smd_history: true
     tsw_history: true
+
+plots:
+  enabled: true
+  directory: "figures"
+  max_posterior_samples: 12000   # posterior draws for maps and corner diagrams
+  max_orbit_tracks: 900         # complete orbits in projected-orbits figure
+  dpi: 220
+
 parallel:
   max_workers: null
   chunk_size: null
+
 logging:
   save_console: true
 outputs:
   save_chain: true
-  chain_filename: mcmc_chain_and_logprob.h5
+  chain_filename: "mcmc_chain_and_logprob.h5"

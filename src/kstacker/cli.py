@@ -2,6 +2,8 @@ import argparse
 
 from .mcmc import run_mcmc_from_yaml
 from .mcmc_init_search import search_mcmc_initial_parameters_from_yaml
+from .scientific_plots import create_figures_from_yaml
+from .console import console_status
 
 
 def main():
@@ -23,13 +25,24 @@ def main():
     )
     mcmc_parser.add_argument("parameter_file")
 
+    plot_parser = subparsers.add_parser(
+        "plot", help="create scientific figures and sampler diagnostics from a saved chain"
+    )
+    plot_parser.add_argument("parameter_file")
+
     args = parser.parse_args()
 
     if args.command == "init":
+        console_status("K-Stacker", "Initial orbit search", tone="blue")
         search_mcmc_initial_parameters_from_yaml(args.parameter_file)
 
     elif args.command == "mcmc":
+        console_status("K-Stacker", "Posterior sampling", tone="magenta")
         run_mcmc_from_yaml(args.parameter_file)
+
+    elif args.command == "plot":
+        console_status("K-Stacker", "Scientific figures and diagnostics", tone="green")
+        create_figures_from_yaml(args.parameter_file)
 
 
 if __name__ == "__main__":
