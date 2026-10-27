@@ -60,14 +60,15 @@ def _symmetric_image_limits(data: np.ndarray) -> tuple[float, float]:
 
 
 def _map_position(ax, east: float, north: float, *, scale: float,
-                  color: str = "#ffdf5b", radius_px: float = 1.25,
+                  color: str = "#ffdf5b", radius_px: float = 4.0,
                   label: bool = True) -> None:
-    """Annotate the MAP planet position with a small, open circle.
+    """Annotate the MAP planet position with a readable open circle.
 
-    The location is in (East, North) AU, from the SAME equinoctial orbit
-    propagator as the likelihood. The radius is a display size in native
-    detector pixels and does not represent a confidence or photometric region.
-    The open centre leaves the underlying FITS signal visible.
+    The location is given in (East, North) AU and is evaluated with the exact
+    same orbital propagator as the likelihood. The marker is deliberately an
+    *outline only*: it highlights the location while leaving the underlying
+    image visible. ``radius_px`` is a display radius in native detector pixels;
+    it is not a photometric aperture and does not represent an uncertainty.
     """
     from matplotlib.patheffects import Stroke, Normal
     plt = _matplotlib()
@@ -75,14 +76,14 @@ def _map_position(ax, east: float, north: float, *, scale: float,
     if not np.isfinite([east, north, radius]).all() or radius <= 0:
         return
     ring = plt.Circle((float(east), float(north)), radius, fill=False,
-                      edgecolor=color, linewidth=1.8, zorder=12)
-    ring.set_path_effects([Stroke(linewidth=3.1, foreground="#102b40"), Normal()])
+                      edgecolor=color, linewidth=1.55, zorder=12)
+    ring.set_path_effects([Stroke(linewidth=2.8, foreground="#12273a"), Normal()])
     ax.add_patch(ring)
     if label:
-        ax.annotate("MAP", (east, north), xytext=(5, 6),
-                    textcoords="offset points", color="#164363", fontsize=7,
+        ax.annotate("MAP", (east, north), xytext=(7, 8),
+                    textcoords="offset points", color="#183a55", fontsize=10,
                     weight="bold", zorder=13,
-                    path_effects=[Stroke(linewidth=2.0, foreground="white"), Normal()])
+                    path_effects=[Stroke(linewidth=2.2, foreground="white"), Normal()])
 
 
 def _image_frame(instrument, epoch: int, *, noise_floor: float) -> tuple[np.ndarray, float, str]:
@@ -120,8 +121,9 @@ def _style():
     """Use a clean vector-exportable figure style with readable fonts."""
     plt = _matplotlib()
     plt.rcParams.update({
-        "font.family": "DejaVu Sans", "font.size": 10,
-        "axes.labelsize": 10, "axes.titlesize": 11,
+        "font.family": "DejaVu Sans", "font.size": 12,
+        "axes.labelsize": 12, "axes.titlesize": 13,
+        "xtick.labelsize": 11, "ytick.labelsize": 11,
         "figure.facecolor": "white", "savefig.facecolor": "white",
         "axes.spines.top": False, "axes.spines.right": False,
         "pdf.fonttype": 42, "ps.fonttype": 42,
@@ -184,60 +186,155 @@ def _complete_orbit_tracks(samples: np.ndarray, phase: np.ndarray):
 def plot_joint_sky_orbits(instruments: Sequence, samples: np.ndarray,
                           log_probability: np.ndarray, output_dir: Path, dpi: int,
                           max_orbit_tracks: int = 900) -> None:
-    """Plot complete posterior orbits and the maximum-score observed arc.
+    """Show the full MAP orbit over pale full-period posterior orbit draws.
 
-    Random, reproducible posterior draws reveal multimodal geometry without
-    selecting only neighbouring points of the flattened MCMC chain.  The
-    highlighted arc is evaluated ONLY over the observed time interval; the
-    faint curves each cover a complete (orbit-specific) Keplerian period.
-    The small MAP circles are display annotations, not position-confidence regions.
+    Every trajectory is produced with the same equinoctial geometry as the
+    image likelihood. The MAP orbit is highlighted with its own colour so it
+    remains immediately identifiable, while the remaining posterior draws are
+    shown in a paler common hue. Epoch annotations are open circles evaluated
+    from the MAP state at the instrument observing times.
     """
     plt = _style()
-    fig, ax = plt.subplots(figsize=(8.1, 7.3), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(8.2, 7.4), constrained_layout=True)
     t_ref = float(instruments[0].t_ref)
-    epochs = np.concatenate([np.asarray(i.ts, float) for i in instruments])
-    arc_times = np.linspace(float(epochs.min()), float(epochs.max()), 400)
-    ix_best = int(np.nanargmax(log_probability))
-
-    # Include more independent, uniformly drawn posterior samples, capped to
-    # keep vector PDF output tractable. Draw indices are reproducible.
+    map_idx = int(np.nanargmax(log_probability))
+    state = np.asarray(samples[map_idx:map_idx + 1], float)
     max_orbit_tracks = max(1, int(max_orbit_tracks))
     rng = np.random.default_rng(2813)
-    choose = rng.choice(len(samples), size=min(len(samples), max_orbit_tracks), replace=False)
-    phase = np.linspace(0.0, 1.0, 361)
-    all_n, all_e = _complete_orbit_tracks(samples[choose], phase)
-    for east_curve, north_curve in zip(all_e, all_n):
-        ax.plot(east_curve, north_curve, lw=0.45, color="#367a9c",
-                alpha=0.045, zorder=1, rasterized=True)
+    draw_count = min(len(samples), max_orbit_tracks)
+    chosen = rng.choice(len(samples), size=draw_count, replace=False)
+    phase = np.linspace(0, 1, 361)
 
-    n_arc, e_arc = _tracks(samples[ix_best:ix_best+1], arc_times, t_ref)
-    ax.plot(e_arc[0], n_arc[0], color="#142c4c", lw=2.3,
-            label="Highest-scoring observed arc", zorder=5)
-    colors = ("#006fba", "#d65b00", "#0b826c", "#8c52a1")
+    posterior_color = "#4a90c2"
+    map_color = "#c43c39"
+    north, east = _complete_orbit_tracks(samples[chosen], phase)
+    for e, n in zip(east, north):
+        ax.plot(e, n, lw=0.65, color=posterior_color, alpha=0.08,
+                zorder=1, rasterized=True)
+    map_n, map_e = _complete_orbit_tracks(state, phase)
+    ax.plot(map_e[0], map_n[0], color=map_color, lw=2.6,
+            label="MAP orbit", zorder=5)
+    ax.plot([], [], color=posterior_color, lw=2.2, alpha=0.45,
+            label=f"Posterior orbits (n={draw_count:,})")
+
+    colors = ("#d45b00", "#248b73", "#8e56b0", "#bb3975")
     for j, inst in enumerate(instruments):
         color = colors[j % len(colors)]
-        n, e = _tracks(samples[ix_best:ix_best+1], inst.ts, t_ref)
-        for k, (east_k, north_k) in enumerate(zip(e[0], n[0]), 1):
-            _map_position(ax, east_k, north_k, scale=float(inst.scale),
-                          color=color, radius_px=1.3, label=False)
-            ax.annotate(str(k), (east_k, north_k), xytext=(8, 8),
-                        textcoords="offset points", fontsize=8, color=color)
-        ax.plot([], [], color=color, linewidth=2.5, label=f"{inst.name} epochs")
-        if inst.r_mask is not None:
-            inner = float(inst.r_mask) / float(inst.scale)
-            ax.add_patch(plt.Circle((0, 0), inner, fill=False, ls=":", lw=0.8,
-                                    color=color, alpha=0.50))
-    # Symbol size is for legibility, not the physical radius of the star.
-    ax.add_patch(plt.Circle((0, 0), 2.5 / max(i.scale for i in instruments),
-                            facecolor="#ecb149", edgecolor="#172e44", lw=0.9,
-                            zorder=6, label="Host star (symbol)"))
+        epoch_n, epoch_e = _tracks(state, inst.ts, t_ref)
+        for k, (e, n) in enumerate(zip(epoch_e[0], epoch_n[0]), 1):
+            _map_position(ax, e, n, scale=float(inst.scale), color=color,
+                          radius_px=4.0 * float(getattr(inst, "fwhm", 1.5)), label=False)
+            ax.annotate(str(k), (e, n), xytext=(7, 6),
+                        textcoords="offset points", fontsize=10,
+                        color=color, weight="bold")
+        ax.plot([], [], color=color, lw=2, label=f"{inst.name} epochs")
+
+    ax.scatter([0], [0], s=70, marker="*", color="#e2a449",
+               edgecolors="#1b3550", linewidths=0.7, zorder=10,
+               label="Host star")
     ax.set(xlabel="East offset [AU]", ylabel="North offset [AU]",
-           title="Posterior Keplerian orbits and observing epochs")
+           title="Projected Keplerian orbits")
     ax.invert_xaxis()
     ax.set_aspect("equal", adjustable="datalim")
-    ax.grid(alpha=0.12, linewidth=0.5)
-    ax.legend(loc="best", fontsize=8, frameon=False, ncol=2)
+    ax.legend(fontsize=10.5, frameon=False, loc="best")
     _save(fig, output_dir / "projected_orbits", dpi)
+
+
+def _align_instrument_images(inst, map_state: np.ndarray, noise_floor: float,
+                             *, mask_to_working_region: bool = True):
+    """Shift one instrument's epochs onto its first MAP planet position.
+
+    The same orbit solution and sky convention as the photometry define the
+    shifts. x_native = centre - East * scale, y_native = centre + North * scale.
+    Consequently the shift (in image pixels) is
+      dx = (East_epoch - East_ref) * scale * upsampling,
+      dy = (North_ref - North_epoch) * scale * upsampling.
+
+    NaNs and the native coronagraphic mask are transported with each exposure;
+    only valid overlapping pixels enter the unweighted display mean. No
+    inverse-variance or cross-instrument pooling is performed, and the stack is
+    never used in the inference likelihood.
+
+    Returns (reference_image, aligned_mean, contributing_epoch_count, extent,
+             unit_label, reference_east, reference_north).
+    """
+    from scipy.ndimage import shift as image_shift
+
+    sample = np.asarray(map_state, dtype=float).reshape(1, -1)
+    north, east = _tracks(sample, np.asarray(inst.ts, float), float(inst.t_ref))
+    north, east = north[0], east[0]
+    frames = []
+    factor = None
+    unit_label = None
+    for epoch in range(len(inst.ts)):
+        image, frame_factor, frame_label = _image_frame(inst, epoch,
+                                                       noise_floor=noise_floor)
+        image = np.asarray(image, dtype=float)
+        if factor is None:
+            factor, unit_label = float(frame_factor), frame_label
+        elif image.shape != frames[0].shape or frame_factor != factor:
+            raise ValueError(f"Inconsistent frame sizes or scales in {inst.name}")
+        frames.append(_working_region_image(image, inst, factor=factor)
+                      if mask_to_working_region else image)
+
+    ref = frames[0]
+    numerator = np.zeros_like(ref, dtype=float)
+    coverage = np.zeros_like(ref, dtype=float)
+    for k, frame in enumerate(frames):
+        # A valid-pixel mask is interpolated using the same transformation as
+        # the signal, then used to normalize boundary/NaN transitions.
+        shift_xy = ((north[0] - north[k]) * float(inst.scale) * factor,
+                    (east[k] - east[0]) * float(inst.scale) * factor)
+        valid = np.isfinite(frame)
+        values = np.where(valid, frame, 0.0)
+        shifted_values = image_shift(values, shift_xy, order=1,
+                                     mode="constant", cval=0.0,
+                                     prefilter=False)
+        shifted_weights = image_shift(valid.astype(float), shift_xy, order=1,
+                                      mode="constant", cval=0.0,
+                                      prefilter=False)
+        good = shifted_weights > 1e-8
+        numerator[good] += shifted_values[good] / shifted_weights[good]
+        coverage[good] += 1.0
+    aligned_mean = np.full_like(ref, np.nan, dtype=float)
+    good = coverage > 0
+    aligned_mean[good] = numerator[good] / coverage[good]
+    return ref, aligned_mean, coverage, _image_extent(inst), unit_label, east[0], north[0]
+
+
+def plot_aligned_instrument_stack(inst, map_state: np.ndarray, output_dir: Path,
+                                  dpi: int, noise_floor: float,
+                                  mask_to_working_region: bool = True) -> None:
+    """Display the MAP-aligned mean image for one instrument.
+
+    All epochs of the instrument are shifted so that their MAP-predicted planet
+    positions coincide with the position at the first observing epoch. Only the
+    final aligned mean is shown: the reference image is deliberately omitted to
+    keep the figure focused on the registered stack.
+
+    The stack is for interpretation only. It is not a detection statistic and
+    is never fed back into the MCMC likelihood.
+    """
+    plt = _style()
+    reference, aligned, coverage, extent, label, east, north = _align_instrument_images(
+        inst, map_state, noise_floor,
+        mask_to_working_region=mask_to_working_region,
+    )
+    fig, ax = plt.subplots(1, 1, figsize=(5.3, 4.8), constrained_layout=True)
+    cmap = plt.get_cmap("RdBu_r").copy()
+    cmap.set_bad("#e8edf1")
+    low, high = _symmetric_image_limits(aligned)
+    im = ax.imshow(aligned, origin="lower", extent=extent, cmap=cmap,
+                   vmin=low, vmax=high, interpolation="nearest", aspect="equal")
+    fig.colorbar(im, ax=ax, fraction=0.047, pad=0.03, label=label)
+    _map_position(ax, east, north, scale=float(inst.scale),
+                  radius_px=4.0 * float(getattr(inst, "fwhm", 1.5)),
+                  color="#f6b638", label=True)
+    contributing = int(np.nanmax(coverage)) if np.isfinite(coverage).any() else 0
+    ax.set(xlabel="East [AU]", ylabel="North [AU]",
+           title=f"MAP-aligned mean ({contributing} epochs)")
+    fig.suptitle(f"{inst.name} | Aligned observation stack", fontsize=11)
+    _save(fig, output_dir / f"{_slug(inst.name)}_aligned_stack", dpi)
 
 
 def _working_region_image(image: np.ndarray, inst, *, factor: float) -> np.ndarray:
@@ -302,7 +399,7 @@ def plot_epoch_images(inst, samples: np.ndarray, log_probability: np.ndarray,
                                extent=extent, interpolation="nearest", aspect="equal")
             fig.colorbar(artist, ax=ax, fraction=0.045, pad=0.03, label=label)
             _map_position(ax, ebest[k], nbest[k], scale=float(inst.scale),
-                          color="#ffdf5b", radius_px=1.2, label=True)
+                          color="#ffdf5b", radius_px=4.0 * float(getattr(inst, "fwhm", 1.5)), label=True)
             if inst.r_mask is not None:
                 inner = float(inst.r_mask) / float(inst.scale)
                 ax.add_patch(plt.Circle((0,0), inner, color="white", fill=False,
@@ -359,34 +456,75 @@ def plot_position_log_density(inst, samples: np.ndarray, output_dir: Path, dpi: 
 
 def _draw_corner(samples: np.ndarray, names: list[str], title: str,
                  destination: Path, dpi: int) -> None:
-    """Render a publication-ready lower-triangle posterior projection."""
+    """Render readable marginal and joint posterior distributions.
+
+    Each diagonal includes the median and central 68% quantiles. Joint panels
+    use a two-dimensional binned density with logarithmic occupancy scaling,
+    rather than a forest of overplotted scatter markers. Binning is a display
+    operation only and does not change saved samples or inferred probabilities.
+    """
+    from matplotlib.colors import LogNorm
+
     plt = _style()
-    columns = np.asarray(samples, float)
+    data = np.asarray(samples, dtype=float)
     ndim = len(names)
-    fig, axes = plt.subplots(ndim, ndim, figsize=(1.55*ndim, 1.55*ndim),
-                             constrained_layout=True)
+    if data.ndim != 2 or data.shape[1] != ndim:
+        raise ValueError("Corner plot columns must match parameter labels")
+    if ndim < 2:
+        raise ValueError("At least two coordinates are required")
+    if len(data) < 2:
+        raise ValueError("At least two posterior samples are required")
+    fig, axes = plt.subplots(ndim, ndim, figsize=(2.8 * ndim, 2.8 * ndim),
+                             squeeze=False, constrained_layout=True)
+    bounds = []
+    for dim in range(ndim):
+        finite = data[:, dim][np.isfinite(data[:, dim])]
+        if not finite.size:
+            raise ValueError("Cannot plot a coordinate without finite samples")
+        lo, hi = np.min(finite), np.max(finite)
+        if hi - lo < max(1e-12, 1e-12 * abs(lo)):
+            pad = 0.05 * max(abs(lo), 1.0)
+        else:
+            pad = 0.035 * (hi - lo)
+        bounds.append((lo - pad, hi + pad))
     for row in range(ndim):
         for col in range(ndim):
             ax = axes[row, col]
-            if row < col:
+            if col > row:
                 ax.axis("off")
                 continue
+            ax.set_xlim(bounds[col])
             if row == col:
-                ax.hist(columns[:, col], bins=36, color="#3e7895",
-                        histtype="stepfilled", alpha=0.75)
+                finite = data[:, row][np.isfinite(data[:, row])]
+                low, median, high = np.quantile(finite, [0.16, 0.5, 0.84])
+                ax.hist(finite, bins=50, range=bounds[col], density=True,
+                        color="#3487a7", alpha=0.84, edgecolor="white", linewidth=0.3)
+                ax.axvline(median, color="#143f59", lw=1.5)
+                ax.axvline(low, color="#c57d3c", lw=1, ls="--")
+                ax.axvline(high, color="#c57d3c", lw=1, ls="--")
+                ax.set_title(f"{median:.3g} (+{high-median:.2g}/-{median-low:.2g})",
+                             fontsize=9, pad=3)
             else:
-                ax.scatter(columns[:, col], columns[:, row], s=1,
-                           rasterized=True, color="#31637b", alpha=0.09)
-            ax.tick_params(axis="both", labelsize=6, length=2)
-            if row == ndim-1:
-                ax.set_xlabel(names[col], fontsize=8)
+                hist, xedges, yedges = np.histogram2d(data[:, col], data[:, row],
+                    bins=48, range=[bounds[col], bounds[row]])
+                positive = np.ma.masked_less_equal(hist.T, 0)
+                ax.pcolormesh(xedges, yedges, positive,
+                              cmap="viridis", norm=LogNorm(vmin=1,
+                                  vmax=max(2, float(np.max(hist)))),
+                              rasterized=True, shading="flat")
+                ax.set_ylim(bounds[row])
+            ax.tick_params(axis="both", labelsize=8.5, length=2.8,
+                           direction="in", pad=2.5)
+            if row == ndim - 1:
+                ax.set_xlabel(names[col], fontsize=11, labelpad=6)
+                ax.tick_params(axis="x", labelrotation=30)
             else:
                 ax.tick_params(labelbottom=False)
             if row > col and col == 0:
-                ax.set_ylabel(names[row], fontsize=8)
+                ax.set_ylabel(names[row], fontsize=11, labelpad=5)
             elif col > 0:
                 ax.tick_params(labelleft=False)
-    fig.suptitle(title, fontsize=13)
+    fig.suptitle(title, fontsize=15)
     _save(fig, destination, dpi)
 
 
@@ -434,7 +572,8 @@ def create_scientific_figures(instruments: Sequence, samples: np.ndarray,
                               noise_floor: float, max_posterior_samples: int=12000,
                               max_orbit_tracks: int=900,
                               dpi: int=200,
-                              mask_to_working_region: bool=True) -> None:
+                              mask_to_working_region: bool=True,
+                              align_to_first_epoch: bool=True) -> None:
     """Export physical plots and all-epoch posterior overlays as PDF and PNG."""
     if not instruments:return
     output_dir=Path(output_dir);output_dir.mkdir(parents=True,exist_ok=True)
@@ -473,6 +612,11 @@ def create_scientific_figures(instruments: Sequence, samples: np.ndarray,
         plot_epoch_images(inst,samples,log_probability,output_dir,dpi,noise_floor,
                           mask_to_working_region=mask_to_working_region)
         plot_position_log_density(inst,samples,output_dir,dpi)
+        if align_to_first_epoch and len(inst.ts) > 1:
+            plot_aligned_instrument_stack(
+                inst, samples[int(np.nanargmax(log_probability))], output_dir,
+                dpi, noise_floor, mask_to_working_region=mask_to_working_region,
+            )
 
 class _StoredChainSampler:
     """Read saved cold-chain arrays using the interface expected by diagnostics."""
@@ -579,6 +723,7 @@ def create_figures_from_yaml(yaml_path: str) -> None:
             max_orbit_tracks=int(plots_settings.get("max_orbit_tracks", 900)),
             dpi=int(plots_settings.get("dpi", 200)),
             mask_to_working_region=bool(plots_settings.get("mask_to_working_region", True)),
+            align_to_first_epoch=bool(plots_settings.get("align_to_first_epoch", True)),
         )
         create_mcmc_diagnostics(
             chain, output_dir=figure_dir / "convergence",

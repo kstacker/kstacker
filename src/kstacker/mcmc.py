@@ -2233,13 +2233,28 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
                 from mcmc_diagnostics import create_mcmc_diagnostics
             plot_dir = Path(params.get_path("values_dir")) / str(plot_config.get("directory", "figures"))
             plot_dir.mkdir(parents=True, exist_ok=True)
+            # Draw corners from the configurable thinned visualization sample,
+            # but always include the true highest-posterior production state.
+            # Otherwise a MAP annotation can depend on the YAML thinning stride.
+            full_log_probability = sampler.get_log_prob(flat=False)
+            map_flat_index = int(np.nanargmax(full_log_probability))
+            map_step, map_walker = np.unravel_index(
+                map_flat_index, full_log_probability.shape
+            )
+            map_state = sampler.get_chain(flat=False)[map_step, map_walker]
+            display_states = np.vstack([flat, map_state[None, :]])
+            display_scores = np.concatenate([
+                sampler.get_log_prob(thin=mconf["thin"], flat=True),
+                np.array([full_log_probability[map_step, map_walker]]),
+            ])
             create_scientific_figures(
-                instruments, flat, sampler.get_log_prob(thin=mconf["thin"], flat=True),
+                instruments, display_states, display_scores,
                 output_dir=plot_dir / "science", noise_floor=noise_floor,
                 max_posterior_samples=int(plot_config.get("max_posterior_samples", 12000)),
                 max_orbit_tracks=int(plot_config.get("max_orbit_tracks", 900)),
                 dpi=int(plot_config.get("dpi", 200)),
                 mask_to_working_region=bool(plot_config.get("mask_to_working_region", True)),
+                align_to_first_epoch=bool(plot_config.get("align_to_first_epoch", True)),
             )
             create_mcmc_diagnostics(
                 sampler, output_dir=plot_dir / "convergence", thin=mconf["thin"],

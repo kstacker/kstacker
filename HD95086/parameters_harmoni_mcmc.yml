@@ -116,9 +116,9 @@ mcmc:
   sample_fp: false
   emcee:
     walkers: 100
-    burnin_steps: 25000
-    production_steps: 75000
-    thin: 100
+    burnin_steps: 250000
+    production_steps: 750000
+    thin: 1000
     moves:
     - name: stretch
       weight: 1.0

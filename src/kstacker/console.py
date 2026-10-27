@@ -1,8 +1,8 @@
 """Compact, colour-aware reporting for terminals and batch-job logs.
 
-ANSI sequences are used only for a terminal, or when KSTACKER_COLOR=always.
-Non-interactive processes print occasional complete progress lines, making
-`tail -f` readable without terminal control characters.
+The goal is to make long scientific runs easy to follow without turning the
+console into a wall of text. Interactive terminals receive restrained colours;
+redirected logs remain plain and readable.
 """
 from __future__ import annotations
 
@@ -11,9 +11,25 @@ import sys
 from tqdm import tqdm as _tqdm
 
 COLORS = {
-    "cyan": "1;36", "blue": "1;34", "green": "1;32",
-    "yellow": "1;33", "magenta": "1;35", "red": "1;31",
-    "muted": "2", "white": "1;37",
+    "cyan": "1;36",
+    "blue": "1;34",
+    "green": "1;32",
+    "yellow": "1;33",
+    "magenta": "1;35",
+    "red": "1;31",
+    "muted": "2",
+    "white": "1;37",
+}
+
+TONE_ICON = {
+    "cyan": "•",
+    "blue": "→",
+    "green": "✓",
+    "yellow": "!",
+    "magenta": "◆",
+    "red": "✗",
+    "muted": "·",
+    "white": "•",
 }
 
 
@@ -33,7 +49,7 @@ def _color(value: str, code: str) -> str:
 
 
 def _print_section(title: str, width: int = 78, *, tone: str = "cyan") -> None:
-    """Write a restrained scientific console section header."""
+    """Write a compact section header for a new stage of the workflow."""
     code = COLORS.get(tone, COLORS["cyan"])
     print("\n" + _color("┏" + "━" * (width - 2) + "┓", code), flush=True)
     print(_color("┃ " + title.ljust(width - 4) + " ┃", code), flush=True)
@@ -104,11 +120,24 @@ def interactive_progress(enabled: bool) -> bool:
 
 
 def console_status(label: str, message: str, *, tone: str = "cyan") -> None:
-    """Print a concise, consistently styled status line.
-
-    Color is only applied to interactive terminals unless KSTACKER_COLOR
-    explicitly requests it. Noninteractive logs remain plain text.
-    """
+    """Print one concise status line with a visual tone and icon."""
     code = COLORS.get(tone, COLORS["cyan"])
-    print(_color(f"[{label}]", code) + " " + str(message), flush=True)
+    icon = TONE_ICON.get(tone, TONE_ICON["cyan"])
+    badge = _color(f"[{label}]", code)
+    prefix = _color(icon, code)
+    print(f"{prefix} {badge} {message}", flush=True)
 
+
+def console_success(message: str, *, label: str = "done") -> None:
+    """Print a short success message in green."""
+    console_status(label, message, tone="green")
+
+
+def console_warning(message: str, *, label: str = "warning") -> None:
+    """Print a short warning message in yellow."""
+    console_status(label, message, tone="yellow")
+
+
+def console_error(message: str, *, label: str = "error") -> None:
+    """Print a short error message in red."""
+    console_status(label, message, tone="red")
