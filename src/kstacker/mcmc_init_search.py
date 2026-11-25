@@ -53,6 +53,9 @@ try:
         _print_section,
         _resolve_radial_noise_recalibration,
         _recalibrate_classical_noise,
+        _instrument_profile_dir,
+        _local_aperture_ring_cache_stem,
+        _radial_recalibration_cache_dir,
         _load_convolved_images,
         _load_native_images,
         _load_or_build_local_ring_maps,
@@ -79,6 +82,9 @@ except Exception:
         _print_section,
         _resolve_radial_noise_recalibration,
         _recalibrate_classical_noise,
+        _instrument_profile_dir,
+        _local_aperture_ring_cache_stem,
+        _radial_recalibration_cache_dir,
         _load_convolved_images,
         _load_native_images,
         _load_or_build_local_ring_maps,
@@ -233,6 +239,8 @@ def _load_instruments_for_search(
         tmp_root.update(inst_cfg)
         params._params = tmp_root
         radial_recal_cfg = _resolve_radial_noise_recalibration(base_root, inst_cfg)
+        inst_name = str(inst_cfg.get("name", f"instrument_{len(instruments)}"))
+        noise_products = None
 
         if search_backend == "auto":
             photometry_method = str(getattr(params, "method", "convolve") or "convolve").lower()
@@ -282,6 +290,7 @@ def _load_instruments_for_search(
                 interpolator=paco_interpolator,
                 oversampling=paco_oversampling,
                 radial_noise_recalibration=radial_recal_cfg,
+                instrument_name=inst_name,
             )
             xgrid, bkg, noise = _make_placeholder_profiles(len(ts_i), size_i)
             # The init search does not need native images for its objective.
@@ -325,6 +334,19 @@ def _load_instruments_for_search(
                     images_native=images_native,
                     cfg=background_noise_cfg,
                     noise_floor=_noise_floor_build_value(tmp_root),
+                    instrument_name=inst_name,
+                )
+                # File locations used only by the diagnostic noise figures.
+                noise_products = dict(
+                    local_ring_dir=_instrument_profile_dir(profile_dir, inst_name),
+                    local_ring_stem=_local_aperture_ring_cache_stem(
+                        photometry_method=photometry_method,
+                        size=size_i,
+                        upsampling_factor=upsampling_factor_i,
+                        fwhm=fwhm_i,
+                        cfg=background_noise_cfg,
+                    ),
+                    recalibration_dir=None,
                 )
 
             if radial_recal_cfg["mode"] != "none":
@@ -343,9 +365,13 @@ def _load_instruments_for_search(
                     local_noise_maps=local_noise_maps,
                     cfg=radial_recal_cfg,
                     profile_dir=profile_dir,
+                    instrument_name=inst_name,
                 )
-
-        inst_name = str(inst_cfg.get("name", f"instrument_{len(instruments)}"))
+                if noise_products is not None:
+                    noise_products["recalibration_dir"] = _radial_recalibration_cache_dir(
+                        profile_dir, inst_name, radial_recal_cfg, photometry_method
+                    )
+                    noise_products["max_distance_px"] = float(radial_recal_cfg["max_distance_px"])
 
         instruments.append(
             Instrument(
@@ -372,6 +398,7 @@ def _load_instruments_for_search(
                 bgnoise_cfg=background_noise_cfg,
                 local_bkg_maps=None if local_bkg_maps is None else np.asarray(local_bkg_maps),
                 local_noise_maps=None if local_noise_maps is None else np.asarray(local_noise_maps),
+                noise_products=noise_products,
             )
         )
 
@@ -600,6 +627,54 @@ def _save_ranked_results(
 # PUBLIC ENTRY POINT
 # =============================================================================
 
+def _print_epoch_validity(instruments, rows: np.ndarray, *, noise_floor: float,
+                          weighting: str, n_show: int = 5) -> None:
+    """Print, per instrument, the number of epochs entering the likelihood.
+
+    An epoch is invalid (excluded from the combination) when the predicted
+    position is masked (r <= r_mask or r >= r_mask_ext), outside the image,
+    when the measurement at that position uses no-data pixels, or when none of
+    its weighted bilinear neighbours has a valid sigma (rule of iteration 07;
+    strict rule of iterations 02-06 if the measurement maps are absent).
+    """
+    try:
+        from .direct_imaging import snr_from_hkpq
+    except ImportError:
+        from direct_imaging import snr_from_hkpq
+    theta = np.asarray(rows[:, :7], dtype=float)
+    if theta.size == 0:
+        return
+    print()
+    print(f"[search] epochs entering the likelihood (kept orbits: {theta.shape[0]})")
+    for inst in instruments:
+        if inst.photometry_method == "paco":
+            continue
+        _, _, snr, epoch_snr, epoch_ok = snr_from_hkpq(
+            theta, ts=inst.ts, images=inst.images_up,
+            data=dict(x=inst.xgrid, bkg=inst.bkg, noise=inst.noise),
+            size=inst.size, scale=inst.scale, upsampling_factor=inst.upsampling_factor,
+            t_ref=inst.t_ref, r_mask=inst.r_mask, r_mask_ext=inst.r_mask_ext,
+            noise_floor=float(inst.noise_floor if inst.noise_floor is not None else noise_floor),
+            weighting=weighting, photometry_method=inst.photometry_method,
+            images_native=inst.images_native, fwhm=inst.fwhm,
+            background_noise_cfg=inst.bgnoise_cfg,
+            local_bkg_maps=inst.local_bkg_maps, local_noise_maps=inst.local_noise_maps,
+            return_epoch_valid=True,
+            measurement_missing_maps=inst.measurement_missing_maps,
+        )
+        n_valid = np.sum(epoch_ok, axis=1)
+        K = epoch_ok.shape[1]
+        print(f"[search]   {inst.name}: valid epochs per kept orbit min/median/max = "
+              f"{int(n_valid.min())}/{float(np.median(n_valid)):g}/{int(n_valid.max())} of {K}; "
+              f"invalid epoch samples = {int(epoch_ok.size - epoch_ok.sum())} of {epoch_ok.size}")
+        for i in range(min(n_show, theta.shape[0])):
+            per_epoch = " ".join(
+                f"{z:+.2f}" if ok else "  .  " for z, ok in zip(epoch_snr[i], epoch_ok[i])
+            )
+            print(f"[search]     rank {i + 1}: {int(n_valid[i])}/{K} valid, "
+                  f"S/N {inst.name} = {float(snr[i]):.3f} | per-epoch S/N: {per_epoch}")
+
+
 def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
     """
     Run the dedicated ranked initialisation search from a YAML file.
@@ -663,6 +738,22 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
     grid_fluxes = [inst.flux_init for inst in instruments if inst.flux_index is not None]
     noise_floor = min(float(inst.noise_floor) for inst in instruments)
     values_dir = params.get_path("values_dir")
+
+    # Diagnostic noise figures (read back from the cached files; no effect on
+    # the search).  Any failure is reported and ignored.
+    plot_settings = root.get("plots", {}) or {}
+    if plot_settings.get("enabled", True):
+        try:
+            try:
+                from .noise_plots import create_noise_figures
+            except ImportError:
+                from noise_plots import create_noise_figures
+            noise_fig_dir = (
+                Path(values_dir) / str(plot_settings.get("directory", "figures")) / "noise"
+            )
+            create_noise_figures(instruments, noise_fig_dir)
+        except Exception as exc:
+            print(f"[noise-plots] WARNING: noise figures failed: {exc}")
 
     _print_section("MCMC INITIALISATION SEARCH", width=100)
     print(f"[search] yaml_path                : {yaml_path}")
@@ -821,6 +912,14 @@ def search_mcmc_initial_parameters_from_yaml(yaml_path: str):
     print(f"[search] output HDF5             : {h5_path}")
     print(f"[search] output CSV              : {csv_path}")
     print("=" * 100)
+
+    # Diagnostic only (no effect on the saved ranking): how many epochs of
+    # each instrument actually enter the likelihood of the kept orbits.
+    try:
+        _print_epoch_validity(instruments, np.asarray(top_nonsingular, dtype=float),
+                              noise_floor=noise_floor, weighting=weighting)
+    except Exception as exc:
+        print(f"[search] WARNING: epoch-validity diagnostic failed: {exc}")
 
     return dict(
         h5_path=h5_path,

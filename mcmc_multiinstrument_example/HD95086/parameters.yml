@@ -1,0 +1,231 @@
+# it.11 (2026-11-11) REFERENCE run of the false-alarm test: copy of
+# parameters_reddemcee.yml with random_seed 2026, burnin 6000, production 150000,
+# values_dir values_reddemcee_ref. Same images and same profile_dir (noise caches
+# of it.08 reused: profiles/VISIR_2019, profiles_MIRI_3-4combined/MIRI_2024-2025).
+# parameters_harmoni_mcmc_two_instruments.yml
+# =============================================================================
+# Joint Keplerian orbit inference from two independent HARMONI datasets.
+# Each dataset has its own epochs, noise estimate and S/N likelihood.
+# Both datasets share the same orbital parameters and reference epoch.
+#
+# Directory layout (relative to this YAML file):
+#   images_HARMONI_1st_half/image_0.fits
+#   images_HARMONI_1st_half/image_1.fits
+#   images_HARMONI_2nd_half/image_0.fits
+#   images_HARMONI_2nd_half/image_1.fits
+#
+# IMPORTANT: Check times_years against the actual observation epochs.
+# =============================================================================
+
+dist: 86.2                  # Stellar distance in parsecs.
+weighting: "invvar"        # "invvar" or "simple".
+t_ref_mode: "min_ts"       # Shared orbital reference epoch: earliest observation.
+random_seed: 2026
+# parameters_reddemcee.yml (prepared 2026-11-10): long reddemcee run on VISIR_2019
+# (16 epochs) + MIRI_2024-2025 with 3 epochs, the last one being the MEAN of the
+# two roll reductions of the same date (image_2 + image_3) / 2.
+# Outputs are kept apart from parameters.yml runs:
+#   values_dir  -> values_reddemcee_3-4combined/
+#   MIRI noise cache -> profiles_MIRI_3-4combined/ (the cache key does not depend
+#   on the image content: reusing profiles/ would silently read the image_2-only
+#   noise map for epoch 002).
+values_dir: "values"
+
+# ----------------------------------------------------------------------------
+# Instruments: independent noise floors and likelihood contributions
+# ----------------------------------------------------------------------------
+instruments:
+  - name: "sphere_1"
+    method: "convolve"
+    likelihood_mode: "signed_snr"
+    images_dir: "images_SPHERE1"
+    times_years: [1.322381930184805, 2.2642026009582477]
+
+    resol: 12.25              # Plate scale [mas/native pixel].
+    fwhm: 1.69               # PSF FWHM [native pixels].
+    r_mask: 26.            # Inner working angle [native pixels].
+    r_mask_ext: 61.        # Outer working angle [native pixels].
+
+    noise_floor:
+      mode: "auto"          # Computed from this instrument's noise data only.
+      fraction_of_median: 1.0e-3
+      min_samples: 100
+
+    radial_noise_recalibration:   # Optional overrides of the global section.
+      max_distance_px: "auto"     # auto -> r_mask_ext - r_mask = 45 - 25 = 20 px.
+
+    # To use the Gaussian flux likelihood instead:
+    # likelihood_mode: "flux"  # Replace signed_snr above, do not duplicate it.
+    # flux:
+    #   sample: true
+    #   bounds: [1.0e-4, 1.0e2]  # Adapt to THIS instrument's flux units.
+    #   prior: "uniform"
+    #   init: 1.0
+    #   spread: 0.2
+
+  - name: "sphere_2"
+    method: "convolve"
+    likelihood_mode: "signed_snr"
+    images_dir: "images_SPHERE2"
+    #profile_dir: "profiles_SPHERE2"
+    times_years: [2.924024640657084, 4.188911704312115]
+
+    resol: 12.25 
+    fwhm: 1.69
+    r_mask: 26.
+    r_mask_ext: 61.
+
+    noise_floor:
+      mode: "auto"          # Independently calibrated noise floor.
+      fraction_of_median: 1.0e-3
+      min_samples: 100
+
+    radial_noise_recalibration:   # Optional overrides of the global section.
+      max_distance_px: "auto"     # auto -> r_mask_ext - r_mask = 29 - 5 = 24 px.
+
+    # When switching this instrument to likelihood_mode: "flux":
+    # flux:
+    #   sample: true
+    #   bounds: [1.0e-4, 1.0e2]  # Adapt independently to its flux units.
+    #   prior: "uniform"
+    #   init: 1.0
+    #   spread: 0.2
+
+# ----------------------------------------------------------------------------
+# Image preparation and local noise estimation
+# ----------------------------------------------------------------------------
+preprocessing:
+  upsampling_factor: 5
+
+background_noise:
+  aperture_spacing_fwhm: 2.0
+  exclusion_radius_fwhm: 4.0
+  radial_samples: 3
+  radial_step_fwhm: 2.0
+  min_reference_apertures: 1
+  sigma_statistic: "mad"
+  small_sample_correction: "student"
+  student_small_n_threshold: null
+  local_map_mode: "precompute_cache"
+  precompute_maps: true
+  overwrite_cached_maps: false
+  # Pixels without data (NaN in the reduced image -> 0 at preprocessing, or an
+  # exact 0 written by the reduction, e.g. VISIR outside r ~ 44 px and its
+  # diagonal masked band). "zero": such pixels are missing data; a reference
+  # aperture or a science sample whose photometric footprint (radius fwhm)
+  # touches them is not used. "none": old behaviour (zeros read as measurements).
+  missing_data: "zero"
+
+# Radial noise recalibration: sigma_cal,k(x,y) = sigma_local,k(x,y) * g(d(x,y)),
+# d = r - r_mask. g(d) is estimated SEPARATELY for each instrument, from that
+# instrument's epochs only, and cached in profiles/<instrument>/radial_noise_recalibration/.
+# This section gives the defaults shared by all instruments; any key can be
+# overridden in instruments[].radial_noise_recalibration (see the instruments above).
+# Distances (bin_width_px, max_distance_px, monotonic_extent_px, extrapolation_*)
+# are in NATIVE pixels of each instrument.
+radial_noise_recalibration:
+  mode: "monotonic_inward"   # none | empirical_radial | monotonic_inward | extrapolated_inward
+  bin_width_px: 2.0          # width of the radial bins in d [native px]
+  max_distance_px: "auto"    # "auto" = r_mask_ext - r_mask of EACH instrument; a number
+                             # here would apply the same px value to every instrument:
+                             # prefer a per-instrument override.
+  min_samples_per_bin: 30
+  smoothing_bins: 3
+  min_factor: 1.0
+  monotonic_extent_px: 4.0
+  extrapolation_fit_min_px: 1.0
+  extrapolation_fit_max_px: 5.0
+  cache: true
+  overwrite_cache: false
+
+# ----------------------------------------------------------------------------
+# Shared orbital priors
+# ----------------------------------------------------------------------------
+priors:
+  a_bounds: [27., 64.]     # Semi-major axis [AU].
+  m0_bounds: [1.55, 1.65]   # Stellar mass [solar masses].
+  la0_bounds: [0.0, 6.283185307179586]
+  e_max: 0.95
+  orbit_direction: "any" # "any" : No additional constraint (default, full disk p²+q² ≤ 1).
+
+# ----------------------------------------------------------------------------
+# Deterministic grid search to initialise orbital walkers
+# ----------------------------------------------------------------------------
+init_mode: "init_search"
+
+init_search:
+  stellar_mass_solar: 1.59
+  top_n_save: 5000
+  grid_batch_size: 50000
+  physical_grid:
+    a_au:       {min: 27., max: 64, step: 4}
+    e:          {min: 0.0, max: 0.9, step: 0.1}
+    i_deg:      {min: 0.0, max: 180.0, step: 10.0}
+    M0_deg:     {min: 0.0, max: 350.0, step: 10.0}
+    theta0_deg: {min: 0.0, max: 350.0, step: 10.0}
+    omega_deg:  {min: 0.0, max: 350.0, step: 10.0}
+
+init_spread:
+  a: 45.
+  la0: 0.2
+  m0: 0.02
+  hk: 0.02
+  pq: 0.02
+  fp: 0.2
+
+multistart:
+  enabled: true
+  n_starts: 4
+  detrack: true
+  detrack_dmax_px: 2.0
+
+# ----------------------------------------------------------------------------
+# MCMC sampler
+# ----------------------------------------------------------------------------
+mcmc:
+  sampler: "reddemcee"
+  likelihood_mode: "signed_snr"   # Fallback when absent from instruments.
+  progress: true
+  sample_fp: false               # No explicit flux parameters in S/N mode.
+
+  emcee:
+    walkers: 100
+    burnin_steps: 25000
+    production_steps: 75000
+    thin: 100
+    moves:
+      - {name: "stretch", weight: 1.0, a: 2.0}
+
+  # Used only if sampler is changed to "reddemcee".
+  reddemcee:
+    walkers: 128
+    # it.07: 34000 production sweeps -> N/tau 35-49, tau still growing.
+    # Without a memory change: ~0.655 GB per 1000 sweeps (26.2 GB for 40000),
+    # 0.096 s/sweep -> 60000 sweeps ~ 96 min and ~39 GB.
+    burnin_sweeps: 600
+    production_sweeps: 15000   # it.11 (it.08: 78000, 0.097-0.103 s/sweep -> ~4.2 h)
+    thin: 10
+    temperatures: 12
+    beta_min: 1.0e-4
+    betas: null
+    inner_steps: 4
+    adapt_mode: "SAR"
+    adapt_tau: 500.0
+    adapt_nu: 0.30
+    stretch_a: 1.2
+    smd_history: true
+    tsw_history: true
+
+parallel:
+  max_workers: 1
+  chunk_size: null
+
+logging:
+  save_console: true
+
+outputs:
+  save_chain: true
+  chain_filename: "mcmc_chain_and_logprob.h5"
+
+plots:
+  enabled: true

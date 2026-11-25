@@ -254,6 +254,21 @@ class Instrument:
     flux_spread: float = 0.2
     """Relative initial walker scatter for this instrument's flux."""
 
+    noise_products: Optional[dict] = None
+    """Locations of the cached noise products (diagnostic figures only)."""
+
+    measurement_missing_maps: Optional[np.ndarray] = None
+    """
+    Per-epoch indicator of science measurements that use no-data pixels
+    (`background_noise.missing_data: "zero"`), built from `images_native` by
+    `configure_instrument_statistics` (see `_measurement_missing_grid`).
+      - "convolve": boolean (K, H_up, W_up), on the grid read by the science
+        photometry: True where the convolution disk overlaps a no-data pixel;
+      - "aperture": float (K, size, size), the native no-data indicator.
+    None means "unknown": the likelihood then keeps the strict bilinear rule
+    of iterations 02-06 (`_bilinear_support_valid`).
+    """
+
 
 def _get(d: Optional[dict], key: str, default: Any) -> Any:
     """
@@ -421,6 +436,149 @@ def _resolve_noise_floor(
 
 
 
+def _invalid_noise_summary(instrument: "Instrument") -> str:
+    """Diagnostic text: invalid sigma pixels / unusable sample area in the working annulus."""
+    maps = instrument.local_noise_maps
+    if maps is None or str(instrument.photometry_method).lower() == "paco":
+        return ""
+    maps = np.asarray(maps, dtype=float)
+    n = maps.shape[1]
+    yy, xx = np.mgrid[:n, :maps.shape[2]]
+    r = np.hypot(xx - (maps.shape[2] - 1) / 2.0, yy - (n - 1) / 2.0)
+    work = np.ones_like(r, dtype=bool)
+    if instrument.r_mask is not None:
+        work &= r > float(instrument.r_mask)
+    if instrument.r_mask_ext is not None:
+        work &= r < float(instrument.r_mask_ext)
+    bad = ~(np.isfinite(maps) & (maps > 0.0))
+    n_bad = np.sum(bad & work[None], axis=(1, 2))
+    # A 2x2 cell is unusable for a sample if any of its corners is invalid.
+    cell_bad = bad[:, :-1, :-1] | bad[:, 1:, :-1] | bad[:, :-1, 1:] | bad[:, 1:, 1:]
+    rc = np.hypot(xx[:-1, :-1] + 0.5 - (maps.shape[2] - 1) / 2.0,
+                  yy[:-1, :-1] + 0.5 - (n - 1) / 2.0)
+    work_c = np.ones_like(rc, dtype=bool)
+    if instrument.r_mask is not None:
+        work_c &= rc > float(instrument.r_mask)
+    if instrument.r_mask_ext is not None:
+        work_c &= rc < float(instrument.r_mask_ext)
+    frac = np.sum(cell_bad & work_c[None], axis=(1, 2)) / max(int(np.sum(work_c)), 1)
+    text = (
+        f"[noise] {instrument.name}: invalid sigma pixels (sigma = 0) in working annulus "
+        f"r_mask < r < r_mask_ext ({int(np.sum(work))} px): "
+        f"{int(n_bad.min())} .. {int(n_bad.max())} per epoch (total {int(n_bad.sum())}); "
+    )
+    rejected = _rejected_area_fractions(instrument)
+    if rejected is None:
+        return text + (
+            f"area where samples are rejected by the strict bilinear rule: "
+            f"{100 * float(frac.min()):.1f} .. {100 * float(frac.max()):.1f} % per epoch"
+        )
+    new_frac, strict_frac = rejected
+    return text + (
+        f"area where samples are rejected (measurement on no-data pixels, or no valid "
+        f"bilinear neighbour): {100 * float(new_frac.min()):.1f} .. "
+        f"{100 * float(new_frac.max()):.1f} % per epoch "
+        f"(strict bilinear rule of iterations 02-06: {100 * float(strict_frac.min()):.1f} .. "
+        f"{100 * float(strict_frac.max()):.1f} %)"
+    )
+
+
+def _rejected_area_fractions(instrument: "Instrument") -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """
+    Diagnostic only: fraction of the working annulus where a sample is rejected.
+
+    Positions are the centres of the upsampled sub-pixels (the grid read by the
+    "convolve" photometry), r_mask < r < r_mask_ext.  Returns per-epoch
+    fractions for the current rule (measurement on no-data pixels, or no valid
+    bilinear neighbour) and for the strict rule of iterations 02-06 (any
+    weighted neighbour invalid).  None when the measurement maps are absent or
+    the photometry is not "convolve".
+    """
+    maps = instrument.local_noise_maps
+    missing = instrument.measurement_missing_maps
+    if (
+        maps is None or missing is None
+        or str(instrument.photometry_method).lower() != "convolve"
+    ):
+        return None
+    maps = np.asarray(maps)
+    missing = np.asarray(missing, dtype=bool)
+    K, n, m = maps.shape
+    factor = max(1, int(round(float(instrument.upsampling_factor))))
+    if missing.shape != (K, n * factor, m * factor):
+        return None
+    # Sub-pixel centres: `_native_to_upsampled_index` maps them back exactly.
+    xs = (np.arange(m * factor) + 0.5) / factor - 0.5
+    ys = (np.arange(n * factor) + 0.5) / factor - 0.5
+    xx, yy = np.meshgrid(xs, ys)
+    r = np.hypot(xx - (m - 1) / 2.0, yy - (n - 1) / 2.0)
+    work = np.ones_like(r, dtype=bool)
+    if instrument.r_mask is not None:
+        work &= r > float(instrument.r_mask)
+    if instrument.r_mask_ext is not None:
+        work &= r < float(instrument.r_mask_ext)
+    x = xx[work]
+    y = yy[work]
+    n_work = max(int(x.size), 1)
+    new_frac = np.zeros(K, dtype=float)
+    strict_frac = np.zeros(K, dtype=float)
+    for kk in range(K):
+        k_idx = np.full(x.shape, kk, dtype=np.int64)
+        support_ok, _, _ = _bilinear_interp_valid_neighbours(
+            maps, maps, x, y, k_idx
+        )
+        meas_ok = ~missing[kk][work]
+        new_frac[kk] = np.sum(~(support_ok & meas_ok)) / n_work
+        strict_frac[kk] = np.sum(~_bilinear_support_valid(maps, x, y, k_idx)) / n_work
+    return new_frac, strict_frac
+
+
+def _build_measurement_missing_maps(instrument: "Instrument") -> Optional[np.ndarray]:
+    """
+    Per-epoch maps telling whether the science measurement uses no-data pixels.
+
+    Built from the native images with the same kernel as the convolved images
+    (`_measurement_missing_grid`).  With `missing_data: "none"` no pixel is
+    treated as missing (all-False maps).  None for PACO, without native images
+    or without precomputed local maps (the likelihood then keeps its legacy
+    strict rule).
+    """
+    method = str(instrument.photometry_method).lower()
+    if method not in ("convolve", "aperture"):
+        return None
+    if instrument.images_native is None or instrument.local_noise_maps is None:
+        return None
+    if method == "convolve" and instrument.images_up is None:
+        return None
+    cfg = instrument.bgnoise_cfg or {}
+    mode = str(cfg.get("missing_data", "zero")).lower()
+    images_native = np.asarray(instrument.images_native)
+    K = int(images_native.shape[0])
+    if method == "convolve":
+        shape = tuple(np.shape(instrument.images_up))
+    else:
+        shape = tuple(images_native.shape)
+    if mode != "zero":
+        return np.zeros(shape, dtype=bool if method == "convolve" else float)
+    if instrument.fwhm is None:
+        return None
+    out = np.stack([
+        _measurement_missing_grid(
+            photometry_method=method,
+            image_native=images_native[kk],
+            upsampling_factor=instrument.upsampling_factor,
+            fwhm=float(instrument.fwhm),
+        )
+        for kk in range(K)
+    ], axis=0)
+    if out.shape != shape:
+        raise ValueError(
+            f"{instrument.name}: no-data measurement maps {out.shape} do not match "
+            f"the science images {shape}."
+        )
+    return out
+
+
 def configure_instrument_statistics(root: Mapping[str, Any], instruments: Sequence[Instrument], *, verbose: bool = True) -> list[str]:
     """Resolve independent noise floors and flux amplitudes for each dataset.
 
@@ -446,8 +604,25 @@ def configure_instrument_statistics(root: Mapping[str, Any], instruments: Sequen
         local_root = dict(root)
         local_root["noise_floor"] = configuration.get("noise_floor", root.get("noise_floor", {}))
         instrument.noise_floor = _resolve_noise_floor(local_root, [instrument], verbose=False)
+        # Since iteration 07: validity of the measurement at the exact sample
+        # position (rule "a" of rapports/notes_bruit_masque.md), read by the
+        # likelihood.  Built here because init, mcmc and plot all call this.
+        instrument.measurement_missing_maps = _build_measurement_missing_maps(instrument)
         if verbose:
-            print(f"[noise] {instrument.name}: sigma floor = {instrument.noise_floor:.6g}")
+            samples = _collect_noise_samples([instrument])
+            median_sigma = float(np.median(samples)) if samples.size else float("nan")
+            shape = (
+                None if instrument.local_noise_maps is None
+                else tuple(np.shape(instrument.local_noise_maps))
+            )
+            print(
+                f"[noise] {instrument.name}: sigma floor = {instrument.noise_floor:.6g} "
+                f"(median sigma of this instrument = {median_sigma:.6g}, "
+                f"{samples.size} samples, noise maps shape = {shape})"
+            )
+            summary = _invalid_noise_summary(instrument)
+            if summary:
+                print(summary)
 
         instrument.flux_index = None
         if _normalize_likelihood_mode(instrument.likelihood_mode) != "flux":
@@ -1643,8 +1818,18 @@ def _resolve_background_noise(root: dict) -> dict:
             "background_noise.student_quantile must lie strictly between 0.5 and 1.0."
         )
 
+    # Pixels without data.  Reduction pipelines mark them with NaN (turned
+    # into 0 by the preprocessing) or directly with an exact 0.  "zero" treats
+    # exact-zero / non-finite native pixels as missing: a measurement whose
+    # photometric footprint touches them is neither a reference sample nor a
+    # valid science sample.  "none" restores the pre-2026-11 behaviour.
+    missing_data = str(cfg.get("missing_data", "zero") or "zero").strip().lower()
+    if missing_data not in ("zero", "none"):
+        raise ValueError("background_noise.missing_data must be 'zero' or 'none'.")
+
     out = dict(
         mode="local_aperture_ring",
+        missing_data=missing_data,
         aperture_spacing_fwhm=float(
             cfg.get("aperture_spacing_fwhm", 2.0)
         ),
@@ -1696,6 +1881,8 @@ def _resolve_background_noise(root: dict) -> dict:
     print(f"  sampled rings               : {out['radial_samples']}")
     print(f"  ring spacing                : {out['radial_step_fwhm']:.3g} FWHM")
     print(f"  minimum reference apertures : {out['min_reference_apertures']}")
+    print(f"  missing data (no-data px)   : {missing_data}"
+          + ("  (exact 0 / NaN native pixels excluded)" if missing_data == "zero" else ""))
     print(f"  small-sample correction     : {small_sample_correction}")
     if small_sample_correction == "student":
         threshold_text = (
@@ -1825,19 +2012,57 @@ def _resolve_radial_noise_recalibration(
     """
     Resolve global + per-instrument radial-noise recalibration settings.
 
-    Instrument values override the global `radial_noise_recalibration` block.
+    The global `radial_noise_recalibration` block gives the defaults shared by
+    every instrument; any key may be overridden in
+    `instruments[].radial_noise_recalibration`.
+
+    `max_distance_px` is expressed in native pixels of the instrument.  When it
+    is absent or set to "auto", it is computed for each instrument as
+    `r_mask_ext - r_mask` (the full working annulus of that instrument).  The
+    chosen value and its origin are returned in `max_distance_px` and
+    `max_distance_origin`.
     """
     global_cfg = dict((root.get("radial_noise_recalibration", {}) or {}))
     inst_cfg = inst_cfg or {}
     local_cfg = dict((inst_cfg.get("radial_noise_recalibration", {}) or {}))
     cfg = {**global_cfg, **local_cfg}
 
+    raw_dmax = cfg.get("max_distance_px", "auto")
+    if raw_dmax is None or (isinstance(raw_dmax, str) and raw_dmax.strip().lower() == "auto"):
+        r_in = inst_cfg.get("r_mask", root.get("r_mask", None))
+        r_out = inst_cfg.get("r_mask_ext", root.get("r_mask_ext", None))
+        size = inst_cfg.get("n", root.get("n", None))
+        r_in = 0.0 if r_in is None else float(r_in)
+        if r_out is None:
+            if size is None:
+                raise ValueError(
+                    "radial_noise_recalibration.max_distance_px='auto' needs "
+                    "r_mask_ext (or the image size) for each instrument."
+                )
+            r_out = (float(size) - 1.0) / 2.0
+            origin = "computed: (n-1)/2 - r_mask (r_mask_ext undefined)"
+        else:
+            r_out = float(r_out)
+            origin = "computed: r_mask_ext - r_mask"
+        max_distance_px = r_out - r_in
+        if not np.isfinite(max_distance_px) or max_distance_px <= 0.0:
+            raise ValueError(
+                f"Instrument {inst_cfg.get('name', '?')!r}: automatic "
+                f"max_distance_px = {r_out:g} - {r_in:g} must be > 0."
+            )
+    else:
+        max_distance_px = float(raw_dmax)
+        if "max_distance_px" in local_cfg and local_cfg.get("max_distance_px") is not None:
+            origin = "fixed: instrument section"
+        else:
+            origin = "fixed: global section (same px value for every instrument)"
 
     mode = _normalize_radial_noise_recalibration_mode(cfg.get("mode", "none"))
     return dict(
         mode=mode,
         bin_width_px=float(cfg.get("bin_width_px", 2.0)),
-        max_distance_px=float(cfg.get("max_distance_px", 30.0)),
+        max_distance_px=float(max_distance_px),
+        max_distance_origin=origin,
         min_samples_per_bin=max(5, int(cfg.get("min_samples_per_bin", 30))),
         smoothing_bins=max(1, int(cfg.get("smoothing_bins", 3))),
         min_factor=float(cfg.get("min_factor", 1.0)),
@@ -1850,10 +2075,62 @@ def _resolve_radial_noise_recalibration(
 
 
 def _radial_recalibration_cache_token(cfg: Mapping[str, Any]) -> str:
-    """Stable filesystem token for recalibration products."""
-    bw = f"{float(cfg['bin_width_px']):g}".replace(".", "p")
-    md = f"{float(cfg['max_distance_px']):g}".replace(".", "p")
-    return f"bin{bw}px_max{md}px"
+    """Stable filesystem token for recalibration products.
+
+    Every setting that changes g(d) is encoded, so that a cache produced with
+    other settings is never reused.  The mode and the photometry method are
+    encoded as sub-directories by the callers.
+    """
+    def num(key: str, default: float) -> str:
+        return f"{float(cfg.get(key, default)):g}".replace(".", "p").replace("-", "m")
+
+    parts = [
+        f"bin{num('bin_width_px', 2.0)}px",
+        f"max{num('max_distance_px', 30.0)}px",
+        f"minsamp{int(cfg.get('min_samples_per_bin', 30))}",
+        f"smooth{int(cfg.get('smoothing_bins', 3))}",
+        f"gmin{num('min_factor', 1.0)}",
+    ]
+    mode = _normalize_radial_noise_recalibration_mode(cfg.get("mode", "none"))
+    if mode in {"monotonic_inward", "extrapolated_inward"}:
+        parts.append(f"mono{num('monotonic_extent_px', 4.0)}px")
+    if mode == "extrapolated_inward":
+        parts.append(
+            f"fit{num('extrapolation_fit_min_px', 1.0)}"
+            f"-{num('extrapolation_fit_max_px', 5.0)}px"
+        )
+    return "_".join(parts)
+
+
+def _instrument_cache_label(instrument_name: Optional[str]) -> Optional[str]:
+    """Filesystem-safe instrument label used for per-instrument cache folders."""
+    if instrument_name is None:
+        return None
+    label = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(instrument_name)).strip("_.")
+    return label or "instrument"
+
+
+def _instrument_profile_dir(profile_dir: str, instrument_name: Optional[str]) -> str:
+    """Per-instrument noise-product folder: profile_dir/<instrument>/."""
+    label = _instrument_cache_label(instrument_name)
+    return str(profile_dir) if label is None else os.path.join(str(profile_dir), label)
+
+
+def _radial_recalibration_cache_dir(
+    profile_dir: str,
+    instrument_name: Optional[str],
+    cfg: Mapping[str, Any],
+    photometry_method: str,
+) -> str:
+    """Folder of noise_recalibrated_epoch_k.npy and g_profile.npz."""
+    mode = _normalize_radial_noise_recalibration_mode(cfg.get("mode", "none"))
+    return os.path.join(
+        _instrument_profile_dir(profile_dir, instrument_name),
+        "radial_noise_recalibration",
+        _radial_recalibration_cache_token(cfg),
+        mode,
+        str(photometry_method).lower(),
+    )
 
 
 def _robust_unit_scatter(values: np.ndarray) -> float:
@@ -2240,6 +2517,7 @@ def _load_paco_maps(
     interpolator: str = "none",
     oversampling: int = 1,
     radial_noise_recalibration: Optional[Mapping[str, Any]] = None,
+    instrument_name: Optional[str] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Load PACO maps and, when requested, compute radial noise recalibration here.
@@ -2268,7 +2546,7 @@ def _load_paco_maps(
     expected_side = _paco_map_side(size, method, factor)
 
     if radial_noise_recalibration is None:
-        recal_cfg = _resolve_radial_noise_recalibration({}, {})
+        recal_cfg = _resolve_radial_noise_recalibration({}, {"n": size})
     else:
         recal_cfg = dict(radial_noise_recalibration)
         recal_cfg["mode"] = _normalize_radial_noise_recalibration_mode(
@@ -2336,12 +2614,19 @@ def _load_paco_maps(
     recal_root = None
     profile = None
     if mode != "none":
+        recal_parts = [paco_dir, "radial_noise_recalibration"]
+        label = _instrument_cache_label(instrument_name)
+        if label is not None:
+            recal_parts.append(label)
         recal_root = os.path.join(
-            paco_dir,
-            "radial_noise_recalibration",
+            *recal_parts,
             _radial_recalibration_cache_token(recal_cfg),
             mode,
         )
+        print(f"  instrument           : {instrument_name}")
+        print(f"  max_distance_px      : {float(recal_cfg['max_distance_px']):g} "
+              f"({recal_cfg.get('max_distance_origin', 'n/a')})")
+        print(f"  cache directory      : {recal_root}")
         os.makedirs(recal_root, exist_ok=True)
         profile_path = os.path.join(recal_root, "g_profile.npz")
         corrected_paths = [
@@ -2371,7 +2656,15 @@ def _load_paco_maps(
                 [fits.getdata(path) for path in corrected_paths],
                 dtype=np.float32,
             )
-        else:
+            if var_cal.shape != var_native_stack.shape:
+                console_status(
+                    "warning",
+                    f"PACO recalibration cache {recal_root} has shape "
+                    f"{var_cal.shape}, expected {var_native_stack.shape}: recomputing.",
+                    tone="yellow",
+                )
+                cache_ready = False
+        if not cache_ready:
             print("  cache                : missing/overwrite requested -> estimating g(d)")
             raw_valid = (
                 np.isfinite(alpha_native_stack)
@@ -2703,6 +2996,73 @@ def _extract_aperture_scalar(
     return _aperture_sum_native(image_native, x_native, y_native, r_ap)
 
 
+def _missing_data_native(image_native: np.ndarray) -> np.ndarray:
+    """No-data native pixels: non-finite or exactly zero (NaN -> 0 at preprocessing)."""
+    image = np.asarray(image_native, dtype=float)
+    return (~np.isfinite(image)) | (image == 0.0)
+
+
+def _measurement_missing_grid(
+    *,
+    photometry_method: str,
+    image_native: np.ndarray,
+    upsampling_factor: float,
+    fwhm: float,
+) -> np.ndarray:
+    """
+    Map telling whether the photometric scalar read at a position uses no-data pixels.
+
+    "convolve": boolean map on the upsampled grid, True where the circular
+        top-hat kernel of `_build_resampled_image` (radius = fwhm) overlaps at
+        least one replicated no-data native pixel.  The convolved value there
+        mixes real data with zeros that are not measurements.
+    "aperture": the native no-data indicator (float); the overlap with the
+        aperture is evaluated at each position by `_measurement_touches_missing`.
+    """
+    missing = _missing_data_native(image_native)
+    method = str(photometry_method).lower()
+    if method == "aperture":
+        return missing.astype(float)
+    if method != "convolve":
+        raise ValueError("Missing-data maps require 'convolve' or 'aperture'.")
+    factor = max(1, int(round(float(upsampling_factor))))
+    radius = float(fwhm)
+    shape_up = (missing.shape[0] * factor, missing.shape[1] * factor)
+    if not np.any(missing):
+        return np.zeros(shape_up, dtype=bool)
+    from scipy.signal import fftconvolve
+
+    replicated = np.kron(missing.astype(float), np.ones((factor, factor)))
+    mask_size = (int(radius + 0.5) * 2 + 1) * factor
+    xx, yy = np.mgrid[:mask_size, :mask_size] - mask_size // 2
+    kernel = (np.hypot(xx, yy) < radius * factor).astype(float)
+    # Same kernel and "same" alignment as _build_resampled_image (odd kernel);
+    # counts are integers, 0.5 absorbs FFT round-off.
+    counts = fftconvolve(replicated, kernel, mode="same")
+    return counts > 0.5
+
+
+def _measurement_touches_missing(
+    missing_grid: Optional[np.ndarray],
+    *,
+    photometry_method: str,
+    x_native: float,
+    y_native: float,
+    upsampling_factor: float,
+    r_ap: float,
+) -> bool:
+    """True if the scalar measured at (x_native, y_native) uses no-data pixels."""
+    if missing_grid is None:
+        return False
+    if photometry_method == "convolve":
+        x_up = int(_native_to_upsampled_index(x_native, upsampling_factor))
+        y_up = int(_native_to_upsampled_index(y_native, upsampling_factor))
+        if x_up < 0 or y_up < 0 or y_up >= missing_grid.shape[0] or x_up >= missing_grid.shape[1]:
+            return True
+        return bool(missing_grid[y_up, x_up])
+    return _aperture_sum_native(missing_grid, x_native, y_native, r_ap) > 1.0e-9
+
+
 def _local_aperture_ring_stats(
     *,
     photometry_method: str,
@@ -2715,6 +3075,7 @@ def _local_aperture_ring_stats(
     image_up: Optional[np.ndarray],
     image_native: Optional[np.ndarray],
     cfg: Optional[dict],
+    missing_grid: Optional[np.ndarray] = None,
 ) -> tuple[float, float, int, bool]:
     """
     Estimate local background and noise from independent reference apertures.
@@ -2734,6 +3095,12 @@ def _local_aperture_ring_stats(
        using either MAD or standard deviation.
     6.  Optionally inflate the local noise with a Student low-statistics
         correction, depending on the YAML configuration and on N_reference.
+
+    Reference apertures whose measurement uses no-data pixels (`missing_grid`,
+    see `_measurement_missing_grid`) are skipped: an exact 0 written by the
+    reduction where there is no data is not a noise sample.  Keeping them
+    pulls the median towards 0 and shrinks the MAD (down to sigma = 0 once
+    they are a majority of the ring).
 
     Returns
     -------
@@ -2813,6 +3180,15 @@ def _local_aperture_ring_stats(
 
             if value is None or not np.isfinite(value):
                 continue
+            if _measurement_touches_missing(
+                missing_grid,
+                photometry_method=photometry_method,
+                x_native=float(x_ref),
+                y_native=float(y_ref),
+                upsampling_factor=upsampling_factor,
+                r_ap=r_ap,
+            ):
+                continue
             samples.append(float(value))
 
     if len(samples) < min_ref:
@@ -2852,7 +3228,7 @@ def _local_aperture_ring_cache_stem(
     fwhm: float,
     cfg: Mapping[str, Any],
 ) -> str:
-    return "__".join([
+    stem = "__".join([
         "local_aperture_ring",
         f"method={_sanitize_cache_token(photometry_method)}",
         f"n={_sanitize_cache_token(size)}",
@@ -2867,7 +3243,17 @@ def _local_aperture_ring_cache_stem(
         f"smallsample={_sanitize_cache_token(cfg.get('small_sample_correction', 'student'))}",
         f"studentthr={_sanitize_cache_token(cfg.get('student_small_n_threshold', 'always'))}",
         f"studentq={_sanitize_cache_token(cfg.get('student_quantile', 0.8413447460685429))}",
+        # Since iteration 02 (2026-11): the no-data rule and "failed estimate
+        # = sigma 0 (invalid)" belong to the map definition ("nd2" = version 2
+        # of the invalid-pixel convention), so older caches are never reused.
+        f"nd2={_sanitize_cache_token(cfg.get('missing_data', 'zero'))}",
     ])
+    # Keep "<stem>__epoch=000__background.npy" below the 255-byte file-name
+    # limit: an over-long stem keeps its head and gets a digest of the rest.
+    if len(stem) > 220:
+        import hashlib
+        stem = stem[:180] + "__h=" + hashlib.sha1(stem.encode()).hexdigest()[:16]
+    return stem
 
 
 def _cache_epoch_paths(profile_dir: str, stem: str, epoch_index: int) -> tuple[str, str]:
@@ -2910,6 +3296,172 @@ def _interp_map_bilinear(
     ).astype(np.float32)
 
 
+def _bilinear_support_valid(
+    noise_maps: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    k_idx: np.ndarray,
+) -> np.ndarray:
+    """
+    Strict support rule for the bilinear interpolation of sigma and background.
+
+    A sample at (x, y) is valid only if every one of the 4 surrounding pixels
+    that receives a non-zero bilinear weight holds a valid estimate (finite
+    sigma > 0), and (x, y) lies inside the map.  sigma = 0 means "no estimate"
+    (no data under the measurement, or failed reference statistics); mixing
+    it into the interpolation would invent a noise level pulled towards 0.
+    Invalid samples are treated exactly like samples outside r_mask/r_mask_ext:
+    they carry no information and are excluded from the combination.
+    """
+    h = noise_maps.shape[1]
+    w = noise_maps.shape[2]
+    inside = (x >= 0.0) & (x <= w - 1) & (y >= 0.0) & (y <= h - 1)
+
+    x0 = np.clip(np.floor(x).astype(np.int32), 0, w - 1)
+    y0 = np.clip(np.floor(y).astype(np.int32), 0, h - 1)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    y1 = np.clip(y0 + 1, 0, h - 1)
+    dx = x - x0
+    dy = y - y0
+
+    def ok(yy, xx):
+        v = noise_maps[(k_idx, yy, xx)]
+        return np.isfinite(v) & (v > 0.0)
+
+    valid = inside.copy()
+    valid &= ok(y0, x0) | ((1.0 - dx) * (1.0 - dy) <= 0.0)
+    valid &= ok(y0, x1) | (dx * (1.0 - dy) <= 0.0)
+    valid &= ok(y1, x0) | ((1.0 - dx) * dy <= 0.0)
+    valid &= ok(y1, x1) | (dx * dy <= 0.0)
+    return valid
+
+
+def _bilinear_interp_valid_neighbours(
+    bkg_maps: np.ndarray,
+    noise_maps: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    k_idx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Bilinear interpolation of background and sigma on the VALID neighbours only.
+
+    Rule (a) of rapports/notes_bruit_masque.md, used since iteration 07.  The
+    4 pixels around (x, y) receive the usual bilinear weights w_j.  A pixel is
+    valid when its sigma is finite and > 0 (sigma = 0 is the "no estimate"
+    code).  The interpolated values are
+
+        sigma = sum_j w_j v_j sigma_j / sum_j w_j v_j      (v_j = 1 if valid)
+        bkg   = sum_j w_j v_j bkg_j   / sum_j w_j v_j
+
+    i.e. invalid pixels are dropped and the remaining weights renormalised.
+    The sample is supported when (x, y) lies inside the map and at least one
+    neighbour with a non-zero weight is valid.  When every weighted neighbour
+    is valid (the only case accepted by the strict rule
+    `_bilinear_support_valid`), the values are exactly those of
+    `_interp_map_bilinear`.
+
+    This function does not test whether the science measurement itself uses
+    no-data pixels: see `_measurement_missing_at` (both are required).
+
+    Returns (supported, bkg, sigma); unsupported samples get bkg = sigma = 0.
+    """
+    h = noise_maps.shape[1]
+    w = noise_maps.shape[2]
+    inside = (x >= 0.0) & (x <= w - 1) & (y >= 0.0) & (y <= h - 1)
+
+    x0 = np.clip(np.floor(x).astype(np.int32), 0, w - 1)
+    y0 = np.clip(np.floor(y).astype(np.int32), 0, h - 1)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    y1 = np.clip(y0 + 1, 0, h - 1)
+    dx = x - x0
+    dy = y - y0
+
+    corners = (
+        (y0, x0, (1.0 - dx) * (1.0 - dy)),
+        (y0, x1, dx * (1.0 - dy)),
+        (y1, x0, (1.0 - dx) * dy),
+        (y1, x1, dx * dy),
+    )
+    w_valid = np.zeros(np.shape(x), dtype=float)
+    num_sig = np.zeros(np.shape(x), dtype=float)
+    num_bkg = np.zeros(np.shape(x), dtype=float)
+    complete = inside.copy()
+    for yy, xx, wgt in corners:
+        s = noise_maps[(k_idx, yy, xx)]
+        b = bkg_maps[(k_idx, yy, xx)]
+        good = np.isfinite(s) & (s > 0.0) & np.isfinite(b)
+        weighted = wgt > 0.0
+        complete &= good | ~weighted
+        use = good & weighted
+        w_valid += np.where(use, wgt, 0.0)
+        num_sig += np.where(use, wgt * np.where(use, s, 0.0), 0.0)
+        num_bkg += np.where(use, wgt * np.where(use, b, 0.0), 0.0)
+
+    supported = inside & (w_valid > 0.0)
+    partial = supported & ~complete
+
+    sig = np.zeros(np.shape(x), dtype=np.float32)
+    bkg = np.zeros(np.shape(x), dtype=np.float32)
+    if np.any(complete):
+        # Bit-identical to the historical interpolation where all weighted
+        # neighbours are valid.
+        sig_full = _interp_map_bilinear(noise_maps, x, y, k_idx)
+        bkg_full = _interp_map_bilinear(bkg_maps, x, y, k_idx)
+        sig[complete] = sig_full[complete]
+        bkg[complete] = bkg_full[complete]
+    if np.any(partial):
+        sig[partial] = (num_sig[partial] / w_valid[partial]).astype(np.float32)
+        bkg[partial] = (num_bkg[partial] / w_valid[partial]).astype(np.float32)
+    return supported, bkg, sig
+
+
+def _measurement_missing_at(
+    missing_maps: np.ndarray,
+    *,
+    photometry_method: str,
+    x_pix: np.ndarray,
+    y_pix: np.ndarray,
+    k_idx: np.ndarray,
+    upsampling_factor: float,
+    fwhm: Optional[float],
+    candidates: np.ndarray,
+) -> np.ndarray:
+    """
+    True where the science measurement at (x_pix, y_pix) uses no-data pixels.
+
+    "convolve": the value of `missing_maps` at the same upsampled index as the
+    science read-out (`_native_to_upsampled_index`), i.e. whether the
+    convolution disk of THAT sample overlaps a no-data native pixel.
+    "aperture": the aperture (radius fwhm) overlaps a no-data native pixel.
+    Only `candidates` (already valid samples) are evaluated; out-of-map
+    samples count as touching missing data.
+    """
+    touches = np.zeros(np.shape(x_pix), dtype=bool)
+    method = str(photometry_method).lower()
+    if method == "convolve":
+        hu = missing_maps.shape[1]
+        wu = missing_maps.shape[2]
+        xu = _native_to_upsampled_index(x_pix, upsampling_factor)
+        yu = _native_to_upsampled_index(y_pix, upsampling_factor)
+        inside = (0 <= xu) & (xu < wu) & (0 <= yu) & (yu < hu)
+        xs = np.clip(xu, 0, wu - 1)
+        ys = np.clip(yu, 0, hu - 1)
+        touches = np.asarray(missing_maps[(k_idx, ys, xs)], dtype=bool) | ~inside
+        return touches & candidates
+    if method == "aperture":
+        r_ap = float(fwhm)
+        for ii, kk in zip(*np.nonzero(candidates)):
+            kk_map = int(np.asarray(k_idx)[ii, kk])
+            touches[ii, kk] = (
+                _aperture_sum_native(
+                    missing_maps[kk_map], float(x_pix[ii, kk]), float(y_pix[ii, kk]), r_ap
+                ) > 1.0e-9
+            )
+        return touches
+    raise ValueError("Missing-data maps require 'convolve' or 'aperture'.")
+
+
 def _compute_local_ring_maps_for_epoch(
     *,
     epoch_index: int,
@@ -2921,10 +3473,20 @@ def _compute_local_ring_maps_for_epoch(
     image_native: Optional[np.ndarray],
     cfg: Mapping[str, Any],
     noise_floor: float,
+    missing_grid: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute local-aperture-ring background and noise maps for one epoch."""
+    """Compute local-aperture-ring background and noise maps for one epoch.
+
+    A pixel is INVALID (background 0, sigma 0) when its own measurement uses
+    no-data pixels (`missing_grid`) or when the reference apertures do not
+    give a positive finite sigma.  sigma = 0 is the "no estimate" code read by
+    the likelihood: it never enters an interpolation (see
+    `_bilinear_interp_valid_neighbours`).  `noise_floor` is kept for API compatibility;
+    the numerical floor is applied later, to valid samples only.
+    """
     bg_map = np.zeros((size, size), dtype=np.float32)
-    noise_map = np.full((size, size), float(noise_floor), dtype=np.float32)
+    noise_map = np.zeros((size, size), dtype=np.float32)
+    r_ap = float(fwhm) if fwhm is not None else 0.0
 
     row_iter = tqdm(
         range(size),
@@ -2941,6 +3503,16 @@ def _compute_local_ring_maps_for_epoch(
                 )
             )
 
+            if _measurement_touches_missing(
+                missing_grid,
+                photometry_method=photometry_method,
+                x_native=float(x),
+                y_native=float(y),
+                upsampling_factor=upsampling_factor,
+                r_ap=r_ap,
+            ):
+                continue  # no data under the measurement: stays invalid
+
             bg_loc, sig_loc, _, ok_loc = _local_aperture_ring_stats(
                 photometry_method=photometry_method,
                 x_target=float(x),
@@ -2952,6 +3524,7 @@ def _compute_local_ring_maps_for_epoch(
                 image_up=image_up,
                 image_native=image_native,
                 cfg=cfg,
+                missing_grid=missing_grid,
             )
 
             if ok_loc:
@@ -2959,7 +3532,7 @@ def _compute_local_ring_maps_for_epoch(
                 noise_map[y, x] = float(sig_loc)
             else:
                 bg_map[y, x] = 0.0
-                noise_map[y, x] = float(noise_floor)
+                noise_map[y, x] = 0.0
 
     return bg_map, noise_map
 
@@ -2975,11 +3548,17 @@ def _load_or_build_local_ring_maps(
     images_native: Optional[np.ndarray],
     cfg: Mapping[str, Any],
     noise_floor: float,
+    instrument_name: Optional[str] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Load cached local-ring maps or compute and cache missing epoch pairs."""
+    """Load cached local-ring maps or compute and cache missing epoch pairs.
+
+    With `instrument_name`, the maps are cached in profile_dir/<instrument>/.
+    A cached map whose shape differs from (size, size) is never reused.
+    """
     if profile_dir is None:
         raise ValueError("profile_dir is required to cache local aperture-ring maps.")
 
+    profile_dir = _instrument_profile_dir(profile_dir, instrument_name)
     os.makedirs(profile_dir, exist_ok=True)
 
     cache_dtype = (
@@ -3002,11 +3581,18 @@ def _load_or_build_local_ring_maps(
 
     n_epochs = int(source.shape[0])
     overwrite = bool(cfg.get("overwrite_cached_maps", False))
+    use_missing = (
+        str(cfg.get("missing_data", "zero")).lower() == "zero"
+        and images_native is not None
+        and str(photometry_method).lower() in ("convolve", "aperture")
+    )
 
     bg_maps = []
     noise_maps = []
 
     print()
+    if instrument_name is not None:
+        print(f"[bgnoise] instrument : {instrument_name}")
     print(f"[bgnoise] cache stem : {stem}")
     console_status("noise", f"Profile cache: {profile_dir}", tone="blue")
     print()
@@ -3022,14 +3608,40 @@ def _load_or_build_local_ring_maps(
             epoch_index,
         )
 
-        if (
+        cached = (
             not overwrite
             and os.path.exists(bg_path)
             and os.path.exists(noise_path)
-        ):
+        )
+        if cached:
             bg_map = np.load(bg_path).astype(cache_dtype, copy=False)
             noise_map = np.load(noise_path).astype(cache_dtype, copy=False)
-        else:
+            if bg_map.shape != (size, size) or noise_map.shape != (size, size):
+                console_status(
+                    "warning",
+                    f"Local-ring cache for epoch {epoch_index} has shape "
+                    f"{noise_map.shape}, expected {(size, size)}: recomputing.",
+                    tone="yellow",
+                )
+                cached = False
+        if not cached:
+            missing_grid = None
+            if use_missing:
+                missing_grid = _measurement_missing_grid(
+                    photometry_method=photometry_method,
+                    image_native=images_native[epoch_index],
+                    upsampling_factor=upsampling_factor,
+                    fwhm=fwhm,
+                )
+                if (
+                    photometry_method == "convolve"
+                    and images_up is not None
+                    and missing_grid.shape != tuple(np.shape(images_up[epoch_index]))
+                ):
+                    raise ValueError(
+                        f"{instrument_name}: no-data grid {missing_grid.shape} does not "
+                        f"match the convolved image {np.shape(images_up[epoch_index])}."
+                    )
             bg_map, noise_map = _compute_local_ring_maps_for_epoch(
                 epoch_index=epoch_index,
                 photometry_method=photometry_method,
@@ -3040,6 +3652,7 @@ def _load_or_build_local_ring_maps(
                 image_native=None if images_native is None else images_native[epoch_index],
                 cfg=cfg,
                 noise_floor=noise_floor,
+                missing_grid=missing_grid,
             )
 
             bg_map = bg_map.astype(cache_dtype, copy=False)
@@ -3051,9 +3664,19 @@ def _load_or_build_local_ring_maps(
         bg_maps.append(bg_map)
         noise_maps.append(noise_map)
 
+    noise_arr = np.asarray(noise_maps, dtype=cache_dtype)
+    n_invalid = np.sum(~(np.isfinite(noise_arr) & (noise_arr > 0)), axis=(1, 2))
+    print(f"[bgnoise] missing data mode   : {cfg.get('missing_data', 'zero')}")
+    if images_native is not None:
+        n_nodata = np.sum(_missing_data_native(images_native), axis=(1, 2))
+        print(f"[bgnoise] no-data native px   : {int(n_nodata.min())} .. {int(n_nodata.max())} "
+              f"per epoch (of {size * size})")
+    print(f"[bgnoise] invalid map px      : {int(n_invalid.min())} .. {int(n_invalid.max())} "
+          f"per epoch (sigma = 0: no data under the measurement or no estimate)")
+
     return (
         np.asarray(bg_maps, dtype=cache_dtype),
-        np.asarray(noise_maps, dtype=cache_dtype),
+        noise_arr,
     )
 
 
@@ -3105,6 +3728,55 @@ def _classical_measurement_maps(
     raise ValueError("Classical measurement maps require 'convolve' or 'aperture'.")
 
 
+def _radial_recalibration_metadata(
+    *,
+    instrument_name: Optional[str],
+    photometry_method: str,
+    size: int,
+    n_epochs: int,
+    upsampling_factor: float,
+    fwhm: float,
+    r_mask: Optional[float],
+    cfg: Mapping[str, Any],
+    arrays: Sequence[Optional[np.ndarray]],
+) -> dict:
+    """JSON-serialisable description of what a recalibration cache depends on.
+
+    The checksum covers the local background/noise maps and the science images
+    from which g(d) is estimated, so a cache built from other inputs (another
+    instrument, other local-ring settings, other images) is never reused.
+    """
+    import hashlib
+
+    digest = hashlib.sha1()
+    for array in arrays:
+        if array is None:
+            digest.update(b"none")
+            continue
+        arr = np.ascontiguousarray(np.asarray(array, dtype=np.float32))
+        digest.update(str(arr.shape).encode())
+        digest.update(arr.tobytes())
+    settings = {
+        key: (float(cfg[key]) if isinstance(cfg.get(key), (int, float)) and not isinstance(cfg.get(key), bool) else str(cfg.get(key)))
+        for key in (
+            "mode", "bin_width_px", "max_distance_px", "min_samples_per_bin",
+            "smoothing_bins", "min_factor", "monotonic_extent_px",
+            "extrapolation_fit_min_px", "extrapolation_fit_max_px",
+        )
+    }
+    return dict(
+        instrument=None if instrument_name is None else str(instrument_name),
+        photometry_method=str(photometry_method).lower(),
+        size=int(size),
+        n_epochs=int(n_epochs),
+        upsampling_factor=float(upsampling_factor),
+        fwhm=float(fwhm),
+        r_mask=None if r_mask is None else float(r_mask),
+        settings=settings,
+        inputs_sha1=digest.hexdigest(),
+    )
+
+
 def _recalibrate_classical_noise(
     *,
     photometry_method: str,
@@ -3121,6 +3793,7 @@ def _recalibrate_classical_noise(
     local_noise_maps: Optional[np.ndarray],
     cfg: Mapping[str, Any],
     profile_dir: str,
+    instrument_name: Optional[str] = None,
 ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
     """
     Recalibrate local-aperture-ring noise with a robust radial factor g(d).
@@ -3132,6 +3805,12 @@ def _recalibrate_classical_noise(
 
     The recalibration is applied to the cached 2-D local-noise maps used by
     convolve/aperture likelihood evaluation.
+
+    g(d) is estimated from the epochs passed here only, i.e. from ONE
+    instrument, with d = r - r_mask of that instrument.  The cache lives in
+    profile_dir/<instrument>/radial_noise_recalibration/<settings>/<mode>/<method>/
+    and is reused only if its metadata (instrument, map shape, number of
+    epochs, FWHM, r_mask, settings, checksum of the input maps) match.
     """
     mode = _normalize_radial_noise_recalibration_mode(cfg.get("mode", "none"))
     if mode == "none":
@@ -3143,32 +3822,63 @@ def _recalibrate_classical_noise(
             "and noise maps. Enable background_noise.precompute_maps."
         )
 
-    cache_root = os.path.join(
-        str(profile_dir),
-        "radial_noise_recalibration",
-        _radial_recalibration_cache_token(cfg),
-        mode,
-        str(photometry_method).lower(),
+    cache_root = _radial_recalibration_cache_dir(
+        profile_dir, instrument_name, cfg, photometry_method
     )
     profile_path = os.path.join(cache_root, "g_profile.npz")
     overwrite = bool(cfg.get("overwrite_cache", False))
     use_cache = bool(cfg.get("cache", True))
 
+    n_epochs = int(np.asarray(local_noise_maps).shape[0])
+    expected_shape = (n_epochs, int(size), int(size))
+    if (
+        tuple(np.shape(local_noise_maps)) != expected_shape
+        or tuple(np.shape(local_bkg_maps)) != expected_shape
+    ):
+        raise ValueError(
+            f"{instrument_name}: local background/noise maps have shapes "
+            f"{np.shape(local_bkg_maps)} / {np.shape(local_noise_maps)}, "
+            f"expected {expected_shape}."
+        )
+
     cached_noise_paths = [
         os.path.join(cache_root, f"noise_recalibrated_epoch_{k}.npy")
-        for k in range(np.asarray(local_noise_maps).shape[0])
+        for k in range(n_epochs)
     ]
+    metadata = _radial_recalibration_metadata(
+        instrument_name=instrument_name,
+        photometry_method=photometry_method,
+        size=size,
+        n_epochs=n_epochs,
+        upsampling_factor=upsampling_factor,
+        fwhm=fwhm,
+        r_mask=r_mask,
+        cfg=cfg,
+        arrays=(
+            local_bkg_maps,
+            local_noise_maps,
+            images_up if str(photometry_method).lower() == "convolve" else images_native,
+        ),
+    )
 
     print()
     print("=" * 110)
-    print(f"RADIAL NOISE RECALIBRATION — {str(photometry_method).upper()}")
+    print(f"RADIAL NOISE RECALIBRATION — {str(photometry_method).upper()}"
+          + ("" if instrument_name is None else f" — {instrument_name}"))
     print("=" * 110)
     print()
+    print(f"  instrument           : {instrument_name}")
     print(f"  mode                 : {mode}")
     print("  definition           : sigma_cal(d) = g(d) * sigma_raw(d)")
     print("  standardized field   : z_raw = (measurement - background) / sigma_raw")
+    print(f"  epochs used for g(d) : {n_epochs} (this instrument only)")
+    print(f"  map shape            : {expected_shape[1]} x {expected_shape[2]} px")
+    print(f"  inner edge r_mask    : {r_mask} px  (d = r - r_mask)")
     print(f"  radial bin           : {float(cfg['bin_width_px']):g} native px")
     print(f"  calibrated edge zone : 0 .. {float(cfg['max_distance_px']):g} native px")
+    print(f"  max_distance_px      : {float(cfg['max_distance_px']):g} px "
+          f"({cfg.get('max_distance_origin', 'n/a')})")
+    print(f"  cache directory      : {cache_root}")
     print("  background           : unchanged")
     print()
 
@@ -3179,12 +3889,51 @@ def _recalibrate_classical_noise(
         and all(os.path.isfile(path) for path in cached_noise_paths)
     )
 
+    loaded = None
     if cache_ready:
-        print("  cache                : HIT")
-        loaded = np.asarray(
-            [np.load(path) for path in cached_noise_paths],
-            dtype=float,
-        )
+        problem = None
+        try:
+            with np.load(profile_path) as cached_profile:
+                stored = (
+                    json.loads(str(cached_profile["metadata"]))
+                    if "metadata" in cached_profile.files
+                    else None
+                )
+            if stored != metadata:
+                problem = "metadata differ (other instrument, settings or input maps)"
+            else:
+                loaded = np.asarray(
+                    [np.load(path) for path in cached_noise_paths],
+                    dtype=float,
+                )
+                if loaded.shape != expected_shape:
+                    problem = f"map shape {loaded.shape} != expected {expected_shape}"
+        except Exception as exc:  # unreadable cache: recompute
+            problem = f"unreadable cache ({exc})"
+        if problem is not None:
+            console_status(
+                "warning",
+                f"{instrument_name}: recalibration cache {cache_root} rejected: "
+                f"{problem}. Recomputing g(d).",
+                tone="yellow",
+            )
+            cache_ready = False
+            loaded = None
+
+    if cache_ready:
+        print("  cache                : HIT (metadata and shape checked)")
+        try:
+            with np.load(profile_path) as cached_profile:
+                g_cached = np.asarray(cached_profile["g"], dtype=float)
+                g_cached = g_cached[np.isfinite(g_cached)]
+                if g_cached.size:
+                    print(f"  cached g range       : {float(np.min(g_cached)):.3f} .. "
+                          f"{float(np.max(g_cached)):.3f}")
+                print(f"  inner_radius_px      : {float(cached_profile['inner_radius_px']):g}")
+        except Exception:
+            pass
+        print(f"  recalibrated maps    : {loaded.shape[1]} x {loaded.shape[2]} px, "
+              f"{loaded.shape[0]} epochs")
         print("  applied to           : local aperture-ring noise maps")
         print("  status               : ready")
         print()
@@ -3253,6 +4002,9 @@ def _recalibrate_classical_noise(
             f"{float(np.min(finite_g)):.3f} .. "
             f"{float(np.max(finite_g)):.3f}"
         )
+    print(f"  inner_radius_px      : {float(profile['inner_radius_px']):g}")
+    print(f"  recalibrated maps    : {recalibrated.shape[1]} x {recalibrated.shape[2]} px, "
+          f"{recalibrated.shape[0]} epochs")
 
     if use_cache:
         os.makedirs(cache_root, exist_ok=True)
@@ -3265,6 +4017,8 @@ def _recalibrate_classical_noise(
             g=np.asarray(profile["g"]),
             per_epoch=np.asarray(profile["per_epoch"]),
             inner_radius_px=np.asarray(profile["inner_radius_px"]),
+            max_distance_px=np.asarray(float(cfg["max_distance_px"])),
+            metadata=np.asarray(json.dumps(metadata)),
         )
 
         for k in range(recalibrated.shape[0]):
@@ -3312,8 +4066,23 @@ def snr_from_hkpq(
     local_bkg_maps: Optional[np.ndarray] = None,
     local_noise_maps: Optional[np.ndarray] = None,
     return_epoch_snr: bool = False,
+    return_epoch_valid: bool = False,
+    measurement_missing_maps: Optional[np.ndarray] = None,
 ):
     """Compute per-walker combined signal, noise, and SNR across all epochs.
+
+    With ``return_epoch_valid`` (diagnostics only) the per-epoch S/N and a
+    boolean (W, K) array of the epochs that entered the combination are also
+    returned: (signal, noise, snr, epoch_snr, epoch_valid).
+
+    Invalid pixels of the precomputed noise maps (sigma = 0): with
+    ``measurement_missing_maps`` (set on every Instrument by
+    `configure_instrument_statistics`), a sample is valid when the measurement
+    at its exact position uses no no-data pixel and at least one weighted
+    bilinear neighbour is valid; sigma and background are interpolated on the
+    valid neighbours with renormalised weights (rule "a", iteration 07).
+    Without it, the strict rule of iterations 02-06 applies (any weighted
+    invalid neighbour rejects the sample).
 
     ``convolve`` and ``aperture`` retain their existing classical photometry
     and background/noise machinery. ``paco`` reads alpha_hat and var_alpha either
@@ -3337,6 +4106,9 @@ def snr_from_hkpq(
         signal = np.zeros(W, dtype=float)
         noise = np.full(W, float(noise_floor), dtype=float)
         snr = signal / noise
+        if return_epoch_valid:
+            K0 = len(np.asarray(ts))
+            return signal, noise, snr, np.zeros((W, K0), dtype=float), np.zeros((W, K0), dtype=bool)
         if return_epoch_snr:
             return signal, noise, snr, np.zeros((W, len(np.asarray(ts))), dtype=float)
         return signal, noise, snr
@@ -3448,18 +4220,42 @@ def snr_from_hkpq(
         )
 
         if use_precomputed_maps:
-            bg = _interp_map_bilinear(
-                local_bkg_maps,
-                x_pix,
-                y_pix,
-                k_idx,
-            )
-            sig = _interp_map_bilinear(
-                local_noise_maps,
-                x_pix,
-                y_pix,
-                k_idx,
-            )
+            if measurement_missing_maps is not None:
+                # Rule (a), since iteration 07: the sample is valid when the
+                # measurement at the exact position uses no no-data pixel;
+                # sigma and background are interpolated on the valid
+                # neighbours only, with renormalised bilinear weights.
+                validpix &= ~_measurement_missing_at(
+                    measurement_missing_maps,
+                    photometry_method=photometry_method,
+                    x_pix=x_pix, y_pix=y_pix, k_idx=k_idx,
+                    upsampling_factor=upsampling_factor, fwhm=fwhm,
+                    candidates=validpix,
+                )
+                supported, bg, sig = _bilinear_interp_valid_neighbours(
+                    local_bkg_maps, local_noise_maps, x_pix, y_pix, k_idx,
+                )
+                validpix &= supported
+                flux[~validpix] = 0.0
+            else:
+                # Legacy strict rule (iterations 02-06, kept for low-level
+                # calls without measurement maps): a sample whose
+                # interpolation would use an invalid (sigma = 0) pixel is
+                # itself invalid (no extrapolation).
+                validpix &= _bilinear_support_valid(local_noise_maps, x_pix, y_pix, k_idx)
+                flux[~validpix] = 0.0
+                bg = _interp_map_bilinear(
+                    local_bkg_maps,
+                    x_pix,
+                    y_pix,
+                    k_idx,
+                )
+                sig = _interp_map_bilinear(
+                    local_noise_maps,
+                    x_pix,
+                    y_pix,
+                    k_idx,
+                )
             bg[~validpix] = 0.0
             sig[~validpix] = 0.0
         else:
@@ -3546,6 +4342,13 @@ def snr_from_hkpq(
     snr = np.zeros(W, dtype=float)
     signal[idx] = signal_ok; noise[idx] = noise_ok; snr[idx] = snr_ok
 
+    if return_epoch_valid:
+        epoch_snr = np.zeros((W, K), dtype=float)
+        epoch_snr[idx, :] = epoch_snr_ok
+        epoch_ok = np.zeros((W, K), dtype=bool)
+        epoch_ok[idx, :] = epoch_valid
+        return signal, noise, snr, epoch_snr, epoch_ok
+
     if return_epoch_snr:
         epoch_snr = np.zeros((W, K), dtype=float)
         epoch_snr[idx, :] = epoch_snr_ok
@@ -3631,6 +4434,7 @@ def snr_multi_from_hkpq(
             background_noise_cfg=inst.bgnoise_cfg,
             local_bkg_maps=inst.local_bkg_maps,
             local_noise_maps=inst.local_noise_maps,
+            measurement_missing_maps=inst.measurement_missing_maps,
         )
 
         if weighting == "simple":
@@ -3735,6 +4539,7 @@ def positive_snr_profile_multi_from_hkpq(
             background_noise_cfg=inst.bgnoise_cfg,
             local_bkg_maps=inst.local_bkg_maps,
             local_noise_maps=inst.local_noise_maps,
+            measurement_missing_maps=inst.measurement_missing_maps,
             return_epoch_snr=True,
         )
 
@@ -3794,6 +4599,7 @@ def flux_sufficient_stats_from_hkpq(
     background_noise_cfg: Optional[dict] = None,
     local_bkg_maps: Optional[np.ndarray] = None,
     local_noise_maps: Optional[np.ndarray] = None,
+    measurement_missing_maps: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute Gaussian-flux sufficient statistics S1 and S2.
 
@@ -3893,8 +4699,25 @@ def flux_sufficient_stats_from_hkpq(
         map_mode=str(bg_cfg.get("local_map_mode","precompute_cache")).lower()
         use_maps=(map_mode=="precompute_cache" and local_bkg_maps is not None and local_noise_maps is not None)
         if use_maps:
-            bg=_interp_map_bilinear(local_bkg_maps,x_pix,y_pix,k_idx)
-            sig=_interp_map_bilinear(local_noise_maps,x_pix,y_pix,k_idx)
+            if measurement_missing_maps is not None:
+                # Same rule (a) as snr_from_hkpq (since iteration 07).
+                validpix &= ~_measurement_missing_at(
+                    measurement_missing_maps,
+                    photometry_method=photometry_method,
+                    x_pix=x_pix, y_pix=y_pix, k_idx=k_idx,
+                    upsampling_factor=upsampling_factor, fwhm=fwhm,
+                    candidates=validpix,
+                )
+                supported, bg, sig = _bilinear_interp_valid_neighbours(
+                    local_bkg_maps, local_noise_maps, x_pix, y_pix, k_idx,
+                )
+                validpix &= supported
+            else:
+                # Legacy strict rule, as in snr_from_hkpq.
+                validpix &= _bilinear_support_valid(local_noise_maps, x_pix, y_pix, k_idx)
+                bg=_interp_map_bilinear(local_bkg_maps,x_pix,y_pix,k_idx)
+                sig=_interp_map_bilinear(local_noise_maps,x_pix,y_pix,k_idx)
+            flux[~validpix] = 0.0
             bg[~validpix]=0.0
             sig[~validpix]=0.0
         else:
@@ -3990,6 +4813,7 @@ def flux_sufficient_stats_multi_from_hkpq(
             background_noise_cfg=inst.bgnoise_cfg,
             local_bkg_maps=inst.local_bkg_maps,
             local_noise_maps=inst.local_noise_maps,
+            measurement_missing_maps=inst.measurement_missing_maps,
         )
         S1_total += S1_i
         S2_total += S2_i

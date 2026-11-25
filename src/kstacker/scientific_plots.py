@@ -221,13 +221,20 @@ def plot_joint_sky_orbits(instruments: Sequence, samples: np.ndarray,
     for j, inst in enumerate(instruments):
         color = colors[j % len(colors)]
         epoch_n, epoch_e = _tracks(state, inst.ts, t_ref)
+        # Circle radius = 2 x FWHM of THIS instrument, converted from native
+        # pixels to AU with its own plate scale (scale is in px/AU).
+        fwhm_px = float(getattr(inst, "fwhm", None) or 1.5)
+        radius_px = 2.0 * fwhm_px
+        radius_au = radius_px / float(inst.scale)
         for k, (e, n) in enumerate(zip(epoch_e[0], epoch_n[0]), 1):
             _map_position(ax, e, n, scale=float(inst.scale), color=color,
-                          radius_px=4.0 * float(getattr(inst, "fwhm", 1.5)), label=False)
+                          radius_px=radius_px, label=False)
             ax.annotate(str(k), (e, n), xytext=(7, 6),
                         textcoords="offset points", fontsize=10,
                         color=color, weight="bold")
-        ax.plot([], [], color=color, lw=2, label=f"{inst.name} epochs")
+        ax.plot([], [], ls="none", marker="o", markersize=9, markerfacecolor="none",
+                markeredgecolor=color, markeredgewidth=1.6,
+                label=f"{inst.name} epochs (circle r = 2 FWHM = {radius_au:.2f} AU)")
 
     ax.scatter([0], [0], s=70, marker="*", color="#e2a449",
                edgecolors="#1b3550", linewidths=0.7, zorder=10,
@@ -627,6 +634,14 @@ class _StoredChainSampler:
         self.acceptance_fraction = np.asarray(h5_file["acceptance_fraction"], dtype=float)
         if "pt_betas_final" in h5_file:
             self.pt_sampler = _StoredTemperingDiagnostics(h5_file)
+            # Absent from files written before the burn-in fix: nothing is cut.
+            self.burnin_sweeps = int(h5_file.attrs.get("pt_burnin_sweeps", 0))
+            self.lines_per_sweep = int(h5_file.attrs.get("pt_lines_per_sweep", 1))
+            # Since iteration 08: `chain` keeps one production line in
+            # `chain_stride`; absent attributes = every line (older files).
+            self.chain_stride = int(h5_file.attrs.get("chain_stride", 1))
+            if "pt_chain_burnin_rows" in h5_file.attrs:
+                self.pt_chain_burnin_rows = int(h5_file.attrs["pt_chain_burnin_rows"])
 
     def get_chain(self, discard=0, thin=1, flat=False):
         values = self.chain[int(discard)::max(1, int(thin))]
@@ -660,6 +675,27 @@ class _StoredTemperingDiagnostics:
         if self._smd is None:
             raise AttributeError("Adaptation history was not stored")
         return self._smd
+
+
+def _explicit_plot_overrides_disabled(plots_settings) -> bool:
+    """Return True: the explicit `kstacker plot` command always writes figures.
+
+    When `plots.enabled` is false, print that the setting is ignored for this
+    command only (it is still respected at the end of `kstacker init/mcmc`).
+    """
+    if not bool((plots_settings or {}).get("enabled", True)):
+        try:
+            from .console import console_status
+        except ImportError:
+            from console import console_status
+        console_status(
+            "plots",
+            "plots.enabled is false in the YAML: ignored by the explicit 'kstacker plot' "
+            "command, figures are written anyway (the setting is still respected at the "
+            "end of 'kstacker mcmc' and 'kstacker init').",
+            tone="yellow",
+        )
+    return True
 
 
 def create_figures_from_yaml(yaml_path: str) -> None:
@@ -714,8 +750,15 @@ def create_figures_from_yaml(yaml_path: str) -> None:
         # walkers, including those omitted from an optional thinned export.
         samples = chain.get_chain(flat=True)
         scores = chain.get_log_prob(flat=True)
+        # reddemcee files since iteration 08 keep one line in `chain_stride`;
+        # add the MAP over every production line, as `kstacker mcmc` does.
+        if "map_state" in handle and "map_log_prob" in handle.attrs:
+            samples = np.vstack([samples, np.asarray(handle["map_state"], dtype=float)[None, :]])
+            scores = np.concatenate([scores, [float(handle.attrs["map_log_prob"])]])
     figure_dir = Path(params.get_path("values_dir")) / str(plots_settings.get("directory", "figures"))
-    if plots_settings.get("enabled", True):
+    # `kstacker plot` is an explicit request for figures: `plots.enabled`
+    # only controls the automatic figures at the end of `kstacker init/mcmc`.
+    if _explicit_plot_overrides_disabled(plots_settings):
         create_scientific_figures(
             instruments, samples, scores, output_dir=figure_dir / "science",
             noise_floor=noise_floor,

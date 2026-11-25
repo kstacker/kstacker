@@ -41,6 +41,9 @@ try:
         _load_paco_maps,
         _load_or_build_local_ring_maps,
         _recalibrate_classical_noise,
+        _instrument_profile_dir,
+        _local_aperture_ring_cache_stem,
+        _radial_recalibration_cache_dir,
         _normalize_likelihood_mode,
         total_direct_imaging_log_likelihood,
         uses_flux_likelihood,
@@ -67,6 +70,9 @@ except ImportError:
         _load_paco_maps,
         _load_or_build_local_ring_maps,
         _recalibrate_classical_noise,
+        _instrument_profile_dir,
+        _local_aperture_ring_cache_stem,
+        _radial_recalibration_cache_dir,
         _normalize_likelihood_mode,
         total_direct_imaging_log_likelihood,
         uses_flux_likelihood,
@@ -242,6 +248,14 @@ def _resolve_mcmc(root: dict) -> dict:
         beta_min=float(rcfg.get("beta_min", 1.0e-4)),
         betas=betas,
         inner_steps=max(1, int(rcfg.get("inner_steps", 1))),
+        # Since iteration 07: one batched prior + likelihood evaluation per
+        # half-ensemble and temperature (no multiprocessing).  false keeps
+        # reddemcee's walker-by-walker calls (reference / debugging).
+        vectorize=_bool_from_config(rcfg.get("vectorize", True), True),
+        # Since iteration 08: only every `thin`-th line of each temperature is
+        # kept in memory (production lines 0, thin, 2*thin, ...); true keeps
+        # every inner-step line of every temperature (behaviour before).
+        keep_all_lines=_bool_from_config(rcfg.get("keep_all_lines", False), False),
         adapt_mode=str(rcfg.get("adapt_mode", "SAR") or "SAR").upper(),
         adapt_tau=float(rcfg.get("adapt_tau", 700.0)),
         adapt_nu=float(rcfg.get("adapt_nu", 0.30)),
@@ -545,15 +559,25 @@ def _clip_theta_init_to_bounds(
     h, k = float(theta_init[3]), float(theta_init[4])
     e = float(np.hypot(h, k))
     if e > e_max and e > 0.0:
-        theta_init[3] *= e_max / e
-        theta_init[4] *= e_max / e
+        h *= e_max / e
+        k *= e_max / e
+        # The rescaled point can still exceed e_max by one rounding error.
+        while np.hypot(h, k) > e_max:
+            h *= 1.0 - 1.0e-15
+            k *= 1.0 - 1.0e-15
+        theta_init[3], theta_init[4] = h, k
 
     p, q = float(theta_init[5]), float(theta_init[6])
     r2 = p * p + q * q
     if r2 > 1.0 and r2 > 0.0:
         r = np.sqrt(r2)
-        theta_init[5] /= r
-        theta_init[6] /= r
+        p /= r
+        q /= r
+        # Same rounding guard, using the exact test of `log_prior_hkpq`.
+        while p * p + q * q > 1.0:
+            p *= 1.0 - 1.0e-15
+            q *= 1.0 - 1.0e-15
+        theta_init[5], theta_init[6] = p, q
 
     return theta_init
 
@@ -884,18 +908,21 @@ def draw_walkers_around_theta_init(
 
     For each walker:
       - Jitter a, la0, m0, (h,k), (p,q) with Gaussian noise (scale = spread).
-      - Project (h,k) back to the disk e ≤ e_max if needed.
-      - Project (p,q) back to the physical unit disk p²+q² ≤ 1 if needed.
-      - Enforce orbit_direction when requested:
-            prograde   -> p²+q² <= 1/2
-            retrograde -> p²+q² >= 1/2
-      - Reject walkers that violate box constraints on (a, m0, la0).
+      - Keep the draw only if `log_prior_hkpq` accepts it (box limits,
+        e <= e_max, p²+q² <= 1 and orbit_direction).
+
+    Out-of-prior draws are rejected and redrawn, never projected onto the
+    boundary: the walkers follow the Gaussian truncated to the prior support.
+    A projection would pile walkers up exactly on the limit, where rounding can
+    put them just outside the prior (log-prior = -inf) and where the factor
+    1/sqrt(1-r²) of the inclination prior is largest.
 
     The function retries until nwalkers valid samples are found, up to
     max_tries total attempts.  If this fails, raise RuntimeError.
     """
     a0, la0_0, m00, h0, k0, p0_, q0_ = np.asarray(theta_init, dtype=float)
     samples, tries = [], 0
+    direction = _normalise_orbit_direction(orbit_direction)
 
     while len(samples) < nwalkers and tries < max_tries:
         tries += 1
@@ -911,33 +938,24 @@ def draw_walkers_around_theta_init(
 
         h = h0 + spread["hk"] * np.random.randn()
         k = k0 + spread["hk"] * np.random.randn()
-        e = np.hypot(h, k)
-        if e > e_max and e > 0.0:
-            h *= e_max / e
-            k *= e_max / e
-        elif e == 0.0:
-            h = k = 0.0
 
         p  = p0_ + spread["pq"] * np.random.randn()
         q  = q0_ + spread["pq"] * np.random.randn()
-        r2 = p * p + q * q
-        if r2 > 1.0 and r2 > 0.0:
-            r = np.sqrt(r2)
-            p /= r
-            q /= r
 
-        direction = _normalise_orbit_direction(orbit_direction)
-        r2 = p*p + q*q
-        if direction == "prograde" and r2 > 0.5:
+        candidate = [a, la0, m0, h, k, p, q]
+        # The prior used by the samplers is the single acceptance criterion.
+        log_prior = log_prior_hkpq(
+            np.array(candidate, dtype=float),
+            a_bounds=a_bounds,
+            m0_bounds=m0_bounds,
+            la0_bounds=la0_bounds,
+            e_max=e_max,
+            orbit_direction=direction,
+        )
+        if not np.isfinite(log_prior):
             continue
-        if direction == "retrograde" and r2 < 0.5:
-            continue
 
-        if not (a_bounds[0]   <= a   <= a_bounds[1]):   continue
-        if not (m0_bounds[0]  <= m0  <= m0_bounds[1]):  continue
-        if not (la0_bounds[0] <= la0 <= la0_bounds[1]): continue
-
-        samples.append([a, la0, m0, h, k, p, q])
+        samples.append(candidate)
 
     if len(samples) < nwalkers:
         raise RuntimeError(
@@ -1254,50 +1272,413 @@ def _likelihood_only_scalar(theta: np.ndarray, lp_kwargs: Mapping[str, Any]) -> 
     ))
 
 
+def _prior_only_batch(samples: np.ndarray, lp_kwargs: Mapping[str, Any]) -> np.ndarray:
+    """Vectorized `_prior_only_scalar`: same terms, same -inf convention, per row."""
+    samples = np.asarray(samples, dtype=float)
+    instruments = lp_kwargs["instruments"]
+    expected = 7 + len(_flux_parameter_names(instruments))
+    if samples.ndim != 2 or samples.shape[1] != expected:
+        return np.full(samples.shape[0] if samples.ndim == 2 else 1, -np.inf)
+    prior = np.asarray(log_prior_hkpq(
+        samples[:, :7], a_bounds=lp_kwargs["a_bounds"],
+        m0_bounds=lp_kwargs["m0_bounds"],
+        la0_bounds=(0.0, 2.0*np.pi), e_max=lp_kwargs["e_max"],
+        orbit_direction=lp_kwargs["orbit_direction"],
+    ), dtype=float)
+    finite = np.isfinite(prior)
+    out = np.full(prior.shape, -np.inf, dtype=float)
+    if np.any(finite):
+        out[finite] = prior[finite] + _flux_log_priors(samples[finite], instruments)
+    return out
+
+
+class _VectorizedPTLogProb:
+    """
+    Batched replacement of reddemcee's ``PTWrapper`` for ``PTSampler(vectorize=True)``.
+
+    reddemcee 1.0 (`sampler.py`, ``compute_log_prob``) calls, when
+    ``vectorize=True``, ``self.log_prob_fn(zip(coords, betas))`` once per
+    proposal batch (half of the walkers of one temperature) and expects an
+    iterable of ``(log_prob, log_like)`` pairs.  Its own ``PTWrapper`` cannot
+    take that zip (it unpacks one ``(x, beta)`` pair), so this object is
+    installed as ``sampler.log_prob_fn``.
+
+    Per walker it returns exactly what ``PTWrapper`` returns for the scalar
+    functions ``_prior_only_scalar`` / ``_likelihood_only_scalar``:
+        prior == -inf  ->  (-inf, -inf)       (likelihood not evaluated)
+        otherwise      ->  (prior + beta * logL, logL)
+    The likelihood is the same `total_direct_imaging_log_likelihood`, called
+    once on all walkers inside the prior.  No random number is drawn here.
+    """
+
+    def __init__(self, lp_kwargs: Mapping[str, Any]) -> None:
+        self.lp_kwargs = lp_kwargs
+
+    def __call__(self, coords_and_betas):
+        pairs = list(coords_and_betas)
+        if not pairs:
+            return []
+        coords = np.array([np.asarray(c, dtype=float) for c, _ in pairs], dtype=float)
+        betas = np.array([float(b) for _, b in pairs], dtype=float)
+        prior = _prior_only_batch(coords, self.lp_kwargs)
+        log_prob = prior.copy()
+        log_like = prior.copy()
+        inside = prior != -np.inf
+        if np.any(inside):
+            like = np.asarray(total_direct_imaging_log_likelihood(
+                coords[inside], instruments=self.lp_kwargs["instruments"],
+                noise_floor=self.lp_kwargs["noise_floor"],
+                weighting=self.lp_kwargs["weighting"],
+                likelihood_mode=self.lp_kwargs["likelihood_mode"],
+                fp_bounds=self.lp_kwargs["fp_bounds"],
+            ), dtype=float)
+            log_like[inside] = like
+            log_prob[inside] = prior[inside] + like * betas[inside]
+        return list(zip(log_prob.tolist(), log_like.tolist()))
+
+
+# reddemcee ladder adaptations that only use the current sweep (swap rates /
+# swap mean distance).  The other modes (SGG, GAO, ETL, 5, 6, 7, 9) read the
+# last stored log-likelihood lines, so storing fewer lines would change them.
+_PT_ADAPT_MODES_WITHOUT_HISTORY = {"SAR", "SMD", "NONE", "8"}
+_STRIDED_PT_BACKEND_CLASSES: dict = {}
+
+
+def _strided_pt_backend_classes():
+    """
+    Build (once) reddemcee backends that keep only one stored line every
+    ``stride`` lines (iteration 08).
+
+    reddemcee 1.0 (`backend.py`) keeps every inner-step line of every
+    temperature in memory (chain, log_like, log_prob).  The sampler itself
+    only reads the line counter ``backend[0].iteration`` (adaptation decay,
+    `sampler.py:31`) and the current sweep's swap statistics, never the stored
+    lines for the SAR / SMD / NONE adaptations, so keeping fewer lines leaves
+    the sampling unchanged.
+
+    Kept lines: absolute line ``i`` (burn-in included) is stored iff
+    ``(i - anchor) % stride == 0``, ``anchor`` being the first production
+    line, i.e. production lines 0, stride, 2*stride, ... (exactly the lines
+    `_ReddenColdSamplerAdapter.get_chain(thin=stride)` selected before).
+    Everything else is unchanged: acceptance counters and per-line betas are
+    updated at every line, swap / SMD histories at every sweep.
+
+    reddemcee overwrites the last line of the run with the post-swap state
+    (`PTBackend.save_step`, ``chain[-1]``); this is reproduced when that line
+    is kept.  The cold backend also tracks, over every production line, the
+    states whose stored log-probability is within a tiny tolerance of the
+    running maximum (MAP candidates), so the exact MAP over all lines can be
+    recovered without storing them.
+    """
+    if _STRIDED_PT_BACKEND_CLASSES:
+        return _STRIDED_PT_BACKEND_CLASSES["pt"]
+    from reddemcee.backend import Backend_plus, PTBackend
+
+    _row_arrays = ("chain", "log_like", "log_prob", "blobs")
+
+    class _StridedLineBackend(Backend_plus):
+        def __init__(self, dtype=None, *, stride=1, anchor=0, track_map=False):
+            super().__init__(dtype=dtype)
+            self.stride = max(1, int(stride))
+            self.anchor = int(anchor)
+            self.track_map = bool(track_map)
+            self._clear()
+
+        def _clear(self):
+            self.stored = 0
+            self.total_lines = 0
+            self.map_best = -np.inf
+            self.map_candidates = []
+            self._map_keys = set()
+
+        def reset(self, nwalkers, ndim):
+            super().reset(nwalkers, ndim)
+            self._clear()
+
+        def is_stored_line(self, line):
+            return (int(line) - self.anchor) % self.stride == 0
+
+        def rows_before(self, line):
+            """Number of stored rows among absolute lines [0, line)."""
+            first = self.anchor % self.stride
+            line = int(line)
+            return 0 if line <= first else (line - 1 - first) // self.stride + 1
+
+        def grow(self, ngrow, blobs):
+            end = self.iteration + int(ngrow)
+            self.total_lines = max(self.total_lines, end)
+            nrow = self.rows_before(end) - len(self.chain)
+            if nrow > 0:
+                self._check_blobs(blobs)
+                self.chain = np.concatenate(
+                    (self.chain, np.empty((nrow, self.nwalkers, self.ndim), dtype=self.dtype)), axis=0)
+                self.log_prob = np.concatenate(
+                    (self.log_prob, np.empty((nrow, self.nwalkers), dtype=self.dtype)), axis=0)
+                self.log_like = np.concatenate(
+                    (self.log_like, np.empty((nrow, self.nwalkers), dtype=self.dtype)), axis=0)
+                if blobs is not None:
+                    dt = np.dtype((blobs.dtype, blobs.shape[1:]))
+                    a = np.empty((nrow, self.nwalkers), dtype=dt)
+                    self.blobs = a if self.blobs is None else np.concatenate((self.blobs, a), axis=0)
+            nbeta = end - len(self.beta_history)
+            if nbeta > 0:
+                self.beta_history = np.concatenate(
+                    (self.beta_history, np.empty(nbeta, dtype=self.dtype)), axis=0)
+
+        def track(self, line, coords, log_prob):
+            """Keep the production states close to the running maximum."""
+            if not self.track_map or int(line) < self.anchor:
+                return
+            lp = np.asarray(log_prob, dtype=float)
+            best = float(np.max(lp))
+            if not np.isfinite(best):
+                return
+            if best > self.map_best:
+                self.map_best = best
+                thr = best - 1.0e-6 * max(1.0, abs(best))
+                self.map_candidates = [c for c in self.map_candidates if c[3] >= thr]
+                self._map_keys = {c[2].tobytes() for c in self.map_candidates}
+            thr = self.map_best - 1.0e-6 * max(1.0, abs(self.map_best))
+            for w in np.flatnonzero(lp >= thr):
+                state = np.array(coords[w], dtype=float, copy=True)
+                key = state.tobytes()
+                if key in self._map_keys:
+                    continue  # identical state already kept (first occurrence)
+                self._map_keys.add(key)
+                self.map_candidates.append((int(line), int(w), state, float(lp[w])))
+
+        def save_step(self, state, accepted):
+            self._check(state, accepted)
+            line = self.iteration
+            if self.is_stored_line(line):
+                row = self.stored
+                self.chain[row, :, :] = state.coords
+                self.log_like[row, :] = state.log_like
+                self.log_prob[row, :] = state.log_prob
+                if state.blobs is not None:
+                    self.blobs[row, :] = state.blobs
+                self.stored += 1
+            self.beta_history[line] = state.beta
+            # The last line is overwritten after the final swap (see the PT
+            # backend below): it is tracked there, not here.
+            if line != self.total_lines - 1:
+                self.track(line, state.coords, state.log_prob)
+            self.accepted += accepted
+            self.iteration += 1
+
+        def get_value(self, name, flat=False, thin=1, discard=0):
+            # Row arrays: `discard` / `thin` count stored rows.
+            if name not in _row_arrays:
+                return super().get_value(name, flat=flat, thin=thin, discard=discard)
+            if self.iteration <= 0:
+                raise AttributeError(
+                    "you must run the sampler with 'store == True' before accessing the results"
+                )
+            if name == "blobs" and not self.has_blobs():
+                return None
+            v = getattr(self, name)[discard + thin - 1: self.stored: thin]
+            if flat:
+                s = list(v.shape[1:])
+                s[0] = np.prod(v.shape[:2])
+                return v.reshape(s)
+            return v
+
+        def get_last_sample(self):
+            raise NotImplementedError(
+                "reddemcee restart is not supported when only every "
+                f"{self.stride}th line is stored (mcmc.reddemcee.keep_all_lines: true)."
+            )
+
+    class _StridedPTBackend(PTBackend):
+        def __init__(self, dtype=None, *, stride=1, anchor=0, track_map=True):
+            super().__init__(dtype=dtype)
+            self.line_stride = max(1, int(stride))
+            self.anchor_line = int(anchor)
+            self.track_map = bool(track_map)
+            self.total_sweeps = 0
+
+        def reset(self, ntemps, nwalkers, ndim, smd_hist=False, tsw_hist=False):
+            super().reset(ntemps, nwalkers, ndim, smd_hist=smd_hist, tsw_hist=tsw_hist)
+            self.backends = [
+                _StridedLineBackend(self.dtype, stride=self.line_stride, anchor=self.anchor_line,
+                                    track_map=(self.track_map and t == 0))
+                for t in range(self.ntemps)
+            ]
+            for backend in self.backends:
+                backend.reset(self.nwalkers, self.ndim)
+            self.total_sweeps = 0
+
+        def grow(self, ngrow):
+            super().grow(ngrow)
+            self.total_sweeps = max(self.total_sweeps, self.iteration + int(ngrow))
+
+        def save_step(self, states, ts_accepted, smd=None):
+            last_sweep = self.iteration == self.total_sweeps - 1
+            # Same as PTBackend.save_step: the last line holds the swapped /
+            # adapted state (written only if that line is kept).
+            for t, backend in enumerate(self):
+                final = backend.total_lines - 1
+                if final >= 0 and backend.is_stored_line(final) and len(backend.chain):
+                    backend.chain[-1, :, :] = states[t].coords
+                    backend.log_like[-1, :] = states[t].log_like
+                    backend.log_prob[-1, :] = states[t].log_prob
+                if last_sweep:
+                    backend.track(final, states[t].coords, states[t].log_prob)
+            if self.tsw_history_bool:
+                self.tsw_history[self.iteration] = ts_accepted
+            if self.smd_history_bool:
+                self.smd_history[self.iteration] = smd
+            self.ts_accepted += ts_accepted
+            self.iteration += 1
+
+    _STRIDED_PT_BACKEND_CLASSES["line"] = _StridedLineBackend
+    _STRIDED_PT_BACKEND_CLASSES["pt"] = _StridedPTBackend
+    return _StridedPTBackend
+
+
 class _ReddenColdSamplerAdapter:
     """
     Expose reddemcee's cold chain through the subset of emcee's API used below.
 
     This deliberately keeps all temperatures in ``pt_sampler`` for advanced
     diagnostics while exposing the beta=1 chain to the standard output writer.
+
+    reddemcee 1.0 stores one chain line per inner step, i.e. ``inner_steps``
+    lines per sweep, whereas its swap and adaptation histories hold one row per
+    sweep.  The burn-in is therefore removed as ``burnin_sweeps * inner_steps``
+    lines; `get_chain`, `get_log_prob` and `thin` all count stored lines.
     """
+
+    _LOGP_CHUNK = 50000
 
     def __init__(
         self,
         pt_sampler: Any,
         *,
         burnin_sweeps: int,
+        production_sweeps: int,
+        inner_steps: int,
+        production_accepted: np.ndarray,
         lp_kwargs: Mapping[str, Any],
     ) -> None:
         self.pt_sampler = pt_sampler
-        self._burnin = int(burnin_sweeps)
-        raw = np.asarray(pt_sampler.get_chain(flat=False), dtype=float)
-        if raw.ndim != 4:
-            raise ValueError(
-                f"Unexpected reddemcee chain shape {raw.shape}; expected "
-                "(temperature, sweep, walker, parameter)."
-            )
-        self._cold_chain = raw[0, self._burnin:, :, :]
+        self.burnin_sweeps = int(burnin_sweeps)
+        self.production_sweeps = int(production_sweeps)
+        self.lp_kwargs = lp_kwargs
+        self.lines_per_sweep = int(inner_steps)
+        total_sweeps = self.burnin_sweeps + self.production_sweeps
+        expected_lines = total_sweeps * self.lines_per_sweep
+        backend = getattr(pt_sampler, "backend", None)
+        cold = backend[0] if backend is not None and hasattr(backend, "line_stride") else None
+        # Lines between two stored rows (iteration 08): 1 = every line kept.
+        self.chain_stride = int(cold.stride) if cold is not None else 1
+        self._map_candidates = None
+
+        if cold is not None:
+            # Strided storage: read the cold rows only (no copy of the
+            # tempered chains), line counts from the sampler's counter.
+            total_lines = int(cold.iteration)
+            if total_lines != expected_lines:
+                print(f"[MCMC] WARNING: reddemcee ran {total_lines} lines per temperature, "
+                      f"expected {expected_lines} ({total_sweeps} sweeps x {self.lines_per_sweep} "
+                      "inner steps).")
+                if total_sweeps > 0 and total_lines % total_sweeps == 0:
+                    self.lines_per_sweep = total_lines // total_sweeps
+                    print(f"[MCMC] WARNING: using the measured {self.lines_per_sweep} lines per sweep.")
+            self.burnin_lines = self.burnin_sweeps * self.lines_per_sweep
+            if self.burnin_lines != int(cold.anchor):
+                print(f"[MCMC] WARNING: stored lines are aligned on line {int(cold.anchor)}, "
+                      f"not on the first production line {self.burnin_lines}.")
+            self.pt_chain_burnin_rows = int(cold.rows_before(self.burnin_lines))
+            self._cold_chain = cold.chain[self.pt_chain_burnin_rows:int(cold.stored), :, :]
+            self.production_lines = max(0, total_lines - self.burnin_lines)
+            if cold.track_map:
+                self._map_candidates = list(cold.map_candidates)
+        else:
+            raw = np.asarray(pt_sampler.get_chain(flat=False), dtype=float)
+            if raw.ndim != 4:
+                raise ValueError(
+                    f"Unexpected reddemcee chain shape {raw.shape}; expected "
+                    "(temperature, stored line, walker, parameter)."
+                )
+            if raw.shape[1] != expected_lines:
+                print(f"[MCMC] WARNING: reddemcee stored {raw.shape[1]} lines per temperature, "
+                      f"expected {expected_lines} ({total_sweeps} sweeps x {self.lines_per_sweep} "
+                      "inner steps).")
+                if total_sweeps > 0 and raw.shape[1] % total_sweeps == 0:
+                    self.lines_per_sweep = raw.shape[1] // total_sweeps
+                    print(f"[MCMC] WARNING: using the measured {self.lines_per_sweep} lines per sweep.")
+            self.burnin_lines = self.burnin_sweeps * self.lines_per_sweep
+            self.pt_chain_burnin_rows = self.burnin_lines
+            self._cold_chain = raw[0, self.burnin_lines:, :, :]
+            self.production_lines = int(self._cold_chain.shape[0])
 
         # Compute cold posterior logP exactly with the same pipeline likelihood.
+        # Evaluated by blocks: the stored chain can hold millions of states.
         flat = self._cold_chain.reshape(-1, self._cold_chain.shape[-1])
-        logp = np.asarray(log_probability(flat, **dict(lp_kwargs)), dtype=float)
+        logp = np.full(flat.shape[0], -np.inf, dtype=float)
+        for start in range(0, flat.shape[0], self._LOGP_CHUNK):
+            stop = start + self._LOGP_CHUNK
+            logp[start:stop] = np.asarray(
+                log_probability(flat[start:stop], **dict(lp_kwargs)), dtype=float
+            )
         self._cold_logp = logp.reshape(self._cold_chain.shape[:2])
 
-        acc = np.asarray(pt_sampler.acceptance_fraction, dtype=float)
-        self.acceptance_fraction = acc[0] if acc.ndim > 1 else acc
+        # Production only: reddemcee's own counter also includes the burn-in.
+        accepted = np.asarray(production_accepted, dtype=float)
+        cold_accepted = accepted[0] if accepted.ndim > 1 else accepted
+        self.acceptance_fraction = cold_accepted / max(1, self.production_lines)
 
-    def get_chain(self, discard: int = 0, thin: int = 1, flat: bool = False) -> np.ndarray:
-        chain = self._cold_chain[int(discard)::max(1, int(thin))]
+    def _rows(self, discard: int, thin: Optional[int]) -> slice:
+        """
+        Stored rows for `discard` / `thin` given in production lines (inner
+        steps), as with emcee.  `thin=None` returns every stored row.  With
+        strided storage both must be multiples of `chain_stride`.
+        """
+        stride = self.chain_stride
+        discard = int(discard)
+        thin = stride if thin is None else max(1, int(thin))
+        if thin % stride or discard % stride:
+            raise ValueError(
+                f"Only every {stride}th production line is stored: discard ({discard}) and "
+                f"thin ({thin}) must be multiples of {stride}."
+            )
+        return slice(discard // stride, None, thin // stride)
+
+    def get_chain(self, discard: int = 0, thin: Optional[int] = None, flat: bool = False) -> np.ndarray:
+        chain = self._cold_chain[self._rows(discard, thin)]
         return chain.reshape(-1, chain.shape[-1]) if flat else chain
 
-    def get_log_prob(self, discard: int = 0, thin: int = 1, flat: bool = False) -> np.ndarray:
-        values = self._cold_logp[int(discard)::max(1, int(thin))]
+    def get_log_prob(self, discard: int = 0, thin: Optional[int] = None, flat: bool = False) -> np.ndarray:
+        values = self._cold_logp[self._rows(discard, thin)]
         return values.reshape(-1) if flat else values
 
-    def get_autocorr_time(self, discard: int = 0, thin: int = 1, tol: float = 0) -> np.ndarray:
+    def get_autocorr_time(self, discard: int = 0, thin: Optional[int] = None, tol: float = 0) -> np.ndarray:
+        """Autocorrelation time in stored lines (inner steps), like emcee."""
+        thin = self.chain_stride if thin is None else max(1, int(thin))
         chain = self.get_chain(discard=discard, thin=thin, flat=False)
-        return emcee.autocorr.integrated_time(chain, tol=tol, quiet=False)
+        return thin * emcee.autocorr.integrated_time(chain, tol=tol, quiet=False)
+
+    def map_state(self) -> tuple[np.ndarray, float]:
+        """
+        Highest cold log-posterior state over every production line and its
+        log-probability (recomputed with `log_probability`).
+
+        Every line stored: argmax of the recomputed values (first occurrence).
+        Strided storage: the same argmax over the candidates tracked during the
+        run (states within 1e-6 relative of the running maximum of reddemcee's
+        stored log-probability, ordered by line then walker).
+        """
+        if self.chain_stride == 1 or self._map_candidates is None:
+            logp = self._cold_logp
+            step, walker = np.unravel_index(int(np.nanargmax(logp)), logp.shape)
+            return np.array(self._cold_chain[step, walker], dtype=float), float(logp[step, walker])
+        if not self._map_candidates:
+            raise ValueError("No MAP candidate was recorded during the production.")
+        states = np.array([c[2] for c in self._map_candidates], dtype=float)
+        logp = np.asarray(log_probability(states, **dict(self.lp_kwargs)), dtype=float)
+        best = int(np.nanargmax(logp))
+        return states[best].copy(), float(logp[best])
 
 
 def _reddemcee_betas(cfg: Mapping[str, Any]) -> np.ndarray:
@@ -1328,6 +1709,7 @@ def run_reddemcee_adaptive(
     burnin: int,
     cfg: Mapping[str, Any],
     progress: bool = True,
+    thin: int = 1,
 ) -> _ReddenColdSamplerAdapter:
     """
     Run adaptive parallel tempering from the same grid/manual walker cloud.
@@ -1374,10 +1756,32 @@ def run_reddemcee_adaptive(
     print(f"  adapt_tau / adapt_nu : {float(cfg['adapt_tau']):g} / {float(cfg['adapt_nu']):g}")
     print(f"  stretch a            : {float(cfg['stretch_a']):g}")
     print(f"  inner steps          : {int(cfg['inner_steps'])}")
+    vectorize = bool(cfg.get("vectorize", True))
+    print("  likelihood calls     : "
+          + ("vectorized (one batch per half-ensemble and temperature, one process)"
+             if vectorize else "one walker at a time (reddemcee default)"))
     print(f"  burn-in sweeps       : {int(burnin):,}")
     print(f"  production sweeps    : {int(nsteps):,}")
     print("  initialisation       : existing grid/manual walker cloud; no quasi-random design")
+
+    # Lines kept in memory (iteration 08).  Sampling is unchanged: reddemcee
+    # never reads the stored lines for these adaptation modes.
+    adapt_mode = str(cfg["adapt_mode"]).upper()
+    stride = max(1, int(thin))
+    if bool(cfg.get("keep_all_lines", False)):
+        stride = 1
+    elif stride > 1 and adapt_mode not in _PT_ADAPT_MODES_WITHOUT_HISTORY:
+        print(f"  NOTE: adapt_mode {adapt_mode} reads the stored log-likelihood lines; "
+              "every line is kept.")
+        stride = 1
+    anchor = int(burnin) * int(cfg["inner_steps"])
+    if stride > 1:
+        print(f"  stored lines         : 1 line in {stride} (= thin) of every temperature, "
+              "production lines 0, thin, 2*thin, ...; MAP tracked over every line")
+    else:
+        print("  stored lines         : every inner-step line of every temperature")
     print()
+    backend = _strided_pt_backend_classes()(stride=stride, anchor=anchor, track_map=True)
 
     sampler = reddemcee.PTSampler(
         nwalkers,
@@ -1391,22 +1795,45 @@ def run_reddemcee_adaptive(
         adapt_tau=float(cfg["adapt_tau"]),
         adapt_nu=float(cfg["adapt_nu"]),
         adapt_mode=str(cfg["adapt_mode"]),
+        vectorize=vectorize,
+        backend=backend,
     )
+    if vectorize:
+        # reddemcee's PTWrapper cannot take the zipped batch it is given when
+        # vectorize=True: install the batched equivalent (see class docstring).
+        if not hasattr(sampler, "log_prob_fn") or not getattr(sampler, "vectorize", False):
+            raise RuntimeError(
+                "This reddemcee version does not expose PTSampler.log_prob_fn / "
+                "vectorize; set mcmc.reddemcee.vectorize: false."
+            )
+        sampler.log_prob_fn = _VectorizedPTLogProb(lp_kwargs)
 
-    sampler.run_mcmc(
-        p0_pt,
-        int(burnin) + int(nsteps),
-        int(cfg["inner_steps"]),
-        progress=progress,
-    )
+    # Same generator as `PTSampler.run_mcmc`, iterated here to record the
+    # acceptance counters at the end of the burn-in (no random number is used).
+    accepted_at_burnin = np.zeros((ntemps, nwalkers), dtype=float)
+    for sweep, _ in enumerate(
+        sampler.sample(
+            p0_pt,
+            nsweeps=int(burnin) + int(nsteps),
+            nsteps=int(cfg["inner_steps"]),
+            progress=progress,
+        ),
+        start=1,
+    ):
+        if sweep == int(burnin):
+            accepted_at_burnin = np.array(sampler.backend.accepted, dtype=float)
+    production_accepted = np.array(sampler.backend.accepted, dtype=float) - accepted_at_burnin
 
     final_betas = np.asarray(sampler.betas, dtype=float)
     print()
     print("  final beta range     : "
           f"{float(final_betas[0]):.3g} -> {float(final_betas[-1]):.3g}")
     try:
-        tsw = np.asarray(sampler.get_tsw(), dtype=float)
-        print(f"  median swap statistic: {float(np.nanmedian(tsw)):.4f}")
+        # One row per sweep: fraction of accepted swaps for each adjacent pair.
+        tsw = np.asarray(sampler.get_tsw(discard=int(burnin)), dtype=float)
+        print(f"  median swap statistic: {float(np.nanmedian(tsw)):.4f} (production sweeps)")
+        print("  mean swap fraction per adjacent pair (production, cold -> hot): "
+              + ", ".join(f"{value:.3f}" for value in np.nanmean(tsw, axis=0)))
     except Exception:
         pass
     print()
@@ -1418,6 +1845,9 @@ def run_reddemcee_adaptive(
     return _ReddenColdSamplerAdapter(
         sampler,
         burnin_sweeps=int(burnin),
+        production_sweeps=int(nsteps),
+        inner_steps=int(cfg["inner_steps"]),
+        production_accepted=production_accepted,
         lp_kwargs=lp_kwargs,
     )
 
@@ -1585,10 +2015,31 @@ def save_mcmc_chains_and_logprob(
         f.attrs["discard"] = int(discard)
         f.attrs["chain_shape"] = json.dumps(list(chain.shape))
         f.attrs["log_prob_shape"] = json.dumps(list(log_prob.shape))
+        # Production lines between two rows of `chain` / `log_prob` (1 = every
+        # line).  reddemcee keeps one line in `thin` since iteration 08.
+        f.attrs["chain_stride"] = int(getattr(sampler, "chain_stride", 1))
         if hasattr(sampler, "pt_sampler"):
             pt = sampler.pt_sampler
             f.attrs["sampler"] = "reddemcee"
+            # `chain` holds production lines only; the pt_* histories below
+            # cover every sweep, the first pt_burnin_sweeps being the burn-in.
+            f.attrs["pt_burnin_sweeps"] = int(sampler.burnin_sweeps)
+            f.attrs["pt_production_sweeps"] = int(sampler.production_sweeps)
+            f.attrs["pt_lines_per_sweep"] = int(sampler.lines_per_sweep)
+            f.attrs["pt_production_lines"] = int(getattr(sampler, "production_lines", chain.shape[0]))
+            # Rows of the optional `pt_chain` that belong to the burn-in.
+            f.attrs["pt_chain_burnin_rows"] = int(getattr(
+                sampler, "pt_chain_burnin_rows",
+                int(sampler.burnin_sweeps) * int(sampler.lines_per_sweep)))
             f.create_dataset("pt_betas_final", data=np.asarray(pt.betas, dtype=float))
+            # Highest cold log-posterior state over every production line
+            # (also when only one line in `chain_stride` is stored).
+            try:
+                map_state, map_log_prob = sampler.map_state()
+                f.create_dataset("map_state", data=np.asarray(map_state, dtype=float))
+                f.attrs["map_log_prob"] = float(map_log_prob)
+            except Exception as exc:
+                print(f"[MCMC] WARNING: MAP state not saved: {exc}")
             # Full temperature chains can be large: store them only on request.
             if bool(getattr(params, "save_tempered_chains", False)):
                 f.create_dataset("pt_chain", data=np.asarray(pt.get_chain(flat=False)), compression="gzip")
@@ -1874,6 +2325,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
                 interpolator=paco_interpolator,
                 oversampling=paco_oversampling,
                 radial_noise_recalibration=radial_recal_cfg,
+                instrument_name=str(inst_name),
             )
             xgrid, bkg, noise = _make_placeholder_profiles(len(ts_i), size_i)
 
@@ -1923,6 +2375,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
                     images_native=images_native,
                     cfg=background_noise_cfg,
                     noise_floor=_noise_floor_build_value(tmp_root),
+                    instrument_name=str(inst_name),
                 )
 
             if radial_recal_cfg["mode"] != "none":
@@ -1941,6 +2394,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
                     local_noise_maps=local_noise_maps,
                     cfg=radial_recal_cfg,
                     profile_dir=profile_dir,
+                    instrument_name=str(inst_name),
                 )
 
         per_inst_data.append(dict(
@@ -2176,6 +2630,16 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         fp_prior=mconf["fp_prior"],
     )
 
+    # Starting outside the prior would give NaN acceptance ratios in the samplers.
+    start_prior = np.asarray(log_prior_hkpq(
+        p0[:, :7], a_bounds=a_bounds, m0_bounds=m0_bounds,
+        la0_bounds=(0.0, 2.0 * np.pi), e_max=e_max,
+        orbit_direction=orbit_direction,
+    ), dtype=float) + _flux_log_priors(p0, instruments)
+    n_outside_prior = int(np.sum(~np.isfinite(start_prior)))
+    print(f"[init] walkers outside the prior at start: {n_outside_prior} / {len(p0)}")
+    if n_outside_prior:
+        raise RuntimeError(f"{n_outside_prior} initial walkers lie outside the prior support.")
 
     # ── (9) Parallelization + RNG seed ──
     par  = _resolve_parallel(root)
@@ -2208,6 +2672,7 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
             burnin=mconf["burnin"],
             cfg=mconf["reddemcee"],
             progress=mconf["progress"],
+            thin=mconf["thin"],
         )
 
     # ── (11) Extract thinned flattened products and save chain ──
@@ -2236,16 +2701,21 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
             # Draw corners from the configurable thinned visualization sample,
             # but always include the true highest-posterior production state.
             # Otherwise a MAP annotation can depend on the YAML thinning stride.
-            full_log_probability = sampler.get_log_prob(flat=False)
-            map_flat_index = int(np.nanargmax(full_log_probability))
-            map_step, map_walker = np.unravel_index(
-                map_flat_index, full_log_probability.shape
-            )
-            map_state = sampler.get_chain(flat=False)[map_step, map_walker]
+            if hasattr(sampler, "map_state"):
+                # reddemcee: MAP over every production line, stored or not.
+                map_state, map_score = sampler.map_state()
+            else:
+                full_log_probability = sampler.get_log_prob(flat=False)
+                map_flat_index = int(np.nanargmax(full_log_probability))
+                map_step, map_walker = np.unravel_index(
+                    map_flat_index, full_log_probability.shape
+                )
+                map_state = sampler.get_chain(flat=False)[map_step, map_walker]
+                map_score = full_log_probability[map_step, map_walker]
             display_states = np.vstack([flat, map_state[None, :]])
             display_scores = np.concatenate([
                 sampler.get_log_prob(thin=mconf["thin"], flat=True),
-                np.array([full_log_probability[map_step, map_walker]]),
+                np.array([map_score]),
             ])
             create_scientific_figures(
                 instruments, display_states, display_scores,
@@ -2265,6 +2735,9 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         except Exception as exc:
             console_status("plots", f"Figure export failed: {exc}", tone="red")
             print("[plots] The saved chain can be plotted separately with the plot command.")
+    else:
+        print("[plots] plots.enabled is false: no figures written "
+              "(run 'kstacker plot <yaml>' to create them from the saved chain).")
 
     # ── (13) Sampler summary ──
     acc = float(np.mean(sampler.acceptance_fraction))
@@ -2275,13 +2748,18 @@ def _run_mcmc_from_yaml_impl(yaml_path: str):
         print("[MCMC] integrated autocorrelation time (steps):")
         for name_, t_ in zip(names, tau):
             print(f"  {name_:>4s}: {t_:.1f}")
+        if hasattr(sampler, "pt_sampler"):
+            print(f"[MCMC] reddemcee steps are lines (inner steps): 1 sweep = {sampler.lines_per_sweep} lines; "
+                  f"production = {sampler.production_lines} lines "
+                  f"({sampler.production_sweeps} sweeps), acceptance over production only; "
+                  f"{sampler.get_chain().shape[0]} lines kept (1 in {sampler.chain_stride}).")
     except Exception as err:
         print("[MCMC] IAT not reliable:", err)
 
     # ── (13) Finish ──
     print()
     print("-" * 110)
-    print("MCMC complete. Chain products are ready in values/.")
+    print(f"MCMC complete. Chain products are ready in {params.get_path('values_dir')}.")
     print("-" * 110)
     print()
 
